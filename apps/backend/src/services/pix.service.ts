@@ -1,4 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
+import https from 'https';
+import fs from 'fs';
+import { createHmac } from 'crypto';
 import { config } from '../config';
 import { prisma } from './prisma.service';
 import { logger } from '../utils/logger';
@@ -30,8 +33,9 @@ async function getAccessToken(): Promise<string> {
     return cachedToken.token;
   }
 
-  const response = await axios.post<InterTokenResponse>(
-    `${config.inter.baseUrl}/oauth/v2/token`,
+  const client = createInterClient();
+  const response = await client.post<InterTokenResponse>(
+    '/oauth/v2/token',
     new URLSearchParams({
       client_id: config.inter.clientId,
       client_secret: config.inter.clientSecret,
@@ -48,11 +52,74 @@ async function getAccessToken(): Promise<string> {
   return access_token;
 }
 
+// Build an mTLS-enabled Axios instance for Banco Inter API calls.
+// In production, Banco Inter requires mutual TLS — client must present a
+// certificate signed by the registered certificate in their developer portal.
 function createInterClient(): AxiosInstance {
+  let httpsAgent: https.Agent | undefined;
+
+  if (config.env === 'production') {
+    try {
+      httpsAgent = new https.Agent({
+        cert: fs.readFileSync(config.inter.certPath),
+        key: fs.readFileSync(config.inter.keyPath),
+        rejectUnauthorized: true,
+      });
+    } catch (err) {
+      logger.error('[PIX] Failed to load mTLS certificates — check INTER_CERT_PATH / INTER_KEY_PATH', err);
+      throw new Error('PIX mTLS certificate files not found');
+    }
+  }
+
   return axios.create({
     baseURL: config.inter.baseUrl,
     headers: { 'Content-Type': 'application/json' },
+    httpsAgent,
   });
+}
+
+// Register the webhook URL with Banco Inter so they push PIX events to us.
+// Call once on server startup (idempotent — Inter accepts re-registration).
+export async function registerPixWebhook(): Promise<void> {
+  if (!config.inter.webhookUrl) {
+    logger.warn('[PIX] INTER_WEBHOOK_URL not set — skipping webhook registration');
+    return;
+  }
+
+  try {
+    const token = await getAccessToken();
+    const client = createInterClient();
+
+    await client.put(
+      `/pix/v2/webhook/${encodeURIComponent(config.inter.pixKey)}`,
+      { webhookUrl: config.inter.webhookUrl },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    logger.info('[PIX] Webhook registered successfully', { url: config.inter.webhookUrl });
+  } catch (err: any) {
+    // Log but don't crash — webhook registration may fail in sandbox without full certs
+    logger.error('[PIX] Webhook registration failed', {
+      status: err?.response?.status,
+      data: err?.response?.data,
+    });
+  }
+}
+
+// Verify HMAC-SHA256 signature sent by Banco Inter on webhook calls.
+// Inter sends the signature in the `x-inter-ae-in-ativa` header as a hex digest.
+// If INTER_WEBHOOK_SECRET is not configured, verification is skipped (dev mode).
+export function verifyPixWebhookSignature(rawBody: string, signatureHeader: string): boolean {
+  if (!config.inter.webhookSecret) {
+    logger.warn('[PIX] Webhook signature verification skipped — INTER_WEBHOOK_SECRET not set');
+    return true;
+  }
+
+  const expected = createHmac('sha256', config.inter.webhookSecret)
+    .update(rawBody)
+    .digest('hex');
+
+  return expected === signatureHeader;
 }
 
 export async function createPixCharge(userId: string, amountBRL: number): Promise<{
@@ -67,13 +134,13 @@ export async function createPixCharge(userId: string, amountBRL: number): Promis
   if (!user?.wallet) throw new Error('Wallet not found');
 
   const txid = uuidv4().replace(/-/g, '').slice(0, 26);
-  const token = await getAccessToken();
-  const client = createInterClient();
-
   let qrCode: string;
   let pixResponse: PixChargeResponse | null = null;
 
-  if (config.env === 'production' || config.inter.baseUrl.includes('bancointer')) {
+  if (config.env === 'production') {
+    const token = await getAccessToken();
+    const client = createInterClient();
+
     const { data } = await client.put<PixChargeResponse>(
       `/pix/v2/cob/${txid}`,
       {
@@ -81,14 +148,14 @@ export async function createPixCharge(userId: string, amountBRL: number): Promis
         devedor: { cpf: user.cpf || '00000000000', nome: user.name || 'DominoClub User' },
         valor: { original: amountBRL.toFixed(2) },
         chave: config.inter.pixKey,
-        solicitacaoPagador: `Depósito DominoClub`,
+        solicitacaoPagador: 'Depósito DominoClub',
       },
       { headers: { Authorization: `Bearer ${token}` } }
     );
     pixResponse = data;
     qrCode = data.pixCopiaECola;
   } else {
-    // Mock for sandbox/development
+    // Mock QR code for sandbox / development
     qrCode = `00020126580014BR.GOV.BCB.PIX0136${config.inter.pixKey}5204000053039865406${amountBRL.toFixed(2)}5802BR5913DominoClub6008Brasilia62070503***6304ABCD`;
     logger.info('[PIX MOCK] Created charge', { txid, amount: amountBRL });
   }
@@ -115,7 +182,7 @@ export async function confirmPixDeposit(txid: string): Promise<void> {
   });
 
   if (!transaction) {
-    logger.warn('PIX deposit not found or already processed', { txid });
+    logger.warn('[PIX] Deposit not found or already processed', { txid });
     return;
   }
 
@@ -133,7 +200,7 @@ export async function confirmPixDeposit(txid: string): Promise<void> {
     }),
   ]);
 
-  logger.info('PIX deposit confirmed', { txid, amount: transaction.amount, walletId: transaction.walletId });
+  logger.info('[PIX] Deposit confirmed', { txid, amount: transaction.amount, walletId: transaction.walletId });
 }
 
 export async function processWithdrawal(userId: string, amountBRL: number, pixKey: string): Promise<string> {
@@ -143,24 +210,9 @@ export async function processWithdrawal(userId: string, amountBRL: number, pixKe
   if (wallet.rollover_remaining > 0) throw new Error('Rollover requirement not met yet');
 
   const txid = uuidv4().replace(/-/g, '').slice(0, 26);
-  const token = await getAccessToken();
 
-  if (config.env === 'production') {
-    const client = createInterClient();
-    await client.post(
-      '/pix/v2/pagamentos',
-      {
-        valor: amountBRL.toFixed(2),
-        chave: pixKey,
-        descricao: 'Saque DominoClub',
-        saque: { agente: 'AGTEC', modalidadeAlteracao: 0 },
-      },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-  } else {
-    logger.info('[PIX MOCK] Withdrawal', { userId, amount: amountBRL, pixKey });
-  }
-
+  // Reserve balance and create the transaction atomically before calling the PIX API.
+  // This prevents double-spend if the API call takes long or the server restarts.
   const transaction = await prisma.$transaction(async (tx) => {
     await tx.wallet.update({
       where: { userId },
@@ -173,11 +225,56 @@ export async function processWithdrawal(userId: string, amountBRL: number, pixKe
         amount: amountBRL,
         pix_id: txid,
         pix_key: pixKey,
-        status: config.env === 'production' ? 'PENDING' : 'COMPLETED',
+        status: 'PENDING',
         balance_after: wallet.real_balance - amountBRL,
       },
     });
   });
+
+  // Dispatch PIX transfer (production only); in dev/sandbox just log it.
+  if (config.env === 'production') {
+    try {
+      const token = await getAccessToken();
+      const client = createInterClient();
+
+      await client.post(
+        '/pix/v2/pagamentos',
+        {
+          valor: amountBRL.toFixed(2),
+          chave: pixKey,
+          descricao: 'Saque DominoClub',
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // Mark as COMPLETED once PIX is dispatched
+      await prisma.transaction.update({
+        where: { id: transaction.id },
+        data: { status: 'COMPLETED' },
+      });
+    } catch (err: any) {
+      // Refund the reserved balance and mark as FAILED
+      await prisma.$transaction([
+        prisma.wallet.update({
+          where: { userId },
+          data: { real_balance: { increment: amountBRL } },
+        }),
+        prisma.transaction.update({
+          where: { id: transaction.id },
+          data: { status: 'FAILED' },
+        }),
+      ]);
+      logger.error('[PIX] Withdrawal failed — balance refunded', { userId, txid, error: err?.response?.data });
+      throw new Error('PIX withdrawal failed — please try again');
+    }
+  } else {
+    // Sandbox / dev: auto-complete
+    await prisma.transaction.update({
+      where: { id: transaction.id },
+      data: { status: 'COMPLETED' },
+    });
+    logger.info('[PIX MOCK] Withdrawal completed', { userId, amount: amountBRL, pixKey });
+  }
 
   return transaction.id;
 }

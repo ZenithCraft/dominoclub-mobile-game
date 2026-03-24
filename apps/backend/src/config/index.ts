@@ -25,6 +25,7 @@ export const config = {
     keyPath: process.env.INTER_KEY_PATH || './certs/inter.key',
     pixKey: process.env.INTER_PIX_KEY || '',
     webhookUrl: process.env.INTER_WEBHOOK_URL || '',
+    webhookSecret: process.env.INTER_WEBHOOK_SECRET || '',
   },
 
   serpro: {

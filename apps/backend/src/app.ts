@@ -10,6 +10,12 @@ const app = express();
 
 app.use(helmet());
 app.use(cors({ origin: config.cors.origins, credentials: true }));
+// Capture raw body for PIX webhook HMAC verification before JSON parsing
+app.use((req, _res, next) => {
+  let data = '';
+  req.on('data', (chunk) => { data += chunk; });
+  req.on('end', () => { (req as any).rawBody = data; next(); });
+});
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 

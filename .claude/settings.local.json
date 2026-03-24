@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/laragon/www/dominoclub-mobile-game -not -path */node_modules/* -not -path */.next/* -not -path */build/* -not -path */dist/* -type d)",
+      "Bash(xargs wc:*)"
+    ]
+  }
+}

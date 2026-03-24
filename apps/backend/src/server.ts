@@ -2,6 +2,7 @@ import http from 'http';
 import app from './app';
 import { createSocketServer } from './socket';
 import { prisma } from './services/prisma.service';
+import { registerPixWebhook } from './services/pix.service';
 import { config } from './config';
 import { logger } from './utils/logger';
 
@@ -18,6 +19,9 @@ async function main() {
     logger.info(`DominoClub backend running on port ${config.port} [${config.env}]`);
     logger.info(`API: http://localhost:${config.port}${config.apiPrefix}`);
   });
+
+  // Register PIX webhook with Banco Inter (idempotent, safe to call on every start)
+  registerPixWebhook();
 }
 
 process.on('SIGTERM', async () => {
