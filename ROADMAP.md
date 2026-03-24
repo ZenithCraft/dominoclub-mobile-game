@@ -4,30 +4,47 @@
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **Database schema** | ✅ 100% | All 8 models, migrations done |
-| **Backend API** | ✅ ~90% | Auth, wallet, game engine, matchmaking, socket, anti-fraud all implemented |
-| **Mobile App** | ✅ ~95% | Game client, wallet, tournaments, legal screens, consent modal — beta-ready |
-| **Admin Dashboard** | ⚠️ ~60% | UI done, still uses mock data — not connected to backend |
-| **PIX Payments** | ⚠️ ~50% | Charge creation coded, webhook + withdrawal flow incomplete |
-| **CPF / SMS** | ❌ Mock only | Serpro + SMS provider not wired |
-| **Tests** | ❌ 0% | No test files exist |
-| **DevOps / Deploy** | ❌ 0% | No Docker, no CI/CD |
+| **Database schema** | ✅ 100% | All 8 models + tournament bracket migration done |
+| **Backend API** | ✅ ~95% | Auth, wallet, PIX, game engine, matchmaking, socket, anti-fraud, tournaments, replays, LGPD endpoints |
+| **Mobile App** | ✅ ~95% | Game client, wallet, tournaments, legal screens, first-launch consent modal — beta-ready |
+| **Admin Dashboard** | ✅ 100% | Connected to live backend: stats, users, games, financial tabs all wired |
+| **PIX Payments** | ✅ 100% | Webhook + mTLS + HMAC verification + withdrawal flow complete |
+| **CPF / SMS** | ⚠️ Partial | SMS: Zenvia + Twilio wired. CPF: Serpro call coded, real API key needed |
+| **Tests** | ⚠️ ~60% | Backend unit tests (engine, OTP, wallet, matchmaking) + integration test setup done. E2E: none |
+| **DevOps / Deploy** | ✅ 100% | Docker (multi-stage), docker-compose, GitHub Actions CI, Redis adapter |
+| **Launch Prep** | ✅ ~95% | EAS Build config, legal screens, LGPD endpoints — pending live store accounts for beta |
 
 ---
 
-## Recommended Execution Order
+## Remaining Work Before Launch
+
+| Item | Effort | Blocks |
+|------|--------|--------|
+| Serpro CPF API key (production credential) | Low | Compliance |
+| Full game-flow integration test | Medium | CI confidence |
+| PIX webhook integration test | Medium | CI confidence |
+| PgBouncer connection pooling | Low | Scale |
+| Mobile E2E tests (Detox/Maestro) | High | QA |
+| TestFlight / internal Play track beta | Low | Store accounts |
+
+---
+
+## Recommended Execution Order ✅ Complete
 
 ```
-Phase 1.1 (PIX webhooks)     ← unlocks real money flow
-Phase 2.1 (Game client)      ← core gameplay completeness
-Phase 2.2 (Wallet mobile UI) ← tied to Phase 1.1
-Phase 1.3 (SMS OTP)          ← needed for real users
-Phase 3.1–3.3 (Admin)        ← needed for operations
-Phase 1.2 (CPF validation)   ← needed for compliance
-Phase 1.4 (Replays)          ← nice to have
-Phase 4   (Tests)            ← parallel with above
-Phase 5   (Hardening)        ← before launch
-Phase 6   (Launch)
+Phase 1.1 (PIX webhooks)     ✅
+Phase 2.1 (Game client)      ✅
+Phase 2.2 (Wallet mobile UI) ✅
+Phase 1.3 (SMS OTP)          ✅
+Phase 3.1–3.6 (Admin)        ✅
+Phase 1.2 (CPF validation)   ⚠️ coded — real API key needed
+Phase 1.4 (Replays)          ✅
+Phase 1.5 (Tournaments)      ✅
+Phase 2.3 (Error handling)   ✅
+Phase 2.4 (ModeSelect)       ✅
+Phase 4   (Tests)            ⚠️ unit done — integration/E2E pending
+Phase 5   (Hardening)        ✅
+Phase 6   (Launch)           ✅ legal/config done — store submission pending
 ```
 
 ---
