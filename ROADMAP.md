@@ -185,17 +185,28 @@ Phase 6   (Launch)
 
 ## Phase 4 — Testing (Priority: High)
 
-### 4.1 Backend Unit Tests
-- [ ] Game engine logic (`domino.engine.ts`) — tile distribution, move validation, win detection
-- [ ] Auth service — OTP generation/validation, JWT handling
-- [ ] Wallet service — balance operations, rollover calculation
-- [ ] Matchmaking service — queue logic, bot injection
+### 4.1 Backend Unit Tests ✅
+- [x] Jest + ts-jest configured in `package.json` (`test`, `test:watch`, `test:coverage` scripts)
+- [x] Shared Prisma mock (`src/__mocks__/prisma.service.ts`) — all model methods are `jest.fn()`, auto-reset between tests
+- [x] **domino.engine.test.ts** — 35 assertions covering:
+  - `generateTiles`: count, completeness, no duplicates
+  - `shuffle`: same elements, non-mutating
+  - `initGame`: hand sizes (2p/4p), 28 tiles total, first player holds highest double, firstPlayMade=false
+  - `canPlayTile`: first play, left/right matching, flipping, double no-flip, no match, CRUZADA top/bottom
+  - `getValidMoves`: filters playable tiles correctly
+  - `applyMove`: tile removal, board update, leftOpen/rightOpen, currentPlayerIndex, win detection, throws on missing tile, resets consecutivePasses, CRUZADA cross
+  - `applyPass`: consecutivePasses, passedLastTurn, blocked game, pip-count winner, tie
+  - `drawFromBoneyard`: hand growth, boneyard shrink, empty boneyard no-op, immutability
+  - `getBotMove`: draw/pass/play actions, greedy tile preference, first play
+  - Full 2-player game simulation (up to 500 turns, asserts `status === 'finished'`)
+- [x] **otp.service.test.ts** — OTP length, uniqueness, cooldown enforcement, maxAttempts lockout, expiry
+- [x] **wallet.service.test.ts** — deductBet (real/bonus/split/insufficient/not found/BET record), creditWin (increment/WIN record), deposit/withdraw minimums + delegation
+- [x] **matchmaking.service.test.ts** — dedup enqueue, dequeue removes, 1v1 match fires event, bet tolerance rejection, 2v2 needs 4 players, game.create called with correct mode
 
-**Tool:** Jest + ts-jest
-
-### 4.2 Backend Integration Tests
-- [ ] Full auth flow (register → OTP → login → refresh)
-- [ ] Full game flow (join queue → match → play → end → wallet updated)
+### 4.2 Backend Integration Tests ✅ (setup)
+- [x] **auth.integration.test.ts** — Supertest suite for OTP send/verify, /auth/me 401, token refresh 401, admin login, admin stats 401
+- [x] Auto-skips when `DATABASE_URL` not set or `NODE_ENV !== 'test'` to avoid CI failures
+- [ ] Full game flow integration test (join queue → match → play → end → wallet updated)
 - [ ] PIX deposit webhook → balance credit
 
 **Tool:** Supertest + test PostgreSQL instance
