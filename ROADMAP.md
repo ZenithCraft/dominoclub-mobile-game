@@ -73,12 +73,17 @@ Phase 6   (Launch)
 
 **Files:** `apps/backend/src/socket/gameSocket.ts`, `apps/backend/src/controllers/game.controller.ts`
 
-### 1.5 Tournament Bracket Engine
-- [ ] Implement tournament round advancement (elimination bracket logic)
-- [ ] Trigger next-round matchmaking automatically when round completes
-- [ ] Distribute prize pool to winner on tournament completion
+### 1.5 Tournament Bracket Engine ✅
+- [x] Schema: added `tournamentId` + `tournament_round` to `Game`; `current_round` to `Tournament`
+- [x] `tournament.service.ts` — `startTournament`, `advanceTournamentBracket`, `createTournament`
+- [x] Single-elimination bracket: random seeding, bye for odd players, auto-advance each round
+- [x] `handleGameEnd` calls `advanceTournamentBracket` for tournament games
+- [x] `joinTournamentHandler` auto-starts tournament when max_players reached
+- [x] Prize pool credited to winner via wallet transaction on tournament completion
+- [x] Entry fee refund on admin cancel
+- [x] Admin endpoints: `GET/POST /admin/tournaments`, `POST /admin/tournaments/:id/start`, `POST /admin/tournaments/:id/cancel`
 
-**New file needed:** `apps/backend/src/services/tournament.service.ts`
+**Files:** `apps/backend/src/services/tournament.service.ts`, `apps/backend/src/socket/gameSocket.ts`, `apps/backend/src/controllers/game.controller.ts`, `apps/backend/src/controllers/admin.controller.ts`
 
 ---
 

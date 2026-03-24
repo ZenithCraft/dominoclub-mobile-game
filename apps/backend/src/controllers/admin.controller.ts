@@ -4,6 +4,7 @@ import { config } from '../config';
 import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
 import { activeGames } from '../socket/gameSocket';
+import { createTournament, startTournament } from '../services/tournament.service';
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -305,5 +306,116 @@ export async function getGameReplayAdminHandler(req: Request, res: Response) {
     res.json(game);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+}
+
+// ─── Tournaments ──────────────────────────────────────────────────────────────
+
+export async function getTournamentsAdminHandler(req: Request, res: Response) {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = 20;
+    const status = req.query.status as string | undefined;
+
+    const where: any = {};
+    if (status) where.status = status;
+
+    const [tournaments, total] = await Promise.all([
+      prisma.tournament.findMany({
+        where,
+        include: {
+          _count: { select: { players: true, games: true } },
+        },
+        orderBy: { starts_at: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.tournament.count({ where }),
+    ]);
+
+    res.json({ tournaments, total, page, pages: Math.ceil(total / limit) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function createTournamentAdminHandler(req: Request, res: Response) {
+  try {
+    const { name, mode, variant, entryFee, maxPlayers, startsAt } = req.body;
+
+    if (!name || !mode || !entryFee || !maxPlayers || !startsAt) {
+      return res.status(400).json({ error: 'name, mode, entryFee, maxPlayers, startsAt are required' });
+    }
+
+    const tournament = await createTournament({
+      name,
+      mode,
+      variant,
+      entryFee: parseFloat(entryFee),
+      maxPlayers: parseInt(maxPlayers),
+      startsAt: new Date(startsAt),
+    });
+
+    logger.info('[Admin] Tournament created', { tournamentId: tournament.id, name });
+    res.status(201).json(tournament);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function startTournamentAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    await startTournament(id);
+    logger.info('[Admin] Tournament manually started', { tournamentId: id });
+    res.json({ message: 'Tournament started' });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function cancelTournamentAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+
+    const tournament = await prisma.tournament.findUnique({
+      where: { id },
+      include: { players: { select: { userId: true } } },
+    });
+
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+    if (tournament.status === 'FINISHED') return res.status(400).json({ error: 'Cannot cancel a finished tournament' });
+
+    // Refund entry fees to all enrolled players
+    for (const player of tournament.players) {
+      const wallet = await prisma.wallet.findUnique({ where: { userId: player.userId } });
+      if (wallet) {
+        await prisma.$transaction([
+          prisma.wallet.update({
+            where: { id: wallet.id },
+            data: { real_balance: { increment: tournament.entry_fee } },
+          }),
+          prisma.transaction.create({
+            data: {
+              walletId: wallet.id,
+              type: 'REFUND',
+              amount: tournament.entry_fee,
+              status: 'COMPLETED',
+              description: `Tournament cancelled — entry fee refund`,
+            },
+          }),
+        ]);
+      }
+    }
+
+    await prisma.tournament.update({
+      where: { id },
+      data: { status: 'CANCELLED', finished_at: new Date() },
+    });
+
+    logger.info('[Admin] Tournament cancelled — fees refunded', { tournamentId: id, players: tournament.players.length });
+    res.json({ message: 'Tournament cancelled and entry fees refunded' });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
   }
 }

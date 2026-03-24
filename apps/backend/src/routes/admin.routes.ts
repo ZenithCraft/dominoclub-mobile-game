@@ -10,6 +10,10 @@ import {
   getTransactionsHandler,
   approveWithdrawalHandler,
   rejectWithdrawalHandler,
+  getTournamentsAdminHandler,
+  createTournamentAdminHandler,
+  startTournamentAdminHandler,
+  cancelTournamentAdminHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -31,5 +35,10 @@ router.get('/games/:id/replay', getGameReplayAdminHandler);
 router.get('/transactions', getTransactionsHandler);
 router.patch('/transactions/:id/approve', approveWithdrawalHandler);
 router.patch('/transactions/:id/reject', rejectWithdrawalHandler);
+
+router.get('/tournaments', getTournamentsAdminHandler);
+router.post('/tournaments', createTournamentAdminHandler);
+router.post('/tournaments/:id/start', startTournamentAdminHandler);
+router.post('/tournaments/:id/cancel', cancelTournamentAdminHandler);
 
 export default router;

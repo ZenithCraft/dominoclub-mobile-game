@@ -145,27 +145,31 @@ model Transaction {
 }
 
 model Game {
-  id           String        @id @default(uuid())
-  mode         GameMode
-  variant      DominoVariant @default(CARROCA)
-  status       GameStatus    @default(WAITING)
-  bet_amount   Float         @default(0)
-  prize_pool   Float         @default(0)
-  house_fee    Float         @default(0)
-  winner_id    String?
-  winning_team Int?          // 1 or 2 for 2v2
-  replay_data  Json?         // full game history for replay
-  room_code    String?       @unique  // short code for private games
-  created_at   DateTime      @default(now())
-  updated_at   DateTime      @updatedAt
-  finished_at  DateTime?
+  id               String        @id @default(uuid())
+  mode             GameMode
+  variant          DominoVariant @default(CARROCA)
+  status           GameStatus    @default(WAITING)
+  bet_amount       Float         @default(0)
+  prize_pool       Float         @default(0)
+  house_fee        Float         @default(0)
+  winner_id        String?
+  winning_team     Int?          // 1 or 2 for 2v2
+  replay_data      Json?         // full game history for replay
+  room_code        String?       @unique  // short code for private games
+  tournamentId     String?       // null for non-tournament games
+  tournament_round Int?          // which round of the tournament (1-based)
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+  finished_at      DateTime?
 
-  players     GamePlayer[]
-  winner      User?         @relation("GameWinner", fields: [winner_id], references: [id])
+  players    GamePlayer[]
+  winner     User?       @relation("GameWinner", fields: [winner_id], references: [id])
+  tournament Tournament? @relation(fields: [tournamentId], references: [id])
 
   @@index([status])
   @@index([mode])
   @@index([created_at])
+  @@index([tournamentId])
 }
 
 model GamePlayer {
@@ -189,21 +193,23 @@ model GamePlayer {
 }
 
 model Tournament {
-  id           String           @id @default(uuid())
-  name         String
-  mode         GameMode
-  variant      DominoVariant    @default(CARROCA)
-  status       TournamentStatus @default(OPEN)
-  entry_fee    Float
-  prize_pool   Float            @default(0)
-  max_players  Int
-  current_players Int           @default(0)
-  starts_at    DateTime
-  finished_at  DateTime?
-  created_at   DateTime         @default(now())
-  updated_at   DateTime         @updatedAt
+  id              String           @id @default(uuid())
+  name            String
+  mode            GameMode
+  variant         DominoVariant    @default(CARROCA)
+  status          TournamentStatus @default(OPEN)
+  entry_fee       Float
+  prize_pool      Float            @default(0)
+  max_players     Int
+  current_players Int              @default(0)
+  current_round   Int              @default(0)  // 0 = not started
+  starts_at       DateTime
+  finished_at     DateTime?
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
 
   players TournamentPlayer[]
+  games   Game[]
 
   @@index([status])
   @@index([starts_at])

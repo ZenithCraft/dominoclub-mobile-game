@@ -1,6 +1,7 @@
 import { Server as SocketServer, Socket } from 'socket.io';
 import { prisma } from '../services/prisma.service';
 import { deductBet, creditWin } from '../services/wallet.service';
+import { advanceTournamentBracket } from '../services/tournament.service';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import {
@@ -414,4 +415,11 @@ async function handleGameEnd(gameId: string, state: GameState, io: SocketServer)
   });
 
   logger.info('Game ended', { gameId, winnerId: state.winnerId, winnerTeam: state.winnerTeam });
+
+  // If this was a tournament game, advance the bracket
+  if (game.tournamentId) {
+    advanceTournamentBracket(game.tournamentId, gameId, state.winnerId, state.winnerTeam).catch((err) => {
+      logger.error('[Tournament] Failed to advance bracket', { tournamentId: game.tournamentId, gameId, err: err.message });
+    });
+  }
 }
