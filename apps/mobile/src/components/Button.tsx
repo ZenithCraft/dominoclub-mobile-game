@@ -13,7 +13,7 @@ import { colors, radius, spacing, fonts } from '../theme';
 interface Props {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'outline' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   disabled?: boolean;
@@ -68,14 +68,16 @@ export function Button({
   const variantStyle = {
     secondary: styles.secondary,
     ghost: styles.ghost,
+    outline: styles.outline,
     danger: styles.danger,
-  }[variant];
+  }[variant as 'secondary' | 'ghost' | 'outline' | 'danger'];
 
   const variantTextStyle = {
     secondary: styles.secondaryText,
     ghost: styles.ghostText,
+    outline: styles.outlineText,
     danger: styles.dangerText,
-  }[variant];
+  }[variant as 'secondary' | 'ghost' | 'outline' | 'danger'];
 
   return (
     <TouchableOpacity
@@ -126,6 +128,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primary,
   },
+  outline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   danger: {
     backgroundColor: colors.error,
   },
@@ -145,6 +152,9 @@ const styles = StyleSheet.create({
   },
   ghostText: {
     color: colors.primary,
+  },
+  outlineText: {
+    color: colors.textSecondary,
   },
   dangerText: {
     color: '#fff',

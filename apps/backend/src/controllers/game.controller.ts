@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../services/prisma.service';
 import { createGameSchema } from '../utils/validators';
 import { activeGames } from '../socket/gameSocket';
+import { startTournament } from '../services/tournament.service';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function getGameHistoryHandler(req: Request, res: Response) {
@@ -105,7 +106,10 @@ export async function joinTournamentHandler(req: Request, res: Response) {
       return res.status(400).json({ error: 'Insufficient balance' });
     }
 
-    // Deduct entry fee
+    // Deduct entry fee and enroll player
+    const newPlayerCount = tournament.current_players + 1;
+    const isFull = newPlayerCount >= tournament.max_players;
+
     await prisma.$transaction([
       prisma.wallet.update({
         where: { userId },
@@ -119,11 +123,19 @@ export async function joinTournamentHandler(req: Request, res: Response) {
         data: {
           current_players: { increment: 1 },
           prize_pool: { increment: tournament.entry_fee * 0.9 },
+          status: isFull ? 'FULL' : 'OPEN',
         },
       }),
     ]);
 
-    res.json({ message: 'Joined tournament successfully' });
+    // Auto-start when all spots are filled
+    if (isFull) {
+      startTournament(id).catch((err) => {
+        console.error('[Tournament] Auto-start failed', err.message);
+      });
+    }
+
+    res.json({ message: 'Joined tournament successfully', starting: isFull });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

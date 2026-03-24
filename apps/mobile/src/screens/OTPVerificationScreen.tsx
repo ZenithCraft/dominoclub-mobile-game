@@ -70,8 +70,9 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
       setResendTimer(60);
       setOtp(['', '', '', '', '', '']);
       setError('');
-    } catch {
-      setError('Erro ao reenviar código');
+      inputs.current[0]?.focus();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Erro ao reenviar código');
     }
   };
 

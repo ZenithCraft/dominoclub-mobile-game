@@ -6,6 +6,7 @@ import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
 import { setupGameSocket, activeGames } from './gameSocket';
 import { enqueue, dequeue, matchmakingEvents, startBotInjectionTimer, QueueEntry } from '../services/matchmaking.service';
+import { getRedisClient, getRedisSubscriber, isRedisAvailable } from '../services/redis.service';
 
 export function createSocketServer(httpServer: HttpServer): SocketServer {
   const io = new SocketServer(httpServer, {
@@ -16,6 +17,16 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
     },
     transports: ['websocket', 'polling'],
   });
+
+  // Attach Redis adapter for horizontal scaling when Redis is available
+  if (isRedisAvailable()) {
+    import('@socket.io/redis-adapter').then(({ createAdapter }) => {
+      io.adapter(createAdapter(getRedisClient(), getRedisSubscriber()));
+      logger.info('[Socket.io] Redis adapter enabled — horizontal scaling active');
+    }).catch((err) => {
+      logger.warn('[Socket.io] Redis adapter not available — single-server mode', { message: err.message });
+    });
+  }
 
   // Auth middleware
   io.use(async (socket, next) => {

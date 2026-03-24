@@ -64,6 +64,26 @@ export async function deductBet(walletId: string, amount: number) {
   });
 }
 
+export async function getTransaction(userId: string, transactionId: string) {
+  const wallet = await prisma.wallet.findUnique({ where: { userId } });
+  if (!wallet) throw new Error('Wallet not found');
+
+  return prisma.transaction.findFirst({
+    where: { id: transactionId, walletId: wallet.id },
+    select: {
+      id: true,
+      type: true,
+      amount: true,
+      balance_after: true,
+      status: true,
+      pix_id: true,
+      pix_qr_code: true,
+      pix_key: true,
+      created_at: true,
+    },
+  });
+}
+
 export async function creditWin(walletId: string, amount: number) {
   const wallet = await prisma.wallet.update({
     where: { id: walletId },

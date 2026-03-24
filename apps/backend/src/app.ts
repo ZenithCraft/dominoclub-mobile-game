@@ -8,18 +8,61 @@ import routes from './routes';
 
 const app = express();
 
+// ── Health check (before rate limiting / auth) ─────────────────────────────
+app.get('/health', (_req, res) => res.json({ status: 'ok', env: config.env }));
+
 app.use(helmet());
 app.use(cors({ origin: config.cors.origins, credentials: true }));
+
+// Capture raw body for PIX webhook HMAC verification before JSON parsing
+app.use((req, _res, next) => {
+  let data = '';
+  req.on('data', (chunk) => { data += chunk; });
+  req.on('end', () => { (req as any).rawBody = data; next(); });
+});
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use(
-  rateLimit({
-    windowMs: config.rateLimit.windowMs,
-    max: config.rateLimit.maxRequests,
-    message: { error: 'Too many requests, please try again later' },
-  })
-);
+// ── Rate limiting — tiered per route sensitivity ───────────────────────────
+
+// Auth endpoints: tight limits to prevent brute-force / OTP abuse
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
+  max: 20,
+  message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// PIX webhook: very loose — called by Banco Inter servers
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 500,
+  message: { error: 'Too many webhook calls' },
+});
+
+// Admin: tighter than API but looser than auth
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { error: 'Too many admin requests' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// General API: generous for normal gameplay
+const generalLimiter = rateLimit({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxRequests,
+  message: { error: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use(`${config.apiPrefix}/auth`, authLimiter);
+app.use(`${config.apiPrefix}/wallet/pix/webhook`, webhookLimiter);
+app.use(`${config.apiPrefix}/admin`, adminLimiter);
+app.use(generalLimiter);
 
 app.use(antifraudMiddleware);
 app.use(config.apiPrefix, routes);

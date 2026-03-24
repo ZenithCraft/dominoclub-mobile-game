@@ -25,6 +25,7 @@ export const config = {
     keyPath: process.env.INTER_KEY_PATH || './certs/inter.key',
     pixKey: process.env.INTER_PIX_KEY || '',
     webhookUrl: process.env.INTER_WEBHOOK_URL || '',
+    webhookSecret: process.env.INTER_WEBHOOK_SECRET || '',
   },
 
   serpro: {
@@ -36,6 +37,18 @@ export const config = {
   otp: {
     expirySeconds: parseInt(process.env.OTP_EXPIRY_SECONDS || '300', 10),
     length: parseInt(process.env.OTP_LENGTH || '6', 10),
+    maxAttempts: parseInt(process.env.OTP_MAX_ATTEMPTS || '5', 10),
+    resendCooldownSeconds: parseInt(process.env.OTP_RESEND_COOLDOWN_SECONDS || '60', 10),
+  },
+
+  sms: {
+    provider: (process.env.SMS_PROVIDER || 'mock') as 'mock' | 'zenvia' | 'twilio',
+    apiKey: process.env.SMS_API_KEY || '',
+    sender: process.env.SMS_SENDER || 'DominoClub',
+    // Twilio-specific
+    twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
+    twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
+    twilioFromNumber: process.env.TWILIO_FROM_NUMBER || '',
   },
 
   rateLimit: {
@@ -50,7 +63,37 @@ export const config = {
     houseEdgePercent: parseFloat(process.env.HOUSE_EDGE_PERCENT || '10'),
   },
 
+  admin: {
+    username: process.env.ADMIN_USERNAME || 'admin',
+    password: process.env.ADMIN_PASSWORD || 'changeme_in_production',
+    secret: process.env.ADMIN_JWT_SECRET || 'admin_secret_change_in_production_32chars',
+  },
+
   cors: {
     origins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:19006').split(','),
   },
+
+  redis: {
+    url: process.env.REDIS_URL || '',
+  },
 };
+
+// ── Production secret validation ────────────────────────────────────────────
+// Fail fast if weak defaults are still in place when running in production.
+if (process.env.NODE_ENV === 'production') {
+  const weak = [
+    ['JWT_ACCESS_SECRET', config.jwt.accessSecret, 'dev_access_secret_min_32_chars_here'],
+    ['JWT_REFRESH_SECRET', config.jwt.refreshSecret, 'dev_refresh_secret_min_32_chars_here'],
+    ['ADMIN_PASSWORD',    config.admin.password,     'changeme_in_production'],
+    ['ADMIN_JWT_SECRET',  config.admin.secret,       'admin_secret_change_in_production_32chars'],
+  ] as const;
+
+  const bad = weak.filter(([, val, def]) => val === def || val.length < 32);
+  if (bad.length > 0) {
+    const names = bad.map(([name]) => name).join(', ');
+    throw new Error(
+      `[Config] FATAL: Weak or default secrets detected in production: ${names}. ` +
+      'Set strong values (≥32 chars) in your environment before deploying.'
+    );
+  }
+}

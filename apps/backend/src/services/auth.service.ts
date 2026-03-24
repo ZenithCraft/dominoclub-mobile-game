@@ -18,13 +18,12 @@ export async function requestOtp(phone: string) {
 
   if (user.is_banned) throw new Error('Account suspended');
 
-  await sendOtp(phone);
-  return { message: 'OTP sent', isNewUser: !user.name };
+  await sendOtp(phone);  // throws if resend cooldown active
+  return { message: 'OTP enviado', isNewUser: !user.name };
 }
 
 export async function loginWithOtp(phone: string, otp: string, deviceId?: string, ip?: string) {
-  const valid = verifyOtp(phone, otp);
-  if (!valid) throw new Error('Invalid or expired OTP');
+  verifyOtp(phone, otp); // throws with a descriptive message on failure
 
   const user = await prisma.user.update({
     where: { phone },
