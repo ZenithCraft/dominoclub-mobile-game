@@ -135,33 +135,37 @@ Phase 6   (Launch)
 
 ## Phase 3 — Admin Dashboard Integration (Priority: High)
 
-### 3.1 Connect to Backend API
-- [ ] Create API client (Axios instance with admin JWT)
-- [ ] Admin login screen with protected routes
-- [ ] Replace all mock data with real API calls
+### 3.1 Connect to Backend API ✅
+- [x] `apps/admin/src/lib/api.ts` — Axios client with auto-attach admin JWT + redirect to /login on 401
+- [x] `POST /api/v1/admin/login` endpoint — username/password → JWT (12h expiry)
+- [x] Admin JWT middleware (`admin.middleware.ts`) — verifies `role: admin` claim
+- [x] Admin credentials in config + `.env.example` (`ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_JWT_SECRET`)
 
-**File:** `apps/admin/src/app/page.tsx` → refactor into separate route files
+### 3.2 Login Page ✅
+- [x] `/login` page — form, error display, stores token in localStorage, redirects to dashboard
+- [x] Auth guard on dashboard — redirects to `/login` if no token
 
-### 3.2 Users Tab
-- [ ] Fetch real user list with pagination
-- [ ] Ban/unban action calling `PATCH /api/v1/admin/users/:id`
-- [ ] Search by phone, CPF, name
-- [ ] User detail modal (game history, transaction history, fraud logs)
+### 3.3 Overview Tab ✅
+- [x] `GET /admin/stats` — totalUsers, onlineNow (from `activeGames` Map), activeGames, revenue24h, deposits24h, withdrawals24h, revenueWeek (7-day SQL aggregation)
+- [x] Revenue and games charts wired to live data
+- [x] Refresh button
 
-### 3.3 Financial Tab
-- [ ] Fetch pending withdrawals
-- [ ] Approve/reject withdrawal actions
-- [ ] Revenue charts using real data (Recharts already installed)
-- [ ] Export to CSV
+### 3.4 Users Tab ✅
+- [x] `GET /admin/users?search=&page=` — paginated, searchable by name/phone/CPF
+- [x] Fraud log count badge per user
+- [x] `PATCH /admin/users/:id/ban` — ban/unban with reason
+- [x] Pagination component
 
-### 3.4 Games Tab
-- [ ] Fetch game list with real data
-- [ ] Replay viewer: render game moves step-by-step from `replayData`
+### 3.5 Games Tab ✅
+- [x] `GET /admin/games?status=&page=` — paginated, filterable by status
+- [x] Duration calculated from `created_at`/`finished_at`
+- [x] Status filter dropdown
 
-### 3.5 Fraud Monitoring Tab (New)
-- [ ] Table of `FraudLog` entries
-- [ ] Filter by type (IP_BLOCK, DEVICE_BLOCK, GEO_BLOCK)
-- [ ] Link fraud logs to user profiles
+### 3.6 Financial Tab ✅
+- [x] `GET /admin/transactions?type=&status=&page=` — paginated, filterable
+- [x] Pending withdrawals total + count in header
+- [x] `PATCH /admin/transactions/:id/approve` — marks COMPLETED
+- [x] `PATCH /admin/transactions/:id/reject` — marks FAILED + refunds balance to user
 
 ---
 

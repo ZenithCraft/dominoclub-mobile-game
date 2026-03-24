@@ -63,6 +63,12 @@ export const config = {
     houseEdgePercent: parseFloat(process.env.HOUSE_EDGE_PERCENT || '10'),
   },
 
+  admin: {
+    username: process.env.ADMIN_USERNAME || 'admin',
+    password: process.env.ADMIN_PASSWORD || 'changeme_in_production',
+    secret: process.env.ADMIN_JWT_SECRET || 'admin_secret_change_in_production_32chars',
+  },
+
   cors: {
     origins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:19006').split(','),
   },
