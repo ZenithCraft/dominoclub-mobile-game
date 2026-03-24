@@ -133,10 +133,15 @@ Phase 6   (Launch)
 - [x] `LoadingOverlay` — full-screen modal spinner with optional message
 - [x] `Button` component: added missing `outline` variant (used by RegisterScreen CPF verify button)
 
-### 2.4 ModeSelectScreen — Tournament Entry
-- [ ] List open tournaments with entry fee and prize pool
-- [ ] Enroll button with fee deduction confirmation modal
-- [ ] Show tournament bracket/status
+### 2.4 ModeSelectScreen — Tournament Entry ✅
+- [x] Two-tab layout: Partida Rápida / Torneios
+- [x] Quick Match tab: 3 game modes (ARENA_1V1, RECREATIONAL_2V2, CUP_1V1), bet grid, balance warning
+- [x] `queue:error` now uses `toast.error()` instead of `alert()`
+- [x] Tournaments tab: fetches `GET /game/tournaments`, pull-to-refresh
+- [x] `TournamentCard`: name, variant, date, status badge, entry fee, prize pool (gold), player fill bar, round number (IN_PROGRESS)
+- [x] Enroll confirmation modal: fee deduction preview, post-fee balance, insufficient balance guard
+- [x] Joined state badge: "Inscrito — aguardando início" after successful enroll
+- [x] Balance auto-refreshed from auth store after joining
 
 **File:** `apps/mobile/src/screens/ModeSelectScreen.tsx`
 
