@@ -53,10 +53,15 @@ Phase 6   (Launch)
 
 **File:** `apps/backend/src/services/auth.service.ts`
 
-### 1.3 SMS OTP Provider
-- [ ] Choose and wire SMS provider (Twilio, Zenvia, or Infobip — Zenvia is Brazil-native)
-- [ ] Replace mock OTP with real SMS dispatch
-- [ ] OTP expiry and max-attempts enforcement
+### 1.3 SMS OTP Provider ✅
+- [x] Multi-provider architecture: `SMS_PROVIDER=mock|zenvia|twilio` (env-switched)
+- [x] Zenvia integration (Brazil-native) — `POST /v2/channels/sms/messages`
+- [x] Twilio integration (international fallback) — REST API with Basic Auth
+- [x] Resend cooldown — throws if new OTP requested before `OTP_RESEND_COOLDOWN_SECONDS` (default 60s)
+- [x] Max-attempts enforcement — locks code after `OTP_MAX_ATTEMPTS` (default 5) failed tries
+- [x] Remaining attempts shown in error message ("2 tentativas restantes")
+- [x] Mobile `handleResend` now shows server cooldown error inline instead of swallowing it
+- [x] `auth.service.ts` updated — `verifyOtp` throws descriptive errors, no silent `false` return
 
 **File:** `apps/backend/src/services/otp.service.ts`
 

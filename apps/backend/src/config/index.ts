@@ -37,6 +37,18 @@ export const config = {
   otp: {
     expirySeconds: parseInt(process.env.OTP_EXPIRY_SECONDS || '300', 10),
     length: parseInt(process.env.OTP_LENGTH || '6', 10),
+    maxAttempts: parseInt(process.env.OTP_MAX_ATTEMPTS || '5', 10),
+    resendCooldownSeconds: parseInt(process.env.OTP_RESEND_COOLDOWN_SECONDS || '60', 10),
+  },
+
+  sms: {
+    provider: (process.env.SMS_PROVIDER || 'mock') as 'mock' | 'zenvia' | 'twilio',
+    apiKey: process.env.SMS_API_KEY || '',
+    sender: process.env.SMS_SENDER || 'DominoClub',
+    // Twilio-specific
+    twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
+    twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
+    twilioFromNumber: process.env.TWILIO_FROM_NUMBER || '',
   },
 
   rateLimit: {
