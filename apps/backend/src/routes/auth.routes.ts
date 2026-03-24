@@ -7,6 +7,7 @@ import {
   logoutHandler,
   updateProfileHandler,
   getMeHandler,
+  verifyCpfHandler,
 } from '../controllers/auth.controller';
 
 const router = Router();
@@ -17,5 +18,6 @@ router.post('/token/refresh', refreshHandler);
 router.post('/logout', authMiddleware, logoutHandler);
 router.get('/me', authMiddleware, getMeHandler);
 router.put('/profile', authMiddleware, updateProfileHandler);
+router.post('/cpf/verify', authMiddleware, verifyCpfHandler);
 
 export default router;

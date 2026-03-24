@@ -65,10 +65,11 @@ Phase 6   (Launch)
 
 **File:** `apps/backend/src/services/otp.service.ts`
 
-### 1.4 Game Replay System
-- [ ] Record each move into `Game.replayData` (JSONB) during `gameSocket.ts` event handlers
-- [ ] Expose `GET /api/v1/game/:id/replay` endpoint
-- [ ] Serve replay data to admin dashboard
+### 1.4 Game Replay System ✅
+- [x] Record each move into `Game.replay_data` (JSONB) during `gameSocket.ts` event handlers
+- [x] `ReplayData` structure: initial deal + boneyard + typed move sequence (play/draw/pass/timeout)
+- [x] `GET /api/v1/game/:id/replay` endpoint (players can fetch their own games)
+- [x] `GET /api/v1/admin/games/:id/replay` endpoint (admin can fetch any game)
 
 **Files:** `apps/backend/src/socket/gameSocket.ts`, `apps/backend/src/controllers/game.controller.ts`
 

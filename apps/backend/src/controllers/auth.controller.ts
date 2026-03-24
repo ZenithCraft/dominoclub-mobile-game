@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { requestOtp, loginWithOtp, refreshTokens, logout } from '../services/auth.service';
-import { loginSchema, verifyOtpSchema, registerSchema } from '../utils/validators';
+import { verifyAndSaveCpf } from '../services/cpf.service';
+import { loginSchema, verifyOtpSchema, cpfSchema } from '../utils/validators';
 import { checkMultiAccount } from '../middleware/antifraud.middleware';
 import { prisma } from '../services/prisma.service';
 
@@ -57,19 +58,52 @@ export async function updateProfileHandler(req: Request, res: Response) {
     const userId = (req as any).user?.userId;
     const { name, cpf, avatar, gps_lat, gps_lng } = req.body;
 
+    // If CPF is being submitted, verify it via Serpro before saving
+    if (cpf) {
+      const rawCpf = cpf.replace(/\D/g, '');
+      cpfSchema.parse(rawCpf); // throws ZodError if format/checksum invalid
+      await verifyAndSaveCpf(userId, rawCpf); // throws if irregular or duplicate
+    }
+
     const user = await prisma.user.update({
       where: { id: userId },
       data: {
         name: name || undefined,
-        cpf: cpf || undefined,
         avatar: avatar || undefined,
         gps_lat: gps_lat || undefined,
         gps_lng: gps_lng || undefined,
+        // CPF is persisted inside verifyAndSaveCpf — don't overwrite here
       },
-      select: { id: true, phone: true, name: true, email: true, avatar: true, cpf_verified: true, phone_verified: true, created_at: true },
+      select: {
+        id: true, phone: true, name: true, email: true, avatar: true,
+        cpf_verified: true, phone_verified: true, created_at: true,
+      },
     });
 
     res.json(user);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+// POST /auth/cpf/verify — explicit CPF verification endpoint
+// Used when the user wants to verify CPF after initial registration
+export async function verifyCpfHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const rawCpf = (req.body.cpf || '').replace(/\D/g, '');
+
+    cpfSchema.parse(rawCpf); // throws if format invalid
+
+    const result = await verifyAndSaveCpf(userId, rawCpf);
+
+    res.json({
+      cpf_verified: result.verified,
+      situacao: result.situacao,
+      message: result.verified
+        ? 'CPF verificado com sucesso'
+        : `CPF não verificado: ${result.situacao}`,
+    });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

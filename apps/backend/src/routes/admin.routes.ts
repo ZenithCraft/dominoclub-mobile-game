@@ -6,6 +6,7 @@ import {
   getUsersHandler,
   banUserHandler,
   getGamesHandler,
+  getGameReplayAdminHandler,
   getTransactionsHandler,
   approveWithdrawalHandler,
   rejectWithdrawalHandler,
@@ -25,6 +26,7 @@ router.get('/users', getUsersHandler);
 router.patch('/users/:id/ban', banUserHandler);
 
 router.get('/games', getGamesHandler);
+router.get('/games/:id/replay', getGameReplayAdminHandler);
 
 router.get('/transactions', getTransactionsHandler);
 router.patch('/transactions/:id/approve', approveWithdrawalHandler);

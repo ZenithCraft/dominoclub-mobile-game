@@ -267,3 +267,43 @@ export async function rejectWithdrawalHandler(req: Request, res: Response) {
     res.status(400).json({ error: err.message });
   }
 }
+
+// ─── Game Replay ──────────────────────────────────────────────────────────────
+
+export async function getGameReplayAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+
+    const game = await prisma.game.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        variant: true,
+        status: true,
+        bet_amount: true,
+        prize_pool: true,
+        winner_id: true,
+        winning_team: true,
+        created_at: true,
+        finished_at: true,
+        replay_data: true,
+        players: {
+          select: {
+            userId: true,
+            team: true,
+            seat: true,
+            is_bot: true,
+            final_score: true,
+            user: { select: { id: true, name: true, phone: true } },
+          },
+        },
+      },
+    });
+
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+
+    res.json(game);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}

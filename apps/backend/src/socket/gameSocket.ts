@@ -17,6 +17,35 @@ import {
 export const activeGames = new Map<string, GameState>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
 
+// ─── Replay Tracking ─────────────────────────────────────────────────────────
+
+export interface ReplayMove {
+  seq: number;
+  type: 'play' | 'draw' | 'pass' | 'timeout';
+  userId: string;
+  playerIndex: number;
+  timestamp: number;
+  tile?: [number, number];
+  side?: 'left' | 'right' | 'top' | 'bottom';
+  flipped?: boolean;
+}
+
+export interface ReplayData {
+  gameId: string;
+  variant: string;
+  initialDeal: { userId: string; hand: [number, number][] }[];
+  initialBoneyard: [number, number][];
+  moves: ReplayMove[];
+}
+
+const gameReplays = new Map<string, ReplayData>();
+
+function recordMove(gameId: string, move: Omit<ReplayMove, 'seq'>) {
+  const replay = gameReplays.get(gameId);
+  if (!replay) return;
+  replay.moves.push({ ...move, seq: replay.moves.length });
+}
+
 export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: string; name: string; avatar: string | null }) {
   // Join game room
   socket.on('game:join', async ({ gameId }: { gameId: string }) => {
@@ -75,6 +104,16 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       activeGames.set(gameId, newState);
       clearTurnTimer(gameId);
 
+      recordMove(gameId, {
+        type: 'play',
+        userId: user.id,
+        playerIndex,
+        timestamp: Date.now(),
+        tile,
+        side,
+        flipped,
+      });
+
       broadcastGameState(gameId, newState, io);
 
       if (newState.status === 'finished') {
@@ -98,6 +137,14 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
 
     const newState = drawFromBoneyard(state, playerIndex);
     activeGames.set(gameId, newState);
+
+    recordMove(gameId, {
+      type: 'draw',
+      userId: user.id,
+      playerIndex,
+      timestamp: Date.now(),
+    });
+
     broadcastGameState(gameId, newState, io);
     clearTurnTimer(gameId);
     startTurnTimer(gameId, newState, io);
@@ -121,6 +168,14 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     const newState = applyPass(state, playerIndex);
     activeGames.set(gameId, newState);
     clearTurnTimer(gameId);
+
+    recordMove(gameId, {
+      type: 'pass',
+      userId: user.id,
+      playerIndex,
+      timestamp: Date.now(),
+    });
+
     broadcastGameState(gameId, newState, io);
 
     if (newState.status === 'finished') {
@@ -161,6 +216,15 @@ async function startGame(gameId: string, variant: DominoVariant, players: any[],
   const state = initGame(gameId, variant, playerData);
   activeGames.set(gameId, state);
 
+  // Initialise replay record with starting deal
+  gameReplays.set(gameId, {
+    gameId,
+    variant,
+    initialDeal: state.players.map((p) => ({ userId: p.userId, hand: p.hand })),
+    initialBoneyard: [...state.boneyard],
+    moves: [],
+  });
+
   await prisma.game.update({ where: { id: gameId }, data: { status: 'PLAYING' } });
 
   broadcastGameState(gameId, state, io);
@@ -199,8 +263,17 @@ function startTurnTimer(gameId: string, state: GameState, io: SocketServer) {
     if (!currentState || currentState.status !== 'playing') return;
 
     // Auto-pass on timeout
-    const newState = applyPass(currentState, currentState.currentPlayerIndex);
+    const timedOutIndex = currentState.currentPlayerIndex;
+    const newState = applyPass(currentState, timedOutIndex);
     activeGames.set(gameId, newState);
+
+    recordMove(gameId, {
+      type: 'timeout',
+      userId: currentPlayer.userId,
+      playerIndex: timedOutIndex,
+      timestamp: Date.now(),
+    });
+
     broadcastGameState(gameId, newState, io);
     io.to(`game:${gameId}`).emit('game:timeout', { userId: currentPlayer.userId });
 
@@ -236,17 +309,39 @@ function scheduleBotTurn(gameId: string, state: GameState, io: SocketServer) {
     const botIndex = currentState.currentPlayerIndex;
     const move = getBotMove(currentState, botIndex);
 
+    const botPlayer = currentState.players[botIndex];
     let newState: GameState;
     if (move.action === 'play' && move.tile && move.side) {
       newState = applyMove(currentState, botIndex, move.tile, move.side, move.flipped ?? false);
+      recordMove(gameId, {
+        type: 'play',
+        userId: botPlayer.userId,
+        playerIndex: botIndex,
+        timestamp: Date.now(),
+        tile: move.tile,
+        side: move.side,
+        flipped: move.flipped ?? false,
+      });
     } else if (move.action === 'draw') {
       newState = drawFromBoneyard(currentState, botIndex);
+      recordMove(gameId, {
+        type: 'draw',
+        userId: botPlayer.userId,
+        playerIndex: botIndex,
+        timestamp: Date.now(),
+      });
       activeGames.set(gameId, newState);
       broadcastGameState(gameId, newState, io);
       scheduleBotTurn(gameId, newState, io);
       return;
     } else {
       newState = applyPass(currentState, botIndex);
+      recordMove(gameId, {
+        type: 'pass',
+        userId: botPlayer.userId,
+        playerIndex: botIndex,
+        timestamp: Date.now(),
+      });
     }
 
     activeGames.set(gameId, newState);
@@ -282,6 +377,9 @@ async function handleGameEnd(gameId: string, state: GameState, io: SocketServer)
     if (wallet) await creditWin(wallet.id, prizePerWinner);
   }
 
+  const replay = gameReplays.get(gameId) ?? null;
+  gameReplays.delete(gameId);
+
   await prisma.game.update({
     where: { id: gameId },
     data: {
@@ -289,7 +387,7 @@ async function handleGameEnd(gameId: string, state: GameState, io: SocketServer)
       winner_id: state.winnerId || null,
       winning_team: state.winnerTeam || null,
       finished_at: new Date(),
-      replay_data: state as any,
+      replay_data: replay as any,
     },
   });
 
