@@ -1,0 +1,244 @@
+// ─────────────────────────────────────────────────────────────────
+// DominoClub — Prisma Schema
+// ─────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────
+
+enum GameMode {
+  ARENA_1V1
+  CUP_1V1
+  TOURNAMENT_2V2
+  RECREATIONAL_2V2
+}
+
+enum GameStatus {
+  WAITING
+  PLAYING
+  FINISHED
+  CANCELLED
+  ABANDONED
+}
+
+enum DominoVariant {
+  CARROCA    // Blocked game — traditional (Carroça)
+  L_E_L      // Doubles count double
+  CRUZADA    // Cross layout
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  BET
+  WIN
+  BONUS
+  REFUND
+  FEE
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TournamentStatus {
+  OPEN
+  FULL
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+enum FraudType {
+  MULTI_ACCOUNT_DEVICE
+  MULTI_ACCOUNT_IP
+  SUSPICIOUS_GPS
+  GEOLOCATION_OUTSIDE_BRAZIL
+  RAPID_FIRE_BETS
+  BOT_PATTERN
+  COLLUSION_SUSPECTED
+  UNUSUAL_WIN_RATE
+}
+
+// ─── Models ──────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid())
+  phone         String   @unique
+  cpf           String?  @unique
+  email         String?  @unique
+  name          String?
+  avatar        String?
+  gps_lat       Float?
+  gps_lng       Float?
+  device_id     String?
+  ip_address    String?
+  is_banned     Boolean  @default(false)
+  ban_reason    String?
+  bot_score     Float    @default(0)   // 0–1 probability of being a bot
+  cpf_verified  Boolean  @default(false)
+  phone_verified Boolean @default(false)
+  otp_code      String?
+  otp_expires_at DateTime?
+  refresh_token  String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  wallet            Wallet?
+  gamePlayers       GamePlayer[]
+  tournamentPlayers TournamentPlayer[]
+  fraudLogs         FraudLog[]
+  wonGames          Game[]             @relation("GameWinner")
+
+  @@index([phone])
+  @@index([cpf])
+  @@index([device_id])
+  @@index([ip_address])
+}
+
+model Wallet {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  real_balance        Float    @default(0)
+  bonus_balance       Float    @default(0)
+  rollover_remaining  Float    @default(0)  // wagering requirement remaining
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Transaction {
+  id           String            @id @default(uuid())
+  walletId     String
+  type         TransactionType
+  amount       Float
+  balance_after Float?           // snapshot of balance after transaction
+  pix_id       String?           // Inter txid / e2eid
+  pix_qr_code  String?           @db.Text
+  pix_key      String?           // destination pix key for withdrawals
+  description  String?
+  status       TransactionStatus @default(PENDING)
+  metadata     Json?             // extra Inter API response data
+  created_at   DateTime          @default(now())
+  updated_at   DateTime          @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId])
+  @@index([pix_id])
+  @@index([status])
+  @@index([created_at])
+}
+
+model Game {
+  id           String        @id @default(uuid())
+  mode         GameMode
+  variant      DominoVariant @default(CARROCA)
+  status       GameStatus    @default(WAITING)
+  bet_amount   Float         @default(0)
+  prize_pool   Float         @default(0)
+  house_fee    Float         @default(0)
+  winner_id    String?
+  winning_team Int?          // 1 or 2 for 2v2
+  replay_data  Json?         // full game history for replay
+  room_code    String?       @unique  // short code for private games
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+  finished_at  DateTime?
+
+  players     GamePlayer[]
+  winner      User?         @relation("GameWinner", fields: [winner_id], references: [id])
+
+  @@index([status])
+  @@index([mode])
+  @@index([created_at])
+}
+
+model GamePlayer {
+  id          String   @id @default(uuid())
+  gameId      String
+  userId      String
+  team        Int      // 1 or 2
+  seat        Int      // 0–3 (position at the table)
+  final_score Int?     // pip count remaining in hand at game end
+  is_bot      Boolean  @default(false)
+  connected   Boolean  @default(true)
+  joined_at   DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, userId])
+  @@unique([gameId, seat])
+  @@index([gameId])
+  @@index([userId])
+}
+
+model Tournament {
+  id           String           @id @default(uuid())
+  name         String
+  mode         GameMode
+  variant      DominoVariant    @default(CARROCA)
+  status       TournamentStatus @default(OPEN)
+  entry_fee    Float
+  prize_pool   Float            @default(0)
+  max_players  Int
+  current_players Int           @default(0)
+  starts_at    DateTime
+  finished_at  DateTime?
+  created_at   DateTime         @default(now())
+  updated_at   DateTime         @updatedAt
+
+  players TournamentPlayer[]
+
+  @@index([status])
+  @@index([starts_at])
+}
+
+model TournamentPlayer {
+  id             String    @id @default(uuid())
+  tournamentId   String
+  userId         String
+  eliminated_at  DateTime?
+  final_position Int?
+  prize_won      Float     @default(0)
+  joined_at      DateTime  @default(now())
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@index([tournamentId])
+  @@index([userId])
+}
+
+model FraudLog {
+  id         String    @id @default(uuid())
+  userId     String
+  type       FraudType
+  details    Json
+  ip_address String?
+  device_id  String?
+  resolved   Boolean   @default(false)
+  created_at DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([created_at])
+}

@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0a1f0a;
+  --bg-card: #0f2e0f;
+  --primary: #4ade80;
+  --gold: #facc15;
+}
+
+body {
+  background-color: var(--bg);
+  color: white;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #4ade8044 transparent;
+}

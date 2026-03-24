@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "DominoClub",
+    "slug": "dominoclub",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a1f0a"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dominoclub.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "DominoClub needs your location to verify you're in Brazil.",
+        "NSCameraUsageDescription": "DominoClub needs camera access for profile photo."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a1f0a"
+      },
+      "package": "com.dominoclub.app",
+      "permissions": ["ACCESS_FINE_LOCATION", "CAMERA"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-location",
+      "expo-image-picker"
+    ]
+  }
+}
