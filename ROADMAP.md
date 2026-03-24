@@ -96,11 +96,20 @@ Phase 6   (Launch)
 
 **File:** `apps/mobile/src/screens/GameScreen.tsx`
 
-### 2.2 Wallet Deposit/Withdrawal Flow
-- [ ] Deposit screen: show generated PIX QR code (from backend)
-- [ ] Poll or socket-listen for payment confirmation → update balance
-- [ ] Withdrawal screen: CPF/PIX key entry, amount validation, submission
-- [ ] Transaction history with status badges (PENDING / COMPLETED / FAILED)
+### 2.2 Wallet Deposit/Withdrawal Flow ✅
+- [x] Deposit 3-step flow: amount → QR code → confirmed
+- [x] Real QR code rendered via `react-native-qrcode-svg` (added dependency)
+- [x] Preset amounts + custom amount input ("Outro" option)
+- [x] Polling `GET /wallet/transaction/:id` every 3s to detect PENDING → COMPLETED
+- [x] Success pulse animation + balance auto-refresh on confirmation
+- [x] Rollover remaining indicator on balance card
+- [x] Withdraw button disabled + explanation when rollover > 0 or balance < R$20
+- [x] MAX button auto-fills full available balance
+- [x] PIX key warning ("Não é possível reverter um saque")
+- [x] Pull-to-refresh on transaction history
+- [x] Error state with tap-to-retry on transaction list
+- [x] PROCESSING status badge added (for withdrawals in transit)
+- [x] Polling auto-stopped on modal close / unmount
 
 **File:** `apps/mobile/src/screens/WalletScreen.tsx`
 
