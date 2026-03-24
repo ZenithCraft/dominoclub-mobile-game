@@ -78,13 +78,21 @@ Phase 6   (Launch)
 
 ## Phase 2 — Mobile Game Client (Priority: Critical)
 
-### 2.1 Complete GameScreen Gameplay Logic
-- [ ] Tile drag-and-drop or tap-to-select interaction
-- [ ] Client-side move validation (legal placement preview)
-- [ ] Board rendering: layout tiles correctly for CARROCA / L_E_L / CRUZADA
-- [ ] Real-time sync: consume all socket events (`game:state`, `game:turn`, `game:end`)
-- [ ] Pass-turn button when no legal moves
-- [ ] Timeout countdown with auto-pass on expiry
+### 2.1 Complete GameScreen Gameplay Logic ✅
+- [x] Client-side valid move detection (mirrors domino.engine.ts `canPlayTile`)
+- [x] Unplayable tiles dimmed (opacity 0.4); playable tiles show green dot indicator
+- [x] Tap-to-select: selecting an unplayable tile shows error toast instead
+- [x] Smart side selection: single valid play → one "Jogar" button; multiple sides → separate buttons
+- [x] Correct `flipped` value computed from valid plays (no longer hardcoded `false`)
+- [x] Auto-deselect tile when server state invalidates selection
+- [x] `game:error` handler with animated toast
+- [x] Disconnect/reconnect banner + auto re-join on reconnect
+- [x] Fixed socket `useEffect` cleanup bug (listeners now properly removed on unmount)
+- [x] Auto-pass emitted when turn timer reaches 0
+- [x] Pass button only shown when boneyard is empty AND no valid moves
+- [x] Draw button only shown when boneyard has tiles
+- [x] `topOpen`/`bottomOpen` added to GameState for CRUZADA support
+- [x] `game:ended` result card extracted into `ResultCard` sub-component
 
 **File:** `apps/mobile/src/screens/GameScreen.tsx`
 

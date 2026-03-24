@@ -25,6 +25,8 @@ export interface GameState {
   board: PlacedTile[];
   leftOpen: number;
   rightOpen: number;
+  topOpen?: number;      // CRUZADA only
+  bottomOpen?: number;   // CRUZADA only
   currentPlayerIndex: number;
   turnCount: number;
   status: 'waiting' | 'playing' | 'finished';
