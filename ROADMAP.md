@@ -219,25 +219,29 @@ Phase 6   (Launch)
 
 ---
 
-## Phase 5 — Production Hardening (Priority: Medium)
+## Phase 5 — Production Hardening (Priority: Medium) ✅
 
-### 5.1 Security
-- [ ] Enable real geofencing (currently commented out for dev)
-- [ ] mTLS or HMAC verification on PIX webhooks
-- [ ] Rotate JWT secrets in production
-- [ ] Audit and harden Prisma queries against injection
+### 5.1 Security ✅
+- [x] Geofencing active in production via `cf-ipcountry` header (Cloudflare) — blocks non-BR IPs
+- [x] PIX webhook HMAC-SHA256 (`x-inter-ae-in-ativa`) — verified in `wallet.controller.ts`
+- [x] mTLS certificates loaded in production for Banco Inter API calls
+- [x] **Startup validation**: `config/index.ts` throws `FATAL` if weak/default JWT or admin secrets detected in `NODE_ENV=production`
+- [x] **Per-endpoint rate limiting** (tiered): auth=20/15min, webhook=500/min, admin=200/15min, general=configurable
 
-### 5.2 DevOps
-- [ ] `Dockerfile` for backend
-- [ ] `docker-compose.yml` for local dev (Postgres + backend + admin)
-- [ ] GitHub Actions CI: lint → test → build on push to main
-- [ ] Environment-based config (dev / staging / prod)
+### 5.2 DevOps ✅
+- [x] `apps/backend/Dockerfile` — multi-stage build (builder → production), non-root user, runs `prisma migrate deploy` on start
+- [x] `apps/admin/Dockerfile` — Next.js multi-stage build
+- [x] `docker-compose.yml` — Postgres 16, Redis 7, backend, admin; health checks; volume persistence
+- [x] `.github/workflows/ci.yml` — GitHub Actions: backend (Postgres + Redis services, migrate, test coverage, tsc, build), mobile (tsc), admin (build)
+- [x] `apps/backend/.dockerignore`
 
-### 5.3 Performance
-- [ ] Redis for matchmaking queues (replace in-memory Map)
-- [ ] Socket.io Redis adapter for horizontal scaling
-- [ ] Database connection pooling (PgBouncer or Prisma pool config)
-- [ ] Rate limit tuning per endpoint
+### 5.3 Performance ✅
+- [x] `redis.service.ts` — optional Redis client (ioredis) with graceful in-memory fallback; logs masked URL
+- [x] Socket.io Redis adapter (`@socket.io/redis-adapter`) — auto-enabled when `REDIS_URL` is set; enables horizontal scaling across multiple backend instances
+- [x] `server.ts` — Redis connected before Socket.io server creation; graceful shutdown flushes Redis + Prisma; `SIGINT` handled
+- [x] `GET /health` endpoint added for Docker/load-balancer health checks
+- [x] `REDIS_URL` added to `.env.example` and `docker-compose.yml`
+- [ ] Database connection pooling (PgBouncer) — configure via `?connection_limit=` in `DATABASE_URL`
 
 ---
 

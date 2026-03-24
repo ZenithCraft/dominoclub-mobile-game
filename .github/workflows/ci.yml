@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Backend: lint, test, build ───────────────────────────────────────────────
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: dominoclub_test
+          POSTGRES_USER: dominoclub
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: apps/backend
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://dominoclub:testpassword@localhost:5432/dominoclub_test
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: test_access_secret_at_least_32_chars_long
+      JWT_REFRESH_SECRET: test_refresh_secret_at_least_32_chars_long
+      ADMIN_JWT_SECRET: test_admin_secret_at_least_32_chars_long
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: testpassword
+      SMS_PROVIDER: mock
+      SERPRO_MOCK_MODE: 'true'
+      INTER_BASE_URL: https://cdpj-sandbox.partners.uatinter.co
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run DB migrations
+        run: npx prisma migrate deploy
+
+      - name: Run unit tests
+        run: npm run test:coverage
+
+      - name: Upload coverage
+        if: github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v4
+        with:
+          directory: apps/backend/coverage
+          flags: backend
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+  # ── Mobile: type-check ───────────────────────────────────────────────────────
+  mobile:
+    name: Mobile
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+  # ── Admin: build ─────────────────────────────────────────────────────────────
+  admin:
+    name: Admin
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/admin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/admin/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.dominoclub.com.br/api/v1

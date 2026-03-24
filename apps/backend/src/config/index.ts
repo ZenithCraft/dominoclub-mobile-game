@@ -72,4 +72,28 @@ export const config = {
   cors: {
     origins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:19006').split(','),
   },
+
+  redis: {
+    url: process.env.REDIS_URL || '',
+  },
 };
+
+// ── Production secret validation ────────────────────────────────────────────
+// Fail fast if weak defaults are still in place when running in production.
+if (process.env.NODE_ENV === 'production') {
+  const weak = [
+    ['JWT_ACCESS_SECRET', config.jwt.accessSecret, 'dev_access_secret_min_32_chars_here'],
+    ['JWT_REFRESH_SECRET', config.jwt.refreshSecret, 'dev_refresh_secret_min_32_chars_here'],
+    ['ADMIN_PASSWORD',    config.admin.password,     'changeme_in_production'],
+    ['ADMIN_JWT_SECRET',  config.admin.secret,       'admin_secret_change_in_production_32chars'],
+  ] as const;
+
+  const bad = weak.filter(([, val, def]) => val === def || val.length < 32);
+  if (bad.length > 0) {
+    const names = bad.map(([name]) => name).join(', ');
+    throw new Error(
+      `[Config] FATAL: Weak or default secrets detected in production: ${names}. ` +
+      'Set strong values (≥32 chars) in your environment before deploying.'
+    );
+  }
+}

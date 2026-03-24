@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+*.env.local
+coverage
+.nyc_output
+src/__tests__
+src/__mocks__
+*.test.ts
+*.spec.ts
