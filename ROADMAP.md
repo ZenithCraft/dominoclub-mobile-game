@@ -124,11 +124,14 @@ Phase 6   (Launch)
 
 **File:** `apps/mobile/src/screens/WalletScreen.tsx`
 
-### 2.3 Error Handling & Loading States
-- [ ] Global API error interceptor → toast/snackbar notifications
-- [ ] Loading spinners on all async actions
-- [ ] Reconnection banner when socket disconnects
-- [ ] Form validation feedback on all inputs
+### 2.3 Error Handling & Loading States ✅
+- [x] `useToastStore` (Zustand) — queue-based toast store, usable outside React (API interceptors)
+- [x] `toast.error/success/info/warning` helpers for imperative usage
+- [x] `ToastContainer` — animated slide-in/out toasts, stacked, dismissable, auto-expire after 3.5s
+- [x] `ToastContainer` mounted at app root in `App.tsx` (above all navigation)
+- [x] `api.ts` interceptor: network errors, 5xx, 403, 429 → auto-toast; auth/form paths silenced
+- [x] `LoadingOverlay` — full-screen modal spinner with optional message
+- [x] `Button` component: added missing `outline` variant (used by RegisterScreen CPF verify button)
 
 ### 2.4 ModeSelectScreen — Tournament Entry
 - [ ] List open tournaments with entry fee and prize pool
