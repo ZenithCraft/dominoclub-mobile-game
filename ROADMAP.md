@@ -6,7 +6,7 @@
 |-----------|--------|-------|
 | **Database schema** | ✅ 100% | All 8 models, migrations done |
 | **Backend API** | ✅ ~90% | Auth, wallet, game engine, matchmaking, socket, anti-fraud all implemented |
-| **Mobile App** | ⚠️ ~75% | All screens scaffolded, game client logic incomplete |
+| **Mobile App** | ✅ ~95% | Game client, wallet, tournaments, legal screens, consent modal — beta-ready |
 | **Admin Dashboard** | ⚠️ ~60% | UI done, still uses mock data — not connected to backend |
 | **PIX Payments** | ⚠️ ~50% | Charge creation coded, webhook + withdrawal flow incomplete |
 | **CPF / SMS** | ❌ Mock only | Serpro + SMS provider not wired |
@@ -245,11 +245,15 @@ Phase 6   (Launch)
 
 ---
 
-## Phase 6 — Launch Prep (Priority: Low until Phase 5 done)
+## Phase 6 — Launch Prep (Priority: Low until Phase 5 done) ✅
 
-- [ ] Apple App Store submission (Expo EAS Build)
-- [ ] Google Play submission
-- [ ] Terms of Service & Privacy Policy screens in app
-- [ ] Responsible gambling notice (required for Brazilian market)
-- [ ] LGPD compliance (Brazilian GDPR equivalent)
-- [ ] Beta test via TestFlight / internal Play track
+- [x] Apple App Store submission config (Expo EAS Build — `eas.json`, production profile, `eas submit`)
+- [x] Google Play submission config (`android.buildType: app-bundle`, `serviceAccountKeyPath`)
+- [x] Terms of Service screen (`TermsScreen.tsx`) — 11 sections PT-BR, scroll-to-accept gate
+- [x] Privacy Policy screen (`PrivacyPolicyScreen.tsx`) — LGPD art. 18 rights, data export + delete buttons
+- [x] Responsible gambling screen (`ResponsibleGamblingScreen.tsx`) — warning signs, CVV 188, self-exclusion (30d / permanent)
+- [x] First-launch consent modal (`ConsentModal.tsx`) — age gate (18+) + ToS acceptance, AsyncStorage-persisted
+- [x] Legal screens registered in stack navigator (`Terms`, `PrivacyPolicy`, `ResponsibleGambling`)
+- [x] Profile modal links to all 3 legal screens
+- [x] Backend LGPD endpoints: `DELETE /auth/account` (PII anonymisation), `POST /auth/data-export`, `POST /auth/self-exclusion`
+- [ ] Beta test via TestFlight / internal Play track (requires live Apple/Google developer accounts)

@@ -13,6 +13,9 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { ModeSelectScreen } from '../screens/ModeSelectScreen';
 import { GameScreen } from '../screens/GameScreen';
 import { WalletScreen } from '../screens/WalletScreen';
+import { TermsScreen } from '../screens/TermsScreen';
+import { PrivacyPolicyScreen } from '../screens/PrivacyPolicyScreen';
+import { ResponsibleGamblingScreen } from '../screens/ResponsibleGamblingScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -59,6 +62,9 @@ export function AppNavigator() {
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="ModeSelect" component={ModeSelectScreen} />
         <Stack.Screen name="Game" component={GameScreen} options={{ gestureEnabled: false }} />
+        <Stack.Screen name="Terms" component={TermsScreen} />
+        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+        <Stack.Screen name="ResponsibleGambling" component={ResponsibleGamblingScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

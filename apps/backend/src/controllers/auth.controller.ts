@@ -109,6 +109,102 @@ export async function verifyCpfHandler(req: Request, res: Response) {
   }
 }
 
+// DELETE /auth/account — LGPD: permanent account deletion
+export async function deleteAccountHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+
+    // Soft-delete: anonymise PII, keep financial records for 5 years (legal obligation)
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        phone: `deleted_${userId}`,
+        name: 'Conta Excluída',
+        email: null,
+        avatar: null,
+        cpf: null,
+        gps_lat: null,
+        gps_lng: null,
+        refresh_token: null,
+        is_banned: true,
+        ban_reason: 'LGPD account deletion request',
+      },
+    });
+
+    res.json({ message: 'Conta excluída com sucesso.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// POST /auth/data-export — LGPD: request personal data export
+export async function requestDataExportHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true, phone: true, name: true, email: true, avatar: true,
+        cpf_verified: true, created_at: true,
+        wallet: {
+          select: {
+            real_balance: true, bonus_balance: true,
+            transactions: {
+              orderBy: { created_at: 'desc' },
+              take: 500,
+              select: { id: true, type: true, amount: true, status: true, created_at: true },
+            },
+          },
+        },
+        gamePlayers: {
+          orderBy: { created_at: 'desc' },
+          take: 200,
+          select: {
+            game: { select: { id: true, mode: true, status: true, created_at: true } },
+          },
+        },
+      },
+    });
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // In production this would be emailed. For now return the data directly.
+    // Email delivery would require an email service integration.
+    res.json({
+      message: 'Seus dados foram preparados. Em produção, serão enviados ao e-mail cadastrado em até 48h.',
+      data: user,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// POST /auth/self-exclusion — Responsible gambling: self-exclusion
+export async function selfExclusionHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const { type } = req.body; // 'temporary' | 'permanent'
+
+    if (!['temporary', 'permanent'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid exclusion type' });
+    }
+
+    const reason = type === 'temporary'
+      ? 'SELF_EXCLUSION_30_DAYS'
+      : 'SELF_EXCLUSION_PERMANENT';
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { is_banned: true, ban_reason: reason, refresh_token: null },
+    });
+
+    res.json({ message: reason });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 export async function getMeHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).user?.userId;

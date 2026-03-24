@@ -8,6 +8,9 @@ import {
   updateProfileHandler,
   getMeHandler,
   verifyCpfHandler,
+  deleteAccountHandler,
+  requestDataExportHandler,
+  selfExclusionHandler,
 } from '../controllers/auth.controller';
 
 const router = Router();
@@ -19,5 +22,10 @@ router.post('/logout', authMiddleware, logoutHandler);
 router.get('/me', authMiddleware, getMeHandler);
 router.put('/profile', authMiddleware, updateProfileHandler);
 router.post('/cpf/verify', authMiddleware, verifyCpfHandler);
+
+// LGPD / Jogo Responsável
+router.delete('/account', authMiddleware, deleteAccountHandler);
+router.post('/data-export', authMiddleware, requestDataExportHandler);
+router.post('/self-exclusion', authMiddleware, selfExclusionHandler);
 
 export default router;

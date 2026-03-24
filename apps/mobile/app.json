@@ -3,6 +3,9 @@
     "name": "DominoClub",
     "slug": "dominoclub",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -15,9 +18,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.dominoclub.app",
+      "buildNumber": "1",
+      "requireFullScreen": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "DominoClub needs your location to verify you're in Brazil.",
-        "NSCameraUsageDescription": "DominoClub needs camera access for profile photo."
+        "NSLocationWhenInUseUsageDescription": "DominoClub precisa da sua localização para confirmar que você está no Brasil.",
+        "NSCameraUsageDescription": "DominoClub usa a câmera para atualizar sua foto de perfil.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": []
       }
     },
     "android": {
@@ -26,7 +35,9 @@
         "backgroundColor": "#0a1f0a"
       },
       "package": "com.dominoclub.app",
-      "permissions": ["ACCESS_FINE_LOCATION", "CAMERA"]
+      "versionCode": 1,
+      "permissions": ["ACCESS_FINE_LOCATION", "CAMERA"],
+      "blockedPermissions": ["com.google.android.gms.permission.AD_ID"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,6 +45,21 @@
     "plugins": [
       "expo-location",
       "expo-image-picker"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "SEU_EAS_PROJECT_ID"
+      },
+      "privacyPolicyUrl": "https://dominoclub.com.br/privacidade",
+      "termsUrl": "https://dominoclub.com.br/termos",
+      "supportEmail": "suporte@dominoclub.com.br"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/SEU_EAS_PROJECT_ID",
+      "enabled": true,
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD"
+    },
+    "owner": "dominoclub"
   }
 }

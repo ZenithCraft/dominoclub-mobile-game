@@ -6,6 +6,7 @@ import { colors, spacing, fonts, radius, shadows } from '../theme';
 import { useAuthStore } from '../store/auth.store';
 import { connectSocket, getSocket } from '../services/socket';
 import { Logo } from '../components/Logo';
+import { ConsentModal } from '../components/ConsentModal';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -21,6 +22,7 @@ export function HomeScreen({ navigation }: Props) {
   const [onlineCount, setOnlineCount] = useState(0);
   const [profileModal, setProfileModal] = useState(false);
   const [settingsModal, setSettingsModal] = useState(false);
+  const [consentReady, setConsentReady] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [musicEnabled, setMusicEnabled] = useState(true);
 
@@ -36,6 +38,7 @@ export function HomeScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
+      <ConsentModal onAccepted={() => setConsentReady(true)} />
       {/* Top bar */}
       <View style={styles.topBar}>
         <Logo size="sm" />
@@ -176,6 +179,19 @@ export function HomeScreen({ navigation }: Props) {
               </View>
               <Text style={styles.xpLabel}>Nível 3 · 600 XP</Text>
             </View>
+            <View style={styles.legalLinks}>
+              <TouchableOpacity onPress={() => { setProfileModal(false); navigation.navigate('Terms'); }}>
+                <Text style={styles.legalLink}>Termos de Uso</Text>
+              </TouchableOpacity>
+              <Text style={styles.legalSep}>·</Text>
+              <TouchableOpacity onPress={() => { setProfileModal(false); navigation.navigate('PrivacyPolicy'); }}>
+                <Text style={styles.legalLink}>Privacidade</Text>
+              </TouchableOpacity>
+              <Text style={styles.legalSep}>·</Text>
+              <TouchableOpacity onPress={() => { setProfileModal(false); navigation.navigate('ResponsibleGambling'); }}>
+                <Text style={styles.legalLink}>Jogo Responsável</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity style={styles.logoutBtn} onPress={() => {
               setProfileModal(false);
               useAuthStore.getState().logout().then(() => navigation.replace('Login'));
@@ -279,6 +295,9 @@ const styles = StyleSheet.create({
   xpBar: { width: '100%', height: 8, backgroundColor: colors.bgOverlay, borderRadius: 4, overflow: 'hidden' },
   xpFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 4 },
   xpLabel: { fontSize: fonts.sizes.sm, color: colors.textMuted },
-  logoutBtn: { marginTop: spacing.lg, alignItems: 'center', padding: spacing.sm },
+  legalLinks: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 4, marginTop: spacing.md },
+  legalLink: { fontSize: fonts.sizes.xs, color: colors.primary, textDecorationLine: 'underline' },
+  legalSep: { fontSize: fonts.sizes.xs, color: colors.textMuted },
+  logoutBtn: { marginTop: spacing.sm, alignItems: 'center', padding: spacing.sm },
   logoutText: { color: colors.error, fontWeight: '600' },
 });
