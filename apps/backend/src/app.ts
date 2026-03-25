@@ -14,13 +14,13 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', env: config.env }));
 app.use(helmet());
 app.use(cors({ origin: config.cors.origins, credentials: true }));
 
-// Capture raw body for PIX webhook HMAC verification before JSON parsing
-app.use((req, _res, next) => {
-  let data = '';
-  req.on('data', (chunk) => { data += chunk; });
-  req.on('end', () => { (req as any).rawBody = data; next(); });
-});
-app.use(express.json({ limit: '10kb' }));
+// Capture raw body for PIX webhook HMAC verification.
+// Uses express.json's built-in `verify` callback — fires after the body
+// buffer is collected but before JSON.parse, so the stream is only read once.
+app.use(express.json({
+  limit: '10kb',
+  verify: (req: any, _res, buf) => { req.rawBody = buf.toString(); },
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // ── Rate limiting — tiered per route sensitivity ───────────────────────────
