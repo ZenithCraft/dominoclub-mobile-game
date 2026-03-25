@@ -1,16 +1,15 @@
 /**
- * Module augmentation: re-declare expo-linear-gradient with a proper React
- * class-component type so TypeScript (TS2786) is satisfied under strict mode.
+ * Ambient module override for expo-linear-gradient.
  *
- * The published @types bundled with expo-linear-gradient 12.x extend a base
- * that doesn't satisfy `new (props) => Component<…>`, causing TS2607/TS2786.
- * This local override replaces the problematic declaration.
+ * The types bundled with v12.x extend a non-React-compatible base class,
+ * causing TS2607/TS2786 under strict mode.  Declaring the module here
+ * (with NO top-level imports — moving them inside the block so this file
+ * stays a script, not a module) fully replaces the package's type declaration.
  */
-
-import * as React from 'react';
-import { ViewProps } from 'react-native';
-
 declare module 'expo-linear-gradient' {
+  import * as React from 'react';
+  import { ViewProps } from 'react-native';
+
   export interface LinearGradientPoint {
     x: number;
     y: number;
@@ -24,5 +23,5 @@ declare module 'expo-linear-gradient' {
     dither?: boolean;
   }
 
-  export class LinearGradient extends React.Component<LinearGradientProps> {}
+  export const LinearGradient: React.ComponentType<LinearGradientProps>;
 }
