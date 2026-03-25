@@ -49,5 +49,3 @@ main().catch((err) => {
   logger.error('Fatal startup error', { message: err.message });
   process.exit(1);
 });
-
-export { io };
