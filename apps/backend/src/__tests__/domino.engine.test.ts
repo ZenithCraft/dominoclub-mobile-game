@@ -274,7 +274,8 @@ describe('applyMove', () => {
   });
 
   it('advances currentPlayerIndex to next player', () => {
-    const state = stateWithHand([[3, 5]]);
+    // Need 2 tiles so emptying one tile does not end the game
+    const state = stateWithHand([[3, 5], [1, 2]]);
     const next = applyMove(state, 0, [3, 5], 'left', false);
     expect(next.currentPlayerIndex).toBe(1);
   });
@@ -485,15 +486,16 @@ describe('getBotMove', () => {
   });
 
   it('prefers higher-pip tiles (greedy strategy)', () => {
+    // Board: leftOpen=5, rightOpen=6. [5,3] max pip=5, [6,6] max pip=6 — bot must pick [6,6]
     const state: GameState = {
-      ...makeState({ firstPlayMade: true, leftOpen: 6, rightOpen: 6 }),
+      ...makeState({ firstPlayMade: true, leftOpen: 5, rightOpen: 6 }),
       boneyard: [],
       players: [
-        { userId: 'bot', team: 1, seat: 0, isBot: true, hand: [[6, 1], [6, 6]], connected: true, passedLastTurn: false },
+        { userId: 'bot', team: 1, seat: 0, isBot: true, hand: [[5, 3], [6, 6]], connected: true, passedLastTurn: false },
       ],
     };
     const move = getBotMove(state, 0);
-    expect(move.tile).toEqual([6, 6]); // [6,6] has max pip 6 vs [6,1] max pip 6 — but total 12 > 7
+    expect(move.tile).toEqual([6, 6]); // max pip 6 > max pip 5
   });
 
   it('first play always returns a play action', () => {

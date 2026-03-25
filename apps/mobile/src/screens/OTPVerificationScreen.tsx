@@ -1,16 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { Button } from '../components/Button';
 import { Logo } from '../components/Logo';
 import { colors, spacing, fonts, radius } from '../theme';
+import { RootStackParamList } from '../navigation';
 
-type Props = {
-  navigation: NativeStackNavigationProp<any>;
-  route: { params: { phone: string } };
-};
+type Props = NativeStackScreenProps<RootStackParamList, 'OTPVerification'>;
 
 export function OTPVerificationScreen({ navigation, route }: Props) {
   const { phone } = route.params;

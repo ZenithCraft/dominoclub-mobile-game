@@ -25,7 +25,7 @@ export const prisma = {
   tournament: makeMock(),
   tournamentPlayer: makeMock(),
   fraudLog: makeMock(),
-  $transaction: jest.fn((ops: any) => {
+  $transaction: jest.fn((ops: any): Promise<any> => {
     // If array — resolve each mock; if callback — call it with prisma
     if (Array.isArray(ops)) return Promise.all(ops);
     return Promise.resolve(ops(prisma));

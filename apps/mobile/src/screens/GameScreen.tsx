@@ -4,21 +4,19 @@ import {
   TouchableOpacity, Modal, Alert, Animated,
 } from 'react-native';
 import { Socket } from 'socket.io-client';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
 import { DominoTile } from '../components/DominoTile';
 import { Logo } from '../components/Logo';
 import { connectSocket } from '../services/socket';
 import { useGameStore, Tile, GameState, PlacedTile } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
+import { RootStackParamList } from '../navigation';
 
 type PlaySide = 'left' | 'right' | 'top' | 'bottom';
 type PlayOption = { side: PlaySide; flipped: boolean };
 
-type Props = {
-  navigation: NativeStackNavigationProp<any>;
-  route: { params: { gameId: string } };
-};
+type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 
 // ─── Client-side valid move logic (mirrors domino.engine.ts) ──────────────────
 
@@ -149,13 +147,11 @@ export function GameScreen({ navigation, route }: Props) {
         resetTurnTimer();
         // Clear selected tile if it's no longer in hand (was played by server)
         const newHand = state.players.find((p) => p.userId === user?.id)?.hand ?? [];
-        setSelectedTile((prev) => {
-          if (!prev) return null;
-          const stillInHand = (newHand as (Tile | null)[]).some(
-            (t) => t && t[0] === prev[0] && t[1] === prev[1]
-          );
-          return stillInHand ? prev : null;
-        });
+        const cur = useGameStore.getState().selectedTile;
+        if (cur) {
+          const stillInHand = newHand.some((t) => t && t[0] === cur[0] && t[1] === cur[1]);
+          if (!stillInHand) setSelectedTile(null);
+        }
       };
 
       const onGameEnded = (result: any) => {
@@ -259,7 +255,7 @@ export function GameScreen({ navigation, route }: Props) {
         text: 'Sair', style: 'destructive',
         onPress: () => {
           clearGame();
-          navigation.replace('Home');
+          navigation.replace('Main');
         },
       },
     ]);
@@ -515,7 +511,7 @@ export function GameScreen({ navigation, route }: Props) {
             onClose={() => {
               setResultModal(false);
               clearGame();
-              navigation.replace('Home');
+              navigation.replace('Main');
             }}
           />
         </View>
