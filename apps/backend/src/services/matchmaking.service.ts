@@ -100,7 +100,7 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
       data: {
         id: gameId,
         mode,
-        betAmount,
+        bet_amount: betAmount,
         prize_pool: betAmount * players.length * (1 - config.game.houseEdgePercent / 100),
         house_fee: betAmount * players.length * (config.game.houseEdgePercent / 100),
         status: 'PLAYING',

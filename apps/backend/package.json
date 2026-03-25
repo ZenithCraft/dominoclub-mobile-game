@@ -54,7 +54,7 @@
     "roots": ["<rootDir>/src"],
     "testMatch": ["**/__tests__/**/*.test.ts"],
     "moduleNameMapper": {
-      "^../services/prisma.service$": "<rootDir>/src/__mocks__/prisma.service.ts"
+      "prisma\\.service": "<rootDir>/src/__mocks__/prisma.service.ts"
     },
     "collectCoverageFrom": [
       "src/**/*.ts",

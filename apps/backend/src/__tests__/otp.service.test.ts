@@ -34,22 +34,9 @@ describe('sendOtp + verifyOtp', () => {
     (config as any).sms = { ...config.sms, provider: 'mock' };
   });
 
-  it('sendOtp stores an entry and verifyOtp returns true with the correct code', async () => {
+  it('sendOtp stores an entry and verifyOtp rejects a wrong code', async () => {
     await sendOtp(phone);
-    // Peek at what was stored by verifying immediately with the generated code
-    // We can't read the store directly (private), so we mock generateOtp indirectly
-    // by calling verifyOtp with a wrong code first to get the stored code from the error message.
-    // Simpler: just test the happy path by wrapping generateOtp.
-
-    // Strategy: spy on Math.random to force a deterministic OTP
-    const spy = jest.spyOn(Math, 'random').mockReturnValue(0); // produces min value
-    const forcedCode = generateOtp(); // compute what the code would be
-    spy.mockRestore();
-
-    // Re-send so the forced code is stored
-    await sendOtp(phone);
-    // Now verify won't work because we can't force it again... use a different approach:
-    // Just assert that verifying with a wrong code throws, and the module works end-to-end.
+    // OTP was stored — an incorrect code should throw
     expect(() => verifyOtp(phone, '000000')).toThrow();
   });
 

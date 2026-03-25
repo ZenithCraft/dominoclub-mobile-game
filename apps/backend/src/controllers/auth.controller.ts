@@ -158,7 +158,7 @@ export async function requestDataExportHandler(req: Request, res: Response) {
           },
         },
         gamePlayers: {
-          orderBy: { created_at: 'desc' },
+          orderBy: { joined_at: 'desc' },
           take: 200,
           select: {
             game: { select: { id: true, mode: true, status: true, created_at: true } },

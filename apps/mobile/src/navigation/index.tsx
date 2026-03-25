@@ -17,7 +17,20 @@ import { TermsScreen } from '../screens/TermsScreen';
 import { PrivacyPolicyScreen } from '../screens/PrivacyPolicyScreen';
 import { ResponsibleGamblingScreen } from '../screens/ResponsibleGamblingScreen';
 
-const Stack = createNativeStackNavigator();
+export type RootStackParamList = {
+  Splash: undefined;
+  Login: undefined;
+  Register: { phone?: string } | undefined;
+  OTPVerification: { phone: string };
+  Main: undefined;
+  ModeSelect: undefined;
+  Game: { gameId: string };
+  Terms: { showAccept?: boolean } | undefined;
+  PrivacyPolicy: undefined;
+  ResponsibleGambling: undefined;
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {

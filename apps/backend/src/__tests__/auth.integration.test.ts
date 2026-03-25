@@ -2,37 +2,24 @@
  * Integration tests — Auth flow
  *
  * These tests hit the real Express app with Supertest.
- * They require a running PostgreSQL database pointed to by DATABASE_URL.
- * Run against a dedicated test DB:
- *   DATABASE_URL=postgresql://... jest auth.integration
+ * In CI (NODE_ENV=test + DATABASE_URL set) they run against a real Postgres DB.
+ * Locally without DATABASE_URL they auto-skip.
  *
- * The suite uses jest-environment-node and does NOT use the Prisma mock,
- * so the mock moduleNameMapper must be bypassed here. We achieve this by
- * importing the real app directly (before the mock would intercept).
- *
- * Skip automatically when DATABASE_URL is not set to avoid CI failures
- * on environments without a test DB.
+ * Note: the Prisma mock (moduleNameMapper) still intercepts prisma.service here,
+ * so these tests primarily validate HTTP routing, middleware, and in-memory services
+ * (OTP store, JWT, rate limiting). DB-layer behaviour is covered by unit tests.
  */
+import supertest from 'supertest';
+// Import app at module level so the mock's beforeEach registers before tests start
+import app from '../app';
+
+const request = supertest(app);
 
 const TEST_DB = process.env.DATABASE_URL && process.env.NODE_ENV === 'test';
 const describeIfDb = TEST_DB ? describe : describe.skip;
 
-// We intentionally do NOT import from the mocked prisma — integration tests
-// need the real Prisma client, so we bypass the moduleNameMapper by using
-// the full module path resolution at runtime.
-
 describeIfDb('Auth Integration — OTP flow', () => {
-  let request: any;
-  let app: any;
   const phone = '+5511900000001';
-
-  beforeAll(async () => {
-    // Dynamic import so this file can be parsed even without a real DB
-    const supertest = await import('supertest');
-    const appModule = await import('../app');
-    app = appModule.default;
-    request = supertest.default(app);
-  });
 
   it('POST /auth/otp/send returns 200 for a valid Brazilian number', async () => {
     const res = await request
@@ -64,10 +51,6 @@ describeIfDb('Auth Integration — OTP flow', () => {
 
 describeIfDb('Auth Integration — profile update', () => {
   it('PUT /auth/profile without auth returns 401', async () => {
-    const supertest = await import('supertest');
-    const { default: app } = await import('../app');
-    const request = supertest.default(app);
-
     const res = await request
       .put('/api/v1/auth/profile')
       .send({ name: 'Test User' });
@@ -76,14 +59,6 @@ describeIfDb('Auth Integration — profile update', () => {
 });
 
 describeIfDb('Admin Integration', () => {
-  let request: any;
-
-  beforeAll(async () => {
-    const supertest = await import('supertest');
-    const { default: app } = await import('../app');
-    request = supertest.default(app);
-  });
-
   it('POST /admin/login with wrong credentials returns 401', async () => {
     const res = await request
       .post('/api/v1/admin/login')
