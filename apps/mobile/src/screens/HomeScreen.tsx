@@ -6,8 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path } from 'react-native-svg';
 import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
 import { useAuthStore } from '../store/auth.store';
+import { toast } from '../store/toast.store';
 import { connectSocket } from '../services/socket';
 import { ConsentModal } from '../components/ConsentModal';
 import { IconSettings, IconStar, IconLogOut, IconX, IconVolumeUp, IconMusic } from '../components/Icons';
@@ -18,6 +20,20 @@ type Props = { navigation: NativeStackNavigationProp<any> };
 
 const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
 const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
+
+function LevelStarBadge({ level, size = 24 }: { level: string; size?: number }) {
+  return (
+    <View style={[styles.levelBadge, { width: size, height: size }]}>
+      <Svg {...({ xmlns: 'http://www.w3.org/2000/svg' } as any)} width={size} height={size} viewBox="0 0 24 24">
+        <Path
+          d="M12 2l2.82 6.63L22 9.24l-5.46 4.73L18.18 21 12 17.27 5.82 21l1.64-7.03L2 9.24l7.18-.61L12 2z"
+          fill="#FFD400"
+        />
+      </Svg>
+      <Text style={[styles.levelBadgeText, { fontSize: Math.max(9, Math.round(size * 0.2)) }]}>{level}</Text>
+    </View>
+  );
+}
 
 function GradientToggle({
   value,
@@ -232,12 +248,134 @@ export function HomeScreen({ navigation }: Props) {
   const [soundOn, setSoundOn]   = useState(true);
   const [musicOn, setMusicOn]   = useState(true);
   const [onlineCount, setOnlineCount] = useState(0);
+  const [profileAvatarUri, setProfileAvatarUri] = useState<string | null>(null);
+  const [profileStatsLoading, setProfileStatsLoading] = useState(false);
+  const [profileStats, setProfileStats] = useState({
+    totalWins: 0,
+    winRate: 0,
+    tournamentsWon: 0,
+    totalGames: 0,
+  });
 
   useEffect(() => {
     connectSocket().then((socket) => {
       socket.on('online:count', ({ count }: { count: number }) => setOnlineCount(count));
     });
   }, []);
+
+  useEffect(() => {
+    if (!profileVisible) return;
+    setProfileAvatarUri(user?.avatar ?? null);
+  }, [profileVisible, user?.avatar]);
+
+  useEffect(() => {
+    if (!profileVisible) return;
+    if (process.env.NODE_ENV === 'test') return;
+
+    let cancelled = false;
+
+    (async () => {
+      const userId = user?.id;
+      if (!userId) {
+        setProfileStats({ totalWins: 0, winRate: 0, tournamentsWon: 0, totalGames: 0 });
+        return;
+      }
+
+      setProfileStatsLoading(true);
+      try {
+        const mod = await import('../services/api');
+        const apiClient = mod.api;
+        const games: any[] = [];
+        for (let page = 1; page <= 5; page++) {
+          const { data } = await apiClient.get(`/game/history?page=${page}`);
+          const list = data?.games ?? [];
+          games.push(...list);
+          if (list.length < 10) break;
+        }
+
+        const wins = games.filter((g) => (g?.winner_id ?? g?.winnerId) === userId).length;
+        const total = games.length;
+        const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+        const tournamentIds = new Set<string>();
+        for (const g of games) {
+          const tid = g?.tournamentId ?? g?.tournament_id;
+          if (tid && (g?.winner_id ?? g?.winnerId) === userId) tournamentIds.add(tid);
+        }
+
+        if (!cancelled) {
+          setProfileStats({
+            totalWins: wins,
+            winRate,
+            tournamentsWon: tournamentIds.size,
+            totalGames: total,
+          });
+        }
+      } catch {
+        if (!cancelled) setProfileStats({ totalWins: 0, winRate: 0, tournamentsWon: 0, totalGames: 0 });
+      } finally {
+        if (!cancelled) setProfileStatsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profileVisible, user?.id]);
+
+  const levelValue = Math.max(1, Math.min(99, Math.floor(profileStats.totalGames / 10) + 1));
+  const levelText = String(levelValue);
+
+  const onPickProfileAvatar = async () => {
+    if (process.env.NODE_ENV === 'test') return;
+    try {
+      const isWeb = typeof document !== 'undefined';
+      if (isWeb) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const uri = typeof reader.result === 'string' ? reader.result : null;
+            if (!uri) return;
+            setProfileAvatarUri(uri);
+            const st = (useAuthStore as any).getState?.();
+            if (st?.setAvatar) await st.setAvatar(uri);
+            else if (st?.user && st?.setUser) st.setUser({ ...st.user, avatar: uri });
+          };
+          reader.readAsDataURL(file);
+        };
+        input.click();
+        return;
+      }
+
+      const ImagePicker = await import('expo-image-picker');
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        toast.warning('Permissão para fotos negada.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+      });
+      if (result.canceled) return;
+      const uri = result.assets?.[0]?.uri;
+      if (!uri) return;
+
+      setProfileAvatarUri(uri);
+
+      const st = (useAuthStore as any).getState?.();
+      if (st?.setAvatar) await st.setAvatar(uri);
+      else if (st?.user && st?.setUser) st.setUser({ ...st.user, avatar: uri });
+    } catch {
+      toast.error('Não foi possível abrir suas fotos.');
+    }
+  };
 
   const handleLogout = () => {
     setProfileVisible(false);
@@ -315,7 +453,7 @@ export function HomeScreen({ navigation }: Props) {
             onStartShouldSetResponder={() => true}
             testID="settings-card"
           >
-            <View pointerEvents="none" style={styles.settingsTextureWrap}>
+            <View style={[styles.settingsTextureWrap, (Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : null)]}>
               <Image
                 source={require('../../assets/e27c2e8e377e60057010a8431706b96b0152436f.png')}
                 style={styles.settingsTexture}
@@ -358,29 +496,33 @@ export function HomeScreen({ navigation }: Props) {
 
       {/* ── Profile Modal ── */}
       <Modal visible={profileVisible} transparent animationType="fade">
-        <TouchableOpacity
+        <Pressable
           style={styles.overlay}
-          activeOpacity={1}
           onPress={() => setProfileVisible(false)}
         >
-          <View style={styles.profileCard} onStartShouldSetResponder={() => true}>
+          <Pressable style={styles.profileCard} onPress={() => {}} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Perfil</Text>
+              <View style={{ width: 26 }} />
+              <Text style={styles.settingsTitle}>Perfil</Text>
               <TouchableOpacity onPress={() => setProfileVisible(false)}>
-                <IconX size={18} color="#fff" accessibilityLabel="Fechar" />
+                <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
 
             <View style={styles.profileBody}>
               {/* Left: avatar + info */}
               <View style={styles.profileLeft}>
-                <View style={styles.profileAvatar}>
-                  <Text style={styles.profileAvatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
-                </View>
+                <TouchableOpacity style={styles.profileAvatar} activeOpacity={0.85} onPress={onPickProfileAvatar}>
+                  {profileAvatarUri ? (
+                    <Image source={{ uri: profileAvatarUri }} style={styles.profileAvatarImg} />
+                  ) : (
+                    <Text style={styles.profileAvatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
+                  )}
+                </TouchableOpacity>
                 <Text style={styles.profileName}>{user?.name || 'Jogador'}</Text>
                 <Text style={styles.profileBadge}>Bronze</Text>
                 <View style={styles.profileStarContainer}>
-                  <IconStar size={24} color={colors.gold} />
+                  <LevelStarBadge level={profileStatsLoading ? '--' : levelText} size={44} />
                 </View>
                 <View style={styles.xpBarBg}>
                   <View style={[styles.xpBarFill, { width: '40%' }]} />
@@ -390,26 +532,36 @@ export function HomeScreen({ navigation }: Props) {
               {/* Right: stats */}
               <View style={styles.profileRight}>
                 <Text style={styles.statLabel}>Total de vitórias</Text>
-                <View style={styles.statBox}><Text style={styles.statValue}>250</Text></View>
+                <View style={styles.statPill}>
+                  <Text style={styles.statValue}>{profileStatsLoading ? '...' : String(profileStats.totalWins)}</Text>
+                </View>
 
                 <Text style={styles.statLabel}>Taxa de vitória</Text>
-                <View style={styles.statBox}><Text style={styles.statValue}>63%</Text></View>
+                <View style={styles.statPill}>
+                  <Text style={styles.statValue}>{profileStatsLoading ? '...' : `${profileStats.winRate}%`}</Text>
+                </View>
 
                 <Text style={styles.statLabel}>Torneios ganhos</Text>
-                <View style={styles.statBox}><Text style={styles.statValue}>123</Text></View>
+                <View style={styles.statPill}>
+                  <Text style={styles.statValue}>{profileStatsLoading ? '...' : String(profileStats.tournamentsWon)}</Text>
+                </View>
               </View>
             </View>
 
             <View style={styles.profileActions}>
-              <TouchableOpacity style={styles.profileActionBtn}>
-                <Text style={styles.profileActionText}>Histórico De Partidas</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.profileActionBtn}>
-                <Text style={styles.profileActionText}>Conquistas</Text>
-              </TouchableOpacity>
+              <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
+                <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('History'); }}>
+                  <Text style={styles.profileActionTextDark}>Histórico De Partidas</Text>
+                </TouchableOpacity>
+              </LinearGradient>
+              <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
+                <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Achievements'); }}>
+                  <Text style={styles.profileActionTextDark}>Conquistas</Text>
+                </TouchableOpacity>
+              </LinearGradient>
             </View>
-          </View>
-        </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <Modal visible={logoutVisible} transparent animationType="fade">
@@ -547,7 +699,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     flex: 1,
-    fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
   },
   closeBtn:   { color: colors.textMuted, fontSize: fonts.sizes.lg, fontWeight: '700' },
 
@@ -565,18 +717,20 @@ const styles = StyleSheet.create({
     fontSize: fonts.sizes.xl,
     color: '#fff',
     fontWeight: '800',
-    fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
   },
 
   // Profile modal
   profileCard: {
-    width: 500,
-    backgroundColor: 'rgba(8, 20, 8, 0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.35)',
+    width: Platform.OS === 'web' ? 640 : 520,
+    backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
-    padding: spacing.xl,
-    gap: spacing.lg,
+    padding: SETTINGS_CARD_PAD,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#BBFF00',
+    gap: SETTINGS_ITEM_GAP,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.45)' } as any) : shadows.card),
   },
   profileBody: {
     flexDirection: 'row',
@@ -589,10 +743,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#4a7c4a',
     alignItems: 'center', justifyContent: 'center',
   },
+  profileAvatarImg: { width: '100%', height: '100%' },
   profileAvatarText: { color: '#fff', fontSize: 32, fontWeight: '700' },
-  profileName:  { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
+  profileName:  { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md, fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System' },
   profileBadge: { color: '#cd7f32', fontSize: fonts.sizes.sm, fontWeight: '600' },
   profileStarContainer: { marginBottom: spacing.sm },
+  levelBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  levelBadgeText: {
+    position: 'absolute',
+    color: '#0a1f0a',
+    fontWeight: '900',
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
+  },
   xpBarBg: {
     width: '100%', height: 6,
     backgroundColor: 'rgba(255,255,255,0.1)',
@@ -602,24 +767,26 @@ const styles = StyleSheet.create({
 
   profileRight: { flex: 1, gap: spacing.sm },
   statLabel: { color: colors.textMuted, fontSize: fonts.sizes.xs },
-  statBox: {
-    backgroundColor: '#4ade80',
+  statPill: {
+    backgroundColor: '#548C0C80',
     borderRadius: radius.sm,
-    paddingVertical: 4,
+    paddingVertical: 6,
     paddingHorizontal: 10,
     alignSelf: 'stretch',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.18)',
   },
-  statValue: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
+  statValue: { color: '#ffffff', fontWeight: '900', fontSize: fonts.sizes.sm },
 
   profileActions: { gap: spacing.sm },
-  profileActionBtn: {
-    borderWidth: 1,
-    borderColor: '#4ade80',
+  profileActionGrad: {
     borderRadius: radius.sm,
     paddingVertical: 10,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.25)',
   },
-  profileActionText: { color: '#4ade80', fontWeight: '600', fontSize: fonts.sizes.sm },
+  profileActionTextDark: { color: '#0a1f0a', fontWeight: '900', fontSize: fonts.sizes.sm },
 
   logoutCard: {
     width: 380,

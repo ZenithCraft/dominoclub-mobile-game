@@ -24,6 +24,7 @@ interface AuthState {
 
   setTokens: (access: string, refresh: string) => void;
   setUser: (user: User) => void;
+  setAvatar: (uri: string | null) => Promise<void>;
   logout: () => Promise<void>;
   loadFromStorage: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -43,11 +44,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setUser: (user) => set({ user }),
 
+  setAvatar: async (uri) => {
+    const current = get().user;
+    if (!current) return;
+    if (uri) await AsyncStorage.setItem('profile_avatar_uri', uri);
+    else await AsyncStorage.removeItem('profile_avatar_uri');
+    set({ user: { ...current, avatar: uri || undefined } });
+  },
+
   logout: async () => {
     try {
       await api.post('/auth/logout');
     } catch {}
-    await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
+    await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'profile_avatar_uri']);
     set({ user: null, accessToken: null, refreshToken: null });
   },
 
@@ -62,7 +71,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // Verify token and load user
         try {
           const { data } = await api.get('/auth/me');
-          set({ user: data });
+          const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
+          set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
         } catch {
           // Token expired — try refresh
           try {
@@ -71,7 +81,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await AsyncStorage.setItem('access_token', data.accessToken);
             await AsyncStorage.setItem('refresh_token', data.refreshToken);
             const me = await api.get('/auth/me');
-            set({ user: me.data });
+            const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
+            set({ user: avatarUri ? { ...me.data, avatar: avatarUri } : me.data });
           } catch {
             set({ user: null, accessToken: null, refreshToken: null });
           }
@@ -85,7 +96,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   refreshUser: async () => {
     try {
       const { data } = await api.get('/auth/me');
-      set({ user: data });
+      const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
+      set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
     } catch {}
   },
 }));

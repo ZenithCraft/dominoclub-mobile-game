@@ -17,8 +17,8 @@ export function SplashScreen({ navigation }: Props) {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-      Animated.spring(scale,   { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: (Platform as any).OS !== 'web' }),
+      Animated.spring(scale,   { toValue: 1, friction: 6, tension: 80, useNativeDriver: (Platform as any).OS !== 'web' }),
     ]).start();
 
     loadFromStorage().then(() => {

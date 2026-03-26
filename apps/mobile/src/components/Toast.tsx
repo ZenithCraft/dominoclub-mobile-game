@@ -28,15 +28,15 @@ function ToastItem({ id, message, type }: { id: string; message: string; type: T
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: (Platform as any).OS !== 'web' }),
+      Animated.timing(translateY, { toValue: 0, duration: 200, useNativeDriver: (Platform as any).OS !== 'web' }),
     ]).start();
   }, []);
 
   const handleDismiss = () => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: -8, duration: 150, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: 150, useNativeDriver: (Platform as any).OS !== 'web' }),
+      Animated.timing(translateY, { toValue: -8, duration: 150, useNativeDriver: (Platform as any).OS !== 'web' }),
     ]).start(() => dismiss(id));
   };
 
@@ -60,7 +60,7 @@ export function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <View style={[styles.container, { top: insets.top + (Platform.OS === 'android' ? 8 : 4) }]} pointerEvents="box-none">
+    <View style={[styles.container, { top: insets.top + (Platform.OS === 'android' ? 8 : 4) }, (Platform.OS === 'web' ? ({ pointerEvents: 'box-none' } as any) : null)]}>
       {toasts.map((t) => (
         <ToastItem key={t.id} {...t} />
       ))}
