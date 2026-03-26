@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
-import { IconSettings, IconLogOut, IconX, IconHourglass, IconClipboard, IconParty, IconChevronLeft } from '../components/Icons';
+import { IconSettings, IconLogOut, IconX, IconHourglass, IconClipboard, IconParty, IconChevronLeft, IconQrCode, IconCheck } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { useMemo } from 'react';
@@ -93,6 +93,9 @@ const balRowStyles = StyleSheet.create({
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: 'rgba(74,222,128,0.25)',
+    width: '100%',
+    alignSelf: 'stretch',
+    flexGrow: 1,
   },
   value: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
 });
@@ -478,14 +481,26 @@ export function WalletScreen() {
 
                 {/* Yellow PIX button */}
                 <TouchableOpacity
-                  style={[styles.pixBtn, depositLoading && styles.pixBtnLoading]}
+                  style={[styles.pixBtn, (depositLoading || effectiveAmount < 10) && styles.pixBtnLoading]}
                   onPress={handleDeposit}
-                  disabled={depositLoading}
+                  disabled={depositLoading || effectiveAmount < 10}
+                  accessibilityLabel="Gerar código PIX"
+                  testID="deposit-generate-pix"
                 >
-                  <Text style={styles.pixBtnText}>
-                    {depositLoading ? '⏳ Gerando...' : '⬛ Gerar Código PIX'}
-                  </Text>
+                  {depositLoading ? (
+                    <Text style={styles.pixBtnText}>Gerando...</Text>
+                  ) : (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <IconQrCode size={16} color="#000" accessibilityLabel="QR Code" />
+                      <Text style={styles.pixBtnText}>Gerar Código PIX</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
+                {useCustom && effectiveAmount < 10 ? (
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.xs, textAlign: 'center' }}>
+                    Depósito mínimo: R$ 10,00
+                  </Text>
+                ) : null}
               </>
             )}
 
@@ -502,15 +517,22 @@ export function WalletScreen() {
                 <Text style={styles.qrAmount}>R$ {effectiveAmount.toFixed(2)}</Text>
                 <TouchableOpacity
                   style={styles.copyBtn}
+                  activeOpacity={0.9}
                   onPress={async () => {
                     await Clipboard.setStringAsync(qrCode);
                     Alert.alert('Copiado!', 'Cole no seu app de banco para pagar');
                   }}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <IconClipboard size={14} color="#000" />
-                    <Text style={styles.copyBtnText}>Copiar código PIX (Copia e Cola)</Text>
-                  </View>
+                  <LinearGradient
+                    colors={['#34d399', '#059669']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.copyBtnGrad}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <IconClipboard size={16} color="#000" />
+                      <Text style={styles.copyBtnText}>Copiar código PIX (Copia e Cola)</Text>
+                    </View>
+                  </LinearGradient>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={closeDepositModal} style={styles.cancelLink}>
                   <Text style={styles.cancelLinkText}>Cancelar</Text>
@@ -520,11 +542,19 @@ export function WalletScreen() {
 
             {depositStep === 'confirmed' && (
               <Animated.View style={[styles.confirmedSection, { opacity: successAnim }]}>
-                <IconParty size={48} color="#fff" accessibilityLabel="Sucesso" />
-                <Text style={styles.confirmedTitle}>Depósito confirmado!</Text>
+                <View style={styles.confirmedHeaderRow}>
+                  <IconCheck size={24} color="#fff" accessibilityLabel="Sucesso" />
+                  <Text style={styles.confirmedTitle}>Depósito confirmado!</Text>
+                </View>
                 <Text style={styles.confirmedAmount}>+ R$ {effectiveAmount.toFixed(2)}</Text>
-                <TouchableOpacity style={styles.closeConfirmBtn} onPress={closeDepositModal}>
-                  <Text style={styles.closeConfirmText}>Fechar</Text>
+                <TouchableOpacity style={styles.closeConfirmBtn} onPress={closeDepositModal} activeOpacity={0.9}>
+                  <LinearGradient
+                    colors={['#34d399', '#059669']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.closeConfirmGrad}
+                  >
+                    <Text style={styles.closeConfirmText}>Fechar</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               </Animated.View>
             )}
@@ -805,31 +835,34 @@ const styles = StyleSheet.create({
   pollingBadge: {
     backgroundColor: '#ca8a0433',
     borderRadius: radius.full,
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   pollingText: { color: '#fbbf24', fontWeight: '600', fontSize: fonts.sizes.sm },
   qrWrap: { backgroundColor: '#fff', padding: spacing.md, borderRadius: radius.lg, ...shadows.card },
   qrAmount: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: LIME },
   copyBtn: {
     width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: radius.md,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.35)',
   },
-  copyBtnText: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.sm },
+  copyBtnGrad: { paddingVertical: 12, alignItems: 'center' },
+  copyBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
   cancelLink: { marginTop: -spacing.xs },
   cancelLinkText: { color: 'rgba(255,255,255,0.4)', fontSize: fonts.sizes.sm },
 
   // Confirmed
   confirmedSection: { alignItems: 'center', gap: spacing.md },
+  confirmedHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   confirmedTitle: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.xl },
   confirmedAmount: { color: LIME, fontWeight: '800', fontSize: fonts.sizes.xxxl },
-  closeConfirmBtn: {
-    backgroundColor: LIME, borderRadius: radius.md,
-    paddingVertical: 12, paddingHorizontal: 48, marginTop: spacing.sm,
-  },
+  closeConfirmBtn: { borderRadius: radius.md, overflow: 'hidden', width: '100%', marginTop: spacing.sm },
+  closeConfirmGrad: { paddingVertical: 12, alignItems: 'center' },
   closeConfirmText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.md },
 
   // Withdraw

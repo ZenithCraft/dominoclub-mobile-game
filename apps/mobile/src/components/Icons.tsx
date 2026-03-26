@@ -37,6 +37,7 @@ import {
   ChevronLeft,
   X,
   Info,
+  QrCode,
 } from 'lucide-react-native';
 import { Icon, IconProps } from './Icon';
 import Svg, { Path, G } from 'react-native-svg';
@@ -58,6 +59,7 @@ export const IconApple = (props: Omit<IconProps, 'icon'>) => <Icon icon={Apple} 
 export const IconChevronLeft = (props: Omit<IconProps, 'icon'>) => <Icon icon={ChevronLeft} {...props} />;
 export const IconX = (props: Omit<IconProps, 'icon'>) => <Icon icon={X} {...props} />;
 export const IconInfo = (props: Omit<IconProps, 'icon'>) => <Icon icon={Info} {...props} />;
+export const IconQrCode = (props: Omit<IconProps, 'icon'>) => <Icon icon={QrCode} {...props} />;
 
 // Game/Reactions Icons
 export const IconSmile = (props: Omit<IconProps, 'icon'>) => <Icon icon={Smile} {...props} />;
