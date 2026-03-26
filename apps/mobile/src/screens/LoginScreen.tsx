@@ -24,11 +24,19 @@ export function LoginScreen({ navigation }: Props) {
   const [hoverApple, setHoverApple] = useState(false);
   const [hoverGoogle, setHoverGoogle] = useState(false);
 
+  const isEmail = /[a-zA-Z@]/.test(identifier);
+
   const formatPhone = (text: string) => {
     const d = text.replace(/\D/g, '').slice(0, 11);
     if (d.length <= 2) return d;
     if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
     return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  };
+
+  const handleIdentifierChange = (t: string) => {
+    const looksLikePhone = /^[0-9()\s+-]*$/.test(t);
+    setIdentifier(looksLikePhone ? formatPhone(t) : t);
+    setError('');
   };
 
   const handleSendOtp = async () => {
@@ -90,11 +98,11 @@ export function LoginScreen({ navigation }: Props) {
                   label=""
                   placeholder="Email ou número de telefone"
                   value={identifier}
-                  onChangeText={(t) => { setIdentifier(t.includes('@') ? t : formatPhone(t)); setError(''); }}
-                  keyboardType={identifier.includes('@') ? 'email-address' : 'phone-pad'}
+                  onChangeText={handleIdentifierChange}
+                  keyboardType={isEmail ? 'email-address' : 'phone-pad'}
                   autoCapitalize="none"
                   error={error}
-                  maxLength={identifier.includes('@') ? 64 : 15}
+                  maxLength={isEmail ? 64 : 15}
                 />
                   <Input
                     label=""
@@ -105,7 +113,7 @@ export function LoginScreen({ navigation }: Props) {
                   />
 
                   <View style={styles.forgotRow}>
-                    <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+                    <TouchableOpacity style={styles.forgotBtn} onPress={() => navigation.navigate('ForgotPassword')}>
                       <Text style={styles.forgotText}>Esqueceu a senha?</Text>
                     </TouchableOpacity>
                   </View>
@@ -221,7 +229,20 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#ffffff', marginBottom: spacing.xs },
 
   forgotRow: { width: '100%', alignItems: 'flex-end', marginTop: -spacing.xs },
-  forgotText: { color: '#EF4444', fontSize: fonts.sizes.xs },
+  forgotBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: 'rgba(239,68,68,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.45)',
+  },
+  forgotText: {
+    color: '#EF4444',
+    fontSize: fonts.sizes.sm,
+    fontWeight: '800',
+    textDecorationLine: 'underline',
+  },
   btn: { width: 150, alignSelf: 'center' },
   linkMuted: { color: '#ffffff', fontSize: fonts.sizes.sm, marginTop: spacing.xs },
   orText: { color: '#ffffff', fontSize: fonts.sizes.sm, marginTop: spacing.sm },
