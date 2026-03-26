@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ImageBackground,
-  KeyboardAvoidingView, Platform, TouchableOpacity,
-  Image, ScrollView,
+  KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -11,17 +10,19 @@ import { Button } from '../components/Button';
 import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
 import { api } from '../services/api';
 import { LinearGradient } from 'expo-linear-gradient';
-import { IconUser, IconApple } from '../components/Icons';
-import { IconGoogle } from '../components/Icons';
+import { IconUser, IconGoogle, IconAppleLogo } from '../components/Icons';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
 const LIME = '#4ade80';
 
 export function LoginScreen({ navigation }: Props) {
-  const [phone, setPhone]     = useState('');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+  const [hoverApple, setHoverApple] = useState(false);
+  const [hoverGoogle, setHoverGoogle] = useState(false);
 
   const formatPhone = (text: string) => {
     const d = text.replace(/\D/g, '').slice(0, 11);
@@ -31,7 +32,8 @@ export function LoginScreen({ navigation }: Props) {
   };
 
   const handleSendOtp = async () => {
-    const clean = phone.replace(/\D/g, '');
+    if (identifier.includes('@')) { setError('Use seu número de telefone para entrar'); return; }
+    const clean = identifier.replace(/\D/g, '');
     if (clean.length < 11) { setError('Digite um número de celular válido'); return; }
     setLoading(true);
     setError('');
@@ -58,40 +60,81 @@ export function LoginScreen({ navigation }: Props) {
           style={styles.kav}
         >
           <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <View style={styles.panel}>
+            <View style={[styles.panel, styles.panelWeb]}>
               <View style={styles.left}>
-                <Text style={styles.welcome}>Bem-vindo</Text>
-                <Text style={styles.subtitle}>Crie a sua conta ou faça o login</Text>
+                <Text style={[styles.welcome, styles.welcomeGradientWeb]}>Bem-vindo</Text>
+                <Text style={styles.subtitle}>A resenha da mesa, agora no seu celular</Text>
               </View>
               <View style={styles.vertDivider}>
-                <LinearGradient colors={['#1a8f3a', '#4ade80', '#1a8f3a']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.vertGrad} />
+                <LinearGradient
+                  colors={[
+                    'rgba(44,99,35,0)',
+                    '#2C6323',
+                    '#BBFF00',
+                    '#1E5518',
+                    'rgba(30,85,24,0)',
+                  ]}
+                  locations={[0, 0.14, 0.5, 0.86, 1]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={styles.vertGrad}
+                />
               </View>
               <View style={styles.right}>
-                <View style={styles.iconCircle}>
-                  <IconUser size={32} color={colors.textPrimary} accessibilityLabel="Usuário" />
-                </View>
-                <Text style={styles.cardTitle}>Fazer login</Text>
+                <View style={styles.formInner}>
+                  <View style={styles.iconCircle}>
+                    <IconUser size={32} color={colors.textPrimary} accessibilityLabel="Usuário" />
+                  </View>
+                  <Text style={styles.cardTitle}>Entrar</Text>
                 <Input
                   label=""
-                  placeholder="Número de telefone"
-                  value={phone}
-                  onChangeText={(t) => { setPhone(formatPhone(t)); setError(''); }}
-                  keyboardType="phone-pad"
+                  placeholder="Email ou número de telefone"
+                  value={identifier}
+                  onChangeText={(t) => { setIdentifier(t.includes('@') ? t : formatPhone(t)); setError(''); }}
+                  keyboardType={identifier.includes('@') ? 'email-address' : 'phone-pad'}
+                  autoCapitalize="none"
                   error={error}
-                  maxLength={15}
+                  maxLength={identifier.includes('@') ? 64 : 15}
                 />
-                <Button title="Enviar código" onPress={handleSendOtp} loading={loading} style={styles.btn} />
-                <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-                  <Text style={styles.linkMuted}>Não tem conta? Crie a sua</Text>
-                </TouchableOpacity>
-                <Text style={styles.orText}>Ou entre com</Text>
-                <View style={styles.socialRow}>
-                  <TouchableOpacity style={styles.socialBtn} accessibilityLabel="Apple">
-                    <IconApple size={24} color={colors.textPrimary} />
+                  <Input
+                    label=""
+                    placeholder="Senha"
+                    value={password}
+                    onChangeText={(t) => setPassword(t)}
+                    secureTextEntry
+                  />
+
+                  <View style={styles.forgotRow}>
+                    <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+                      <Text style={styles.forgotText}>Esqueceu a senha?</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Button title="Entrar" onPress={handleSendOtp} loading={loading} size="sm" style={styles.btn} />
+
+                  <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                    <Text style={styles.linkMuted}>Criar uma conta</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.socialBtn} accessibilityLabel="Google">
-                    <IconGoogle size={24} />
-                  </TouchableOpacity>
+
+                  <Text style={styles.orText}>Ou entre com</Text>
+                  <View style={styles.socialRow}>
+                    <Pressable
+                      onHoverIn={() => setHoverApple(true)}
+                      onHoverOut={() => setHoverApple(false)}
+                      style={[styles.socialBtn, hoverApple && styles.socialBtnHover]}
+                      accessibilityLabel="Apple"
+                    >
+                      <IconAppleLogo size={20} color="#fff" accessibilityLabel="Apple" />
+                    </Pressable>
+                    <Pressable
+                      onHoverIn={() => setHoverGoogle(true)}
+                      onHoverOut={() => setHoverGoogle(false)}
+                      style={[styles.socialBtn, hoverGoogle && styles.socialBtnHover]}
+                      accessibilityLabel="Google"
+                    >
+                      <IconGoogle size={20} accessibilityLabel="Google" />
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             </View>
@@ -112,30 +155,63 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.xxl,
     paddingVertical: spacing.xl,
+    paddingLeft: spacing.xxl + 16,
   },
   panel: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(8, 20, 8, 0.88)',
+    backgroundColor: 'rgba(34, 92, 52, 0.45)',
     borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.28)',
+    borderColor: 'rgba(187, 255, 0, 0.16)',
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
+  panelWeb: Platform.OS === 'web' ? ({ width: 980 } as any) : {},
   left: {
     flex: 1,
-    padding: spacing.xl,
     justifyContent: 'center',
+    alignItems: 'center',
     gap: spacing.md,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xl,
+    paddingLeft: spacing.xxl,
+    paddingRight: spacing.xl,
   },
-  welcome: { fontSize: 38, fontWeight: '800', color: '#ffffff', letterSpacing: 0.5 },
-  subtitle: { fontSize: fonts.sizes.sm, color: colors.textMuted, lineHeight: 20 },
-  vertDivider: { width: 1, marginVertical: spacing.xl, backgroundColor: 'rgba(74,222,128,0.25)' },
-  vertGrad: { width: 1, height: '100%' },
+  welcome: {
+    fontSize: 52,
+    fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
+  },
+  welcomeGradientWeb: Platform.OS === 'web'
+    ? ({
+        backgroundImage: 'linear-gradient(180deg, #FFFFFF 0%, #FDD835 100%)',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+      } as any)
+    : {},
+  subtitle: {
+    fontSize: fonts.sizes.sm,
+    color: '#ffffff',
+    lineHeight: 20,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
+  },
+  vertDivider: {
+    width: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vertGrad: { width: 3, height: 230, borderRadius: 2 },
   right: {
     width: 360,
     padding: spacing.xl,
+    justifyContent: 'center',
+  },
+  formInner: {
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   iconCircle: {
     width: 52, height: 52, borderRadius: 26,
@@ -144,19 +220,21 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#ffffff', marginBottom: spacing.xs },
 
-  btn: { width: '100%' },
-  linkMuted: {
-    color: colors.textMuted,
-    fontSize: fonts.sizes.sm,
-    marginTop: spacing.xs,
-  },
-  orText: { color: colors.textMuted, fontSize: fonts.sizes.sm, marginTop: spacing.xs },
-  socialRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.xs },
+  forgotRow: { width: '100%', alignItems: 'flex-end', marginTop: -spacing.xs },
+  forgotText: { color: '#EF4444', fontSize: fonts.sizes.xs },
+  btn: { width: 150, alignSelf: 'center' },
+  linkMuted: { color: '#ffffff', fontSize: fonts.sizes.sm, marginTop: spacing.xs },
+  orText: { color: '#ffffff', fontSize: fonts.sizes.sm, marginTop: spacing.sm },
+  socialRow: { flexDirection: 'row', gap: spacing.xl, marginTop: spacing.sm },
   socialBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    width: 40, height: 40, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
-  }
+  },
+  socialBtnHover: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
 });
