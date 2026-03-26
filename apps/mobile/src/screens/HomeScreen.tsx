@@ -49,7 +49,6 @@ function GradientToggle({
     return () => a.stop();
   }, [anim, value]);
 
-  const trackColors = value ? ['#FFFFFF', '#EDF186', '#CEF910'] : ['#FEDB00', '#FA8A28', '#F96910'];
   const thumbBgColor = value ? '#EDF186' : '#FA8A28';
   const iconColor = value ? '#0a1f0a' : '#ffffff';
 
@@ -68,13 +67,7 @@ function GradientToggle({
       accessibilityState={{ checked: value }}
       hitSlop={8}
     >
-      <LinearGradient
-        colors={trackColors}
-        locations={[0, 0.5, 1]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={toggleStyles.track}
-      >
+      <View style={toggleStyles.track}>
         <Animated.View style={[toggleStyles.thumbWrap, { transform: [{ translateX }] }]}>
           <View style={[toggleStyles.thumb, { backgroundColor: thumbBgColor, alignItems: 'center', justifyContent: 'center' }]}>
             {kind === 'sound' ? (
@@ -84,7 +77,7 @@ function GradientToggle({
             ) : null}
           </View>
         </Animated.View>
-      </LinearGradient>
+      </View>
     </Pressable>
   );
 }
@@ -97,8 +90,7 @@ const toggleStyles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: 'center',
     paddingHorizontal: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   thumbWrap: {
     width: 34,
@@ -561,8 +553,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SETTINGS_CARD_PAD,
     paddingVertical: SETTINGS_ITEM_GAP,
     borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 0,
   },
   settingLabel: {
     fontSize: fonts.sizes.xl,
