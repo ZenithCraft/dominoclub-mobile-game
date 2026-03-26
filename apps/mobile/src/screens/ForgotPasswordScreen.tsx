@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
-import { colors, spacing, fonts, radius } from '../theme';
+import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { IconLock } from '../components/Icons';
 import { api } from '../services/api';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
@@ -36,7 +37,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
-      style={styles.root}
+      style={[styles.root, backgroundCoverFix]}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
@@ -58,7 +59,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
             {/* Right column — form */}
             <View style={styles.right}>
               <View style={styles.iconCircle}>
-                <Text style={styles.iconText}>🔒</Text>
+                <IconLock size={24} color={colors.textOnPrimary} accessibilityLabel="Senha" />
               </View>
 
               <Text style={styles.cardTitle}>Esqueceu a senha?</Text>

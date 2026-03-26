@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, spacing, fonts, radius } from '../theme';
+import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { IconUser, IconUsers, IconSettings } from '../components/Icons';
 import { Button } from '../components/Button';
 import { useGameStore } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
@@ -75,7 +76,7 @@ function RoomCard({ room, onJoin }: { room: RoomOption; onJoin: () => void }) {
       onPress={onJoin}
     >
       <View style={styles.roomRow}>
-        <Text style={styles.roomIcon}>👤</Text>
+        <IconUser size={16} color={colors.textPrimary} style={{ marginRight: 4 }} />
         <Text style={styles.roomCount}>Jogadores</Text>
       </View>
       <Text style={styles.roomPlayers}>{room.players}/{room.max}</Text>
@@ -113,7 +114,7 @@ function TournamentCard({ t, onJoin }: { t: Tournament; onJoin: () => void }) {
       <Text style={styles.tourName}>{t.name}</Text>
 
       <View style={styles.roomRow}>
-        <Text style={styles.roomIcon}>👤</Text>
+        <IconUser size={16} color={colors.textPrimary} style={{ marginRight: 4 }} />
         <Text style={styles.tourPlayers}>Jogadores {t.current_players}/{t.max_players}</Text>
       </View>
 
@@ -200,14 +201,14 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
-      style={styles.root}
+      style={[styles.root, backgroundCoverFix]}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
       {/* Top bar */}
       <View style={styles.topBar}>
         <View style={styles.onlineRow}>
-          <Text style={styles.onlineIcon}>👥</Text>
+          <IconUsers size={20} color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.onlineText}>Jogadores online {onlineCount.toLocaleString('pt-BR')}</Text>
         </View>
 
@@ -221,17 +222,18 @@ export function ModeSelectScreen({ navigation, route }: Props) {
             <Text style={styles.addText}>+</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.iconText}>⚙</Text>
+            <IconSettings size={20} color="#fff" accessibilityLabel="Configurações" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.replace('Main')}>
-            <Text style={styles.iconText}>⊣</Text>
+            <IconUser size={20} color="#fff" accessibilityLabel="Sair" />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Content */}
       <ScrollView
-        contentContainerStyle={styles.content}
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.content, { flexGrow: 1 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           isTorneio

@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius } from '../theme';
+import { IconUpload, IconTrash, IconChevronLeft } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { toast } from '../store/toast.store';
@@ -60,7 +61,7 @@ export function PrivacyPolicyScreen({ navigation }: Props) {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={styles.back}>←</Text>
+          <IconChevronLeft size={18} color={colors.textMuted} accessibilityLabel="Voltar" />
         </TouchableOpacity>
         <Text style={styles.title}>Política de Privacidade</Text>
         <View style={{ width: 24 }} />
@@ -154,7 +155,9 @@ export function PrivacyPolicyScreen({ navigation }: Props) {
           <Text style={styles.lgpdTitle}>Exercer Direitos LGPD</Text>
 
           <TouchableOpacity style={styles.lgpdBtn} onPress={handleDataExport}>
-            <Text style={styles.lgpdBtnIcon}>📤</Text>
+            <View style={styles.lgpdBtnIconContainer}>
+              <IconUpload size={24} color={colors.primary} accessibilityLabel="Exportar" />
+            </View>
             <View style={styles.lgpdBtnContent}>
               <Text style={styles.lgpdBtnLabel}>Exportar meus dados</Text>
               <Text style={styles.lgpdBtnDesc}>Receba uma cópia dos seus dados por e-mail em até 48h</Text>
@@ -166,7 +169,9 @@ export function PrivacyPolicyScreen({ navigation }: Props) {
             onPress={handleDeleteAccount}
             disabled={deleting}
           >
-            <Text style={styles.lgpdBtnIcon}>🗑️</Text>
+          <View style={styles.lgpdBtnIconContainer}>
+            <IconTrash size={24} color={colors.error} accessibilityLabel="Lixeira" />
+          </View>
             <View style={styles.lgpdBtnContent}>
               <Text style={[styles.lgpdBtnLabel, styles.lgpdBtnLabelDanger]}>
                 {deleting ? 'Excluindo...' : 'Excluir minha conta'}
@@ -236,7 +241,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   lgpdBtnDanger: { borderColor: colors.error + '44' },
-  lgpdBtnIcon: { fontSize: 24 },
+  lgpdBtnIconContainer: { marginRight: spacing.md, justifyContent: 'center', alignItems: 'center' },
   lgpdBtnContent: { flex: 1, gap: 2 },
   lgpdBtnLabel: { fontSize: fonts.sizes.md, fontWeight: '600', color: colors.textPrimary },
   lgpdBtnLabelDanger: { color: colors.error },

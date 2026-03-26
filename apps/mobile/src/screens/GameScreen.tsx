@@ -6,6 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import {
+  IconSmile, IconHeart, IconFrown, IconAngry, IconTrophy, IconDices,
+  IconSettings, IconAlert, IconX
+} from '../components/Icons';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
 import { DominoTile } from '../components/DominoTile';
 import { connectSocket } from '../services/socket';
@@ -50,14 +54,19 @@ function tileKey(tile: Tile): string { return `${tile[0]}-${tile[1]}`; }
 
 // ─── Emoji panel ──────────────────────────────────────────────────────────────
 
-const EMOJIS = ['😂', '😍', '😅', '😔', '😤', '🤔'];
+const EMOJIS = [
+  { id: 'smile', Icon: IconSmile },
+  { id: 'heart', Icon: IconHeart },
+  { id: 'frown', Icon: IconFrown },
+  { id: 'angry', Icon: IconAngry }
+];
 
 function EmojiPanel({ onEmoji }: { onEmoji: (e: string) => void }) {
   return (
     <View style={emojiStyles.grid}>
-      {EMOJIS.map((e, i) => (
-        <TouchableOpacity key={i} style={emojiStyles.btn} onPress={() => onEmoji(e)}>
-          <Text style={emojiStyles.emoji}>{e}</Text>
+      {EMOJIS.map((e) => (
+        <TouchableOpacity key={e.id} style={emojiStyles.btn} onPress={() => onEmoji(e.id)} accessibilityLabel={`Reação ${e.id}`}>
+          <e.Icon size={24} color={colors.textPrimary} />
         </TouchableOpacity>
       ))}
     </View>
@@ -230,7 +239,11 @@ function ResultCard({ result, userId, onClose }: { result: any; userId?: string;
   const isWinner = result?.winnerId === userId;
   return (
     <View style={styles.resultCard}>
-      <Text style={styles.resultEmoji}>{isWinner ? '🏆' : '😔'}</Text>
+      {isWinner ? (
+        <IconTrophy size={48} color={colors.gold} accessibilityLabel="Troféu" />
+      ) : (
+        <IconFrown size={48} color={colors.textSecondary} accessibilityLabel="Rosto triste" />
+      )}
       <Text style={styles.resultTitle}>{isWinner ? 'Você ganhou!' : 'Fim de jogo'}</Text>
       {result?.prizePerWinner > 0 && (
         <Text style={styles.resultPrize}>Prêmio: R$ {result.prizePerWinner.toFixed(2)}</Text>
@@ -427,7 +440,8 @@ export function GameScreen({ navigation, route }: Props) {
       {/* Disconnect banner */}
       {disconnected && (
         <View style={styles.disconnectBanner}>
-          <Text style={styles.disconnectText}>⚠ Reconectando...</Text>
+          <IconAlert size={16} color="#fff" style={{ marginRight: 6 }} />
+          <Text style={styles.disconnectText}>Reconectando...</Text>
         </View>
       )}
 
@@ -452,7 +466,7 @@ export function GameScreen({ navigation, route }: Props) {
         </View>
 
         <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)}>
-          <Text style={styles.gearText}>⚙</Text>
+          <IconSettings size={24} color={colors.textPrimary} accessibilityLabel="Configurações" />
         </TouchableOpacity>
       </View>
 
@@ -573,7 +587,8 @@ export function GameScreen({ navigation, route }: Props) {
             <View style={styles.passDrawRow}>
               {hasBoneyard && (
                 <TouchableOpacity style={styles.drawBtn} onPress={handleDraw}>
-                  <Text style={styles.drawBtnText}>🎲 Comprar</Text>
+                  <IconDices size={16} color={colors.textPrimary} style={{ marginRight: 4 }} />
+                  <Text style={styles.drawBtnText}>Comprar</Text>
                 </TouchableOpacity>
               )}
               {!hasValidMoves && !hasBoneyard && (
@@ -604,7 +619,7 @@ export function GameScreen({ navigation, route }: Props) {
             <View style={styles.settingsHeader}>
               <Text style={styles.settingsTitle}>Configurações</Text>
               <TouchableOpacity onPress={() => setSettingsVisible(false)}>
-                <Text style={styles.settingsClose}>✕</Text>
+                <IconX size={16} color={colors.textPrimary} accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
             <View style={styles.settingRow}>
@@ -647,7 +662,7 @@ const styles = StyleSheet.create({
   centered:  { alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: colors.textMuted, fontSize: fonts.sizes.lg },
 
-  disconnectBanner: { backgroundColor: colors.warning, paddingVertical: 6, alignItems: 'center' },
+  disconnectBanner: { backgroundColor: colors.warning, paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
   disconnectText:   { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
 
   errorToast: {

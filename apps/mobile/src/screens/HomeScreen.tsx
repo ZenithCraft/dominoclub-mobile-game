@@ -6,10 +6,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, fonts, radius } from '../theme';
+import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
 import { useAuthStore } from '../store/auth.store';
 import { connectSocket } from '../services/socket';
 import { ConsentModal } from '../components/ConsentModal';
+import { IconSettings, IconStar, IconUser, IconX } from '../components/Icons';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -55,11 +56,11 @@ export function GameTopBar({
         </TouchableOpacity>
 
         <TouchableOpacity style={topBar.iconBtn} onPress={onSettings}>
-          <Text style={topBar.iconText}>⚙</Text>
+          <IconSettings size={20} color="#fff" accessibilityLabel="Configurações" />
         </TouchableOpacity>
 
         <TouchableOpacity style={topBar.iconBtn} onPress={onExit}>
-          <Text style={topBar.iconText}>⊣</Text>
+          <IconUser size={20} color="#fff" accessibilityLabel="Sair" />
         </TouchableOpacity>
       </View>
     </View>
@@ -133,7 +134,7 @@ export function HomeScreen({ navigation }: Props) {
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
-      style={styles.root}
+      style={[styles.root, backgroundCoverFix]}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
@@ -199,7 +200,7 @@ export function HomeScreen({ navigation }: Props) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Configurações</Text>
               <TouchableOpacity onPress={() => setSettingsVisible(false)}>
-                <Text style={styles.closeBtn}>✕</Text>
+                <IconX size={18} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
 
@@ -237,7 +238,7 @@ export function HomeScreen({ navigation }: Props) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Perfil</Text>
               <TouchableOpacity onPress={() => setProfileVisible(false)}>
-                <Text style={styles.closeBtn}>✕</Text>
+                <IconX size={18} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
 
@@ -249,7 +250,9 @@ export function HomeScreen({ navigation }: Props) {
                 </View>
                 <Text style={styles.profileName}>{user?.name || 'Jogador'}</Text>
                 <Text style={styles.profileBadge}>Bronze</Text>
-                <Text style={styles.profileStar}>⭐</Text>
+                <View style={styles.profileStarContainer}>
+                  <IconStar size={24} color={colors.gold} />
+                </View>
                 <View style={styles.xpBarBg}>
                   <View style={[styles.xpBarFill, { width: '40%' }]} />
                 </View>
@@ -396,7 +399,7 @@ const styles = StyleSheet.create({
   profileAvatarText: { color: '#fff', fontSize: 32, fontWeight: '700' },
   profileName:  { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
   profileBadge: { color: '#cd7f32', fontSize: fonts.sizes.sm, fontWeight: '600' },
-  profileStar:  { fontSize: 18 },
+  profileStarContainer: { marginBottom: spacing.sm },
   xpBarBg: {
     width: '100%', height: 6,
     backgroundColor: 'rgba(255,255,255,0.1)',

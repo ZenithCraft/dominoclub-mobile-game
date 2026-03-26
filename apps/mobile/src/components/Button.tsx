@@ -48,7 +48,7 @@ export function Button({
         activeOpacity={0.8}
       >
         <LinearGradient
-          colors={['#4ade80', '#16a34a']}
+          colors={['#BEF311', '#1CBB3D']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.gradient, { paddingVertical: sizeStyles.paddingVertical, paddingHorizontal: sizeStyles.paddingHorizontal }]}

@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '../components/Button';
-import { colors, spacing, fonts, radius } from '../theme';
+import { IconSmartphone } from '../components/Icons';
+import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { RootStackParamList } from '../navigation';
@@ -72,7 +73,7 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
-      style={styles.root}
+      style={[styles.root, backgroundCoverFix]}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
@@ -94,7 +95,7 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
             {/* Right column — form */}
             <View style={styles.right}>
               <View style={styles.iconCircle}>
-                <Text style={styles.iconText}>📱</Text>
+                <IconSmartphone size={32} color={colors.textPrimary} accessibilityLabel="Smartphone" />
               </View>
 
               <Text style={styles.cardTitle}>Verificar SMS</Text>

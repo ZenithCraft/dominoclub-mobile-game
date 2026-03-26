@@ -187,6 +187,12 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     }
   });
 
+  // Player reaction (emoji)
+  socket.on('game:emoji', ({ gameId, emoji }: { gameId: string; emoji: string }) => {
+    if (!activeGames.has(gameId)) return;
+    io.to(`game:${gameId}`).emit('game:emoji', { userId: user.id, emoji, at: Date.now() });
+  });
+
   socket.on('game:leave', async ({ gameId }: { gameId: string }) => {
     socket.leave(`game:${gameId}`);
     await prisma.gamePlayer.updateMany({

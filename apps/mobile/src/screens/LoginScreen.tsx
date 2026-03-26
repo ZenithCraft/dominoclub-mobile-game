@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ImageBackground,
   KeyboardAvoidingView, Platform, TouchableOpacity,
-  Image,
+  Image, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
-import { colors, spacing, fonts, radius } from '../theme';
+import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
 import { api } from '../services/api';
+import { LinearGradient } from 'expo-linear-gradient';
+import { IconUser, IconApple } from '../components/Icons';
+import { IconGoogle } from '../components/Icons';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -46,7 +49,7 @@ export function LoginScreen({ navigation }: Props) {
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
-      style={styles.root}
+      style={[styles.root, backgroundCoverFix]}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
@@ -54,50 +57,45 @@ export function LoginScreen({ navigation }: Props) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.kav}
         >
-          <View style={styles.container}>
-            {/* ── Hero logo card — matches log in.png exactly ── */}
-            <View style={styles.logoCard}>
-              <Image
-                source={require('../../assets/logo.png')}
-                style={styles.logo}
-                resizeMode="contain"
-              />
-            </View>
-
-            {/* ── Auth form card ── */}
-            <View style={styles.formCard}>
-              <Input
-                label=""
-                placeholder="(11) 99999-9999"
-                value={phone}
-                onChangeText={(t) => { setPhone(formatPhone(t)); setError(''); }}
-                keyboardType="phone-pad"
-                error={error}
-                maxLength={15}
-              />
-
-              <Button
-                title="Enviar código"
-                onPress={handleSendOtp}
-                loading={loading}
-                style={styles.btn}
-              />
-
-              <View style={styles.dividerRow}>
-                <View style={styles.divLine} />
-                <Text style={styles.divText}>ou</Text>
-                <View style={styles.divLine} />
+          <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <View style={styles.panel}>
+              <View style={styles.left}>
+                <Text style={styles.welcome}>Bem-vindo</Text>
+                <Text style={styles.subtitle}>Crie a sua conta ou faça o login</Text>
               </View>
-
-              <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-                <Text style={styles.linkPrimary}>Criar uma conta</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
-                <Text style={styles.linkMuted}>Esqueceu a senha?</Text>
-              </TouchableOpacity>
+              <View style={styles.vertDivider}>
+                <LinearGradient colors={['#1a8f3a', '#4ade80', '#1a8f3a']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.vertGrad} />
+              </View>
+              <View style={styles.right}>
+                <View style={styles.iconCircle}>
+                  <IconUser size={32} color={colors.textPrimary} accessibilityLabel="Usuário" />
+                </View>
+                <Text style={styles.cardTitle}>Fazer login</Text>
+                <Input
+                  label=""
+                  placeholder="Número de telefone"
+                  value={phone}
+                  onChangeText={(t) => { setPhone(formatPhone(t)); setError(''); }}
+                  keyboardType="phone-pad"
+                  error={error}
+                  maxLength={15}
+                />
+                <Button title="Enviar código" onPress={handleSendOtp} loading={loading} style={styles.btn} />
+                <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                  <Text style={styles.linkMuted}>Não tem conta? Crie a sua</Text>
+                </TouchableOpacity>
+                <Text style={styles.orText}>Ou entre com</Text>
+                <View style={styles.socialRow}>
+                  <TouchableOpacity style={styles.socialBtn} accessibilityLabel="Apple">
+                    <IconApple size={24} color={colors.textPrimary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.socialBtn} accessibilityLabel="Google">
+                    <IconGoogle size={24} />
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ImageBackground>
@@ -108,57 +106,57 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
   safe: { flex: 1 },
   kav:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
-  container: {
-    alignItems: 'center',
-    gap: spacing.lg,
-    paddingHorizontal: spacing.xl,
-  },
-
-  // Hero logo card — mirrors Loading.png but no spinner
-  logoCard: {
+  scroll: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
-    paddingVertical: 0,
-    paddingHorizontal: 0,
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xl,
   },
-
-  logo: {
-    width: 220,
-    height: 80,
-  },
-
-  // Auth form below logo
-  formCard: {
-    width: 360,
+  panel: {
+    flexDirection: 'row',
     backgroundColor: 'rgba(8, 20, 8, 0.88)',
     borderWidth: 1,
     borderColor: 'rgba(74, 222, 128, 0.28)',
     borderRadius: radius.xl,
+    overflow: 'hidden',
+  },
+  left: {
+    flex: 1,
+    padding: spacing.xl,
+    justifyContent: 'center',
+    gap: spacing.md,
+  },
+  welcome: { fontSize: 38, fontWeight: '800', color: '#ffffff', letterSpacing: 0.5 },
+  subtitle: { fontSize: fonts.sizes.sm, color: colors.textMuted, lineHeight: 20 },
+  vertDivider: { width: 1, marginVertical: spacing.xl, backgroundColor: 'rgba(74,222,128,0.25)' },
+  vertGrad: { width: 1, height: '100%' },
+  right: {
+    width: 360,
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.md,
   },
+  iconCircle: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: LIME,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  cardTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#ffffff', marginBottom: spacing.xs },
 
   btn: { width: '100%' },
-
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    gap: spacing.sm,
-  },
-  divLine: { flex: 1, height: 1, backgroundColor: 'rgba(74,222,128,0.15)' },
-  divText: { color: colors.textMuted, fontSize: fonts.sizes.sm },
-
-  linkPrimary: {
-    color: LIME,
-    fontSize: fonts.sizes.sm,
-    fontWeight: '700',
-  },
   linkMuted: {
     color: colors.textMuted,
     fontSize: fonts.sizes.sm,
+    marginTop: spacing.xs,
   },
+  orText: { color: colors.textMuted, fontSize: fonts.sizes.sm, marginTop: spacing.xs },
+  socialRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.xs },
+  socialBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
+  }
 });

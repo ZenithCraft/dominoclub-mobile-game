@@ -6,6 +6,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius } from '../theme';
 import { Button } from '../components/Button';
+import { IconChevronLeft } from '../components/Icons';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -29,7 +30,7 @@ export function TermsScreen({ navigation, route }: Props) {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={styles.back}>←</Text>
+          <IconChevronLeft size={18} color={colors.textMuted} accessibilityLabel="Voltar" />
         </TouchableOpacity>
         <Text style={styles.title}>Termos de Uso</Text>
         <View style={{ width: 24 }} />

@@ -10,12 +10,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToastStore, ToastType } from '../store/toast.store';
 import { colors, fonts, radius, spacing } from '../theme';
+import { IconAlert, IconCheck, IconInfo, IconX } from './Icons';
 
-const TYPE_CONFIG: Record<ToastType, { bg: string; border: string; icon: string }> = {
-  error:   { bg: '#2d0a0a', border: colors.error,   icon: '✕' },
-  success: { bg: '#0a2d0a', border: colors.success,  icon: '✓' },
-  warning: { bg: '#2d1f0a', border: colors.warning,  icon: '!' },
-  info:    { bg: '#0a1a2d', border: colors.info,     icon: 'i' },
+const TYPE_CONFIG: Record<ToastType, { bg: string; border: string; Icon: React.ComponentType<any> }> = {
+  error:   { bg: '#2d0a0a', border: colors.error,   Icon: IconX },
+  success: { bg: '#0a2d0a', border: colors.success, Icon: IconCheck },
+  warning: { bg: '#2d1f0a', border: colors.warning, Icon: IconAlert },
+  info:    { bg: '#0a1a2d', border: colors.info,    Icon: IconInfo },
 };
 
 function ToastItem({ id, message, type }: { id: string; message: string; type: ToastType }) {
@@ -23,6 +24,7 @@ function ToastItem({ id, message, type }: { id: string; message: string; type: T
   const translateY = useRef(new Animated.Value(-12)).current;
   const dismiss = useToastStore((s) => s.dismiss);
   const cfg = TYPE_CONFIG[type];
+  const IconComponent = cfg.Icon;
 
   useEffect(() => {
     Animated.parallel([
@@ -41,11 +43,11 @@ function ToastItem({ id, message, type }: { id: string; message: string; type: T
   return (
     <Animated.View style={[styles.toast, { backgroundColor: cfg.bg, borderColor: cfg.border, opacity, transform: [{ translateY }] }]}>
       <View style={[styles.iconBadge, { backgroundColor: cfg.border + '33' }]}>
-        <Text style={[styles.icon, { color: cfg.border }]}>{cfg.icon}</Text>
+        <IconComponent size={14} color={cfg.border} accessibilityLabel={type} />
       </View>
       <Text style={styles.message} numberOfLines={3}>{message}</Text>
       <TouchableOpacity onPress={handleDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <Text style={styles.closeBtn}>✕</Text>
+        <IconX size={14} color={colors.textMuted} accessibilityLabel="Fechar" />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -106,10 +108,5 @@ const styles = StyleSheet.create({
     fontSize: fonts.sizes.sm,
     lineHeight: 18,
   },
-  closeBtn: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    flexShrink: 0,
-  },
+  closeBtn: { flexShrink: 0 },
 });

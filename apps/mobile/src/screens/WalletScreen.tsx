@@ -8,7 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
+import { IconSettings, IconLogOut, IconX, IconHourglass, IconClipboard, IconParty } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 
@@ -237,7 +238,7 @@ export function WalletScreen() {
     setWithdrawLoading(true);
     try {
       await api.post('/wallet/withdraw', { amount, pixKey: pixKey.trim() });
-      Alert.alert('Saque solicitado! ✅', 'Você receberá o valor na sua chave PIX em instantes.');
+      Alert.alert('Saque solicitado!', 'Você receberá o valor na sua chave PIX em instantes.');
       setWithdrawModal(false);
       setWithdrawAmount(''); setPixKey('');
       await loadWallet(true);
@@ -255,7 +256,7 @@ export function WalletScreen() {
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
-      style={styles.root}
+      style={[styles.root, backgroundCoverFix]}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
@@ -264,10 +265,10 @@ export function WalletScreen() {
         <Text style={styles.headerTitle}>Carteira</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.iconBtn}>
-            <Text style={styles.iconText}>⚙</Text>
+            <IconSettings size={18} color="#fff" accessibilityLabel="Configurações" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn}>
-            <Text style={styles.iconText}>⊣</Text>
+            <IconLogOut size={18} color="#fff" accessibilityLabel="Sair" />
           </TouchableOpacity>
         </View>
       </View>
@@ -419,7 +420,8 @@ export function WalletScreen() {
               <View style={styles.qrSection}>
                 <Text style={styles.modalTitle}>Depositar</Text>
                 <View style={styles.pollingBadge}>
-                  <Text style={styles.pollingText}>⏳ Aguardando pagamento...</Text>
+                  <IconHourglass size={14} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.pollingText}>Aguardando pagamento...</Text>
                 </View>
                 <View style={styles.qrWrap}>
                   <QRCode value={qrCode} size={160} color="#000" backgroundColor="#fff" />
@@ -432,7 +434,10 @@ export function WalletScreen() {
                     Alert.alert('Copiado!', 'Cole no seu app de banco para pagar');
                   }}
                 >
-                  <Text style={styles.copyBtnText}>📋 Copiar código PIX (Copia e Cola)</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <IconClipboard size={14} color="#000" />
+                    <Text style={styles.copyBtnText}>Copiar código PIX (Copia e Cola)</Text>
+                  </View>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={closeDepositModal} style={styles.cancelLink}>
                   <Text style={styles.cancelLinkText}>Cancelar</Text>
@@ -442,7 +447,7 @@ export function WalletScreen() {
 
             {depositStep === 'confirmed' && (
               <Animated.View style={[styles.confirmedSection, { opacity: successAnim }]}>
-                <Text style={{ fontSize: 56 }}>🎉</Text>
+                <IconParty size={48} color="#fff" accessibilityLabel="Sucesso" />
                 <Text style={styles.confirmedTitle}>Depósito confirmado!</Text>
                 <Text style={styles.confirmedAmount}>+ R$ {effectiveAmount.toFixed(2)}</Text>
                 <TouchableOpacity style={styles.closeConfirmBtn} onPress={closeDepositModal}>
@@ -454,7 +459,7 @@ export function WalletScreen() {
             {/* Close X */}
             {depositStep !== 'confirmed' && (
               <TouchableOpacity style={styles.closeX} onPress={closeDepositModal}>
-                <Text style={styles.closeXText}>✕</Text>
+                <IconX size={16} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             )}
           </View>
@@ -469,7 +474,7 @@ export function WalletScreen() {
               style={styles.closeX}
               onPress={() => { setWithdrawModal(false); setWithdrawAmount(''); setPixKey(''); }}
             >
-              <Text style={styles.closeXText}>✕</Text>
+              <IconX size={16} color="#fff" accessibilityLabel="Fechar" />
             </TouchableOpacity>
 
             <Text style={styles.modalTitle}>Sacar</Text>
