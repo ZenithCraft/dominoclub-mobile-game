@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
 
   iconCircle: {
     width: 52, height: 52, borderRadius: 26,
-    backgroundColor: LIME,
+    backgroundColor: '#1CBB3D',
     alignItems: 'center', justifyContent: 'center',
   },
   iconText: { fontSize: 24 },
