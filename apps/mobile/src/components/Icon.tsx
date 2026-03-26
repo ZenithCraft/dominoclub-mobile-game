@@ -24,10 +24,7 @@ export function Icon({
       size={size}
       color={color}
       style={style}
-      // Accessibility attributes (ARIA equivalent for React Native / React Native Web)
-      accessible={!!accessibilityLabel}
       accessibilityLabel={accessibilityLabel}
-      accessibilityRole="image"
       testID={testID}
     />
   );

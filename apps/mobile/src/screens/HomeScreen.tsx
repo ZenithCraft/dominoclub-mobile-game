@@ -54,7 +54,7 @@ function GradientToggle({
 
   const translateX = anim.interpolate({
     inputRange: [0, 1],
-    outputRange: [3, 88 - 34 - 3],
+    outputRange: [2, 88 - 34 - 2],
   });
 
   return (
@@ -89,8 +89,9 @@ const toggleStyles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     justifyContent: 'center',
-    paddingHorizontal: 3,
+    paddingHorizontal: 2,
     backgroundColor: 'rgba(255,255,255,0.12)',
+    overflow: 'hidden',
   },
   thumbWrap: {
     width: 34,
@@ -520,15 +521,19 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#BBFF00',
     gap: SETTINGS_ITEM_GAP,
-    ...shadows.card,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.45)' } as any) : shadows.card),
   },
   settingsTextureWrap: {
     ...StyleSheet.absoluteFillObject,
   },
   settingsTexture: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.06,
-    transform: [{ scale: 1.08 }],
+    opacity: 0.12,
+    width: '140%',
+    height: '140%',
+    top: '-20%',
+    left: '-20%',
+    ...(Platform.OS === 'web' ? ({ objectFit: 'cover', objectPosition: 'center' } as any) : null),
   } as any,
   modalHeader: {
     flexDirection: 'row',
@@ -554,6 +559,7 @@ const styles = StyleSheet.create({
     paddingVertical: SETTINGS_ITEM_GAP,
     borderRadius: radius.lg,
     borderWidth: 0,
+    overflow: 'hidden',
   },
   settingLabel: {
     fontSize: fonts.sizes.xl,
