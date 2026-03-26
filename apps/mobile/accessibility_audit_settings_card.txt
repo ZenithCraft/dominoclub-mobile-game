@@ -1,0 +1,18 @@
+Accessibility Audit — Settings Card (HomeScreen)
+
+Scope
+- Component: Settings modal card in apps/mobile/src/screens/HomeScreen.tsx
+- Background: solid colors.bgCard (#0f2e0f) with low-opacity texture overlay image
+- Text: primary labels and title use #ffffff
+
+WCAG 2.1 AA Contrast (Normal Text)
+- Required minimum: 4.5:1
+- Computed contrast ratio for #ffffff on #0f2e0f: 14.81:1
+
+Texture Overlay
+- Image: apps/mobile/assets/e27c2e8e377e60057010a8431706b96b0152436f.png
+- Applied opacity: 0.06
+- Impact: negligible on contrast due to very low opacity; base contrast remains far above 4.5:1.
+
+Result
+- Pass: ≥ 4.5:1 contrast maintained for primary text against the settings card background.

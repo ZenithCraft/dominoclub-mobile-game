@@ -1,20 +1,110 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ImageBackground,
-  TouchableOpacity, Modal, Switch,
+  TouchableOpacity, Modal, Image, Platform, Pressable, Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
 import { useAuthStore } from '../store/auth.store';
 import { connectSocket } from '../services/socket';
 import { ConsentModal } from '../components/ConsentModal';
-import { IconSettings, IconStar, IconUser, IconX } from '../components/Icons';
+import { IconSettings, IconStar, IconLogOut, IconX } from '../components/Icons';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
 // ─── Shared top-bar used across logged-in screens ──────────────────────────
+
+const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
+const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
+
+function GradientToggle({
+  value,
+  onValueChange,
+  pressableTestID,
+  accessibilityLabel,
+}: {
+  value: boolean;
+  onValueChange: (next: boolean) => void;
+  pressableTestID?: string;
+  accessibilityLabel?: string;
+}) {
+  const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'test') {
+      anim.setValue(value ? 1 : 0);
+      return;
+    }
+
+    const a = Animated.timing(anim, {
+      toValue: value ? 1 : 0,
+      duration: 160,
+      useNativeDriver: false,
+    });
+    a.start();
+    return () => a.stop();
+  }, [anim, value]);
+
+  const trackColors = value ? ['#FFFFFF', '#EDF186', '#CEF910'] : ['#FEDB00', '#FA8A28', '#F96910'];
+  const thumbColors = value ? ['#FFFFFF', '#EDF186', '#CEF910'] : ['#FEDB00', '#FA8A28', '#F96910'];
+
+  const translateX = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [3, 88 - 34 - 3],
+  });
+
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      style={toggleStyles.hit}
+      testID={pressableTestID}
+      accessibilityRole="switch"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ checked: value }}
+      hitSlop={8}
+    >
+      <LinearGradient
+        colors={trackColors}
+        locations={[0, 0.5, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={toggleStyles.track}
+      >
+        <Animated.View style={[toggleStyles.thumbWrap, { transform: [{ translateX }] }]}>
+          <LinearGradient
+            colors={thumbColors}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={toggleStyles.thumb}
+          />
+        </Animated.View>
+      </LinearGradient>
+    </Pressable>
+  );
+}
+
+const toggleStyles = StyleSheet.create({
+  hit: { width: 92, height: 44, justifyContent: 'center' },
+  track: {
+    width: 88,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.25)',
+  },
+  thumbWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    overflow: 'hidden',
+  },
+  thumb: { width: '100%', height: '100%' },
+});
 
 export function GameTopBar({
   user,
@@ -37,7 +127,11 @@ export function GameTopBar({
       {/* Left: avatar + name + level (tappable → profile) */}
       <TouchableOpacity style={topBar.left} onPress={onProfile} activeOpacity={0.75}>
         <View style={topBar.avatar}>
-          <Text style={topBar.avatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
+          {user?.avatar ? (
+            <Image source={{ uri: user.avatar }} style={topBar.avatarImg} />
+          ) : (
+            <Text style={topBar.avatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
+          )}
         </View>
         <View>
           <Text style={topBar.name}>{user?.name || 'Jogador'}</Text>
@@ -47,20 +141,26 @@ export function GameTopBar({
 
       {/* Right: balance + add + settings + exit */}
       <View style={topBar.right}>
-        <TouchableOpacity style={topBar.balancePill} onPress={onWallet}>
-          <Text style={topBar.balanceText}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</Text>
+        <TouchableOpacity style={topBar.balanceWrap} onPress={onWallet} activeOpacity={0.85}>
+          <LinearGradient
+            colors={['#BEF311', '#1CBB3D']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={topBar.balancePill}
+          >
+            <Text style={topBar.balanceText}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</Text>
+            <View style={topBar.balancePlus}>
+              <Text style={topBar.balancePlusText}>+</Text>
+            </View>
+          </LinearGradient>
         </TouchableOpacity>
 
-        <TouchableOpacity style={topBar.addBtn} onPress={onWallet}>
-          <Text style={topBar.addText}>+</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={topBar.iconBtn} onPress={onSettings}>
+        <TouchableOpacity style={topBar.iconBtn} onPress={onSettings} testID="topbar-settings" accessibilityLabel="Abrir configurações">
           <IconSettings size={20} color="#fff" accessibilityLabel="Configurações" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={topBar.iconBtn} onPress={onExit}>
-          <IconUser size={20} color="#fff" accessibilityLabel="Sair" />
+        <TouchableOpacity style={topBar.iconBtn} onPress={onExit} testID="topbar-logout" accessibilityLabel="Sair">
+          <IconLogOut size={20} color="#fff" accessibilityLabel="Sair" />
         </TouchableOpacity>
       </View>
     </View>
@@ -73,38 +173,54 @@ const topBar = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingVertical: spacing.md,
+    backgroundColor: 'rgba(24, 73, 18, 0.92)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(74,222,128,0.15)',
+    borderBottomColor: 'rgba(187, 255, 0, 0.18)',
+    minHeight: 84,
   },
   left: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   avatar: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: '#4a7c4a',
-    borderWidth: 2, borderColor: 'rgba(74,222,128,0.4)',
+    width: 54, height: 54, borderRadius: 27,
+    backgroundColor: '#184912',
+    borderWidth: 2,
+    borderColor: 'rgba(187, 255, 0, 0.35)',
     alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
+  avatarImg: { width: '100%', height: '100%' },
   avatarText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
-  name:   { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+  name:   { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
   level:  { color: colors.textMuted, fontSize: fonts.sizes.xs },
   right:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  balanceWrap: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.25)',
+  },
   balancePill: {
-    backgroundColor: '#4ade80',
-    borderRadius: radius.full,
-    paddingHorizontal: 12, paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingLeft: 14,
+    paddingRight: 10,
+    paddingVertical: 8,
   },
-  balanceText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
-  addBtn: {
-    width: 24, height: 24, borderRadius: 12,
+  balanceText: { color: '#0a1f0a', fontWeight: '900', fontSize: fonts.sizes.sm },
+  balancePlus: {
+    width: 22, height: 22,
+    borderRadius: 6,
     backgroundColor: '#dc2626',
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  addText: { color: '#fff', fontWeight: '800', fontSize: 14, lineHeight: 16 },
+  balancePlusText: { color: '#fff', fontWeight: '900', fontSize: 14, lineHeight: 16 },
   iconBtn: {
-    width: 34, height: 34, borderRadius: radius.sm,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(187, 255, 0, 0.22)',
     alignItems: 'center', justifyContent: 'center',
   },
   iconText: { color: '#fff', fontSize: 16 },
@@ -116,6 +232,7 @@ export function HomeScreen({ navigation }: Props) {
   const { user } = useAuthStore();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [profileVisible, setProfileVisible]   = useState(false);
+  const [logoutVisible, setLogoutVisible]     = useState(false);
   const [soundOn, setSoundOn]   = useState(true);
   const [musicOn, setMusicOn]   = useState(true);
   const [onlineCount, setOnlineCount] = useState(0);
@@ -128,6 +245,7 @@ export function HomeScreen({ navigation }: Props) {
 
   const handleLogout = () => {
     setProfileVisible(false);
+    setLogoutVisible(false);
     useAuthStore.getState().logout().then(() => navigation.replace('Login'));
   };
 
@@ -144,7 +262,7 @@ export function HomeScreen({ navigation }: Props) {
       <GameTopBar
         user={user}
         onSettings={() => setSettingsVisible(true)}
-        onExit={handleLogout}
+        onExit={() => setLogoutVisible(true)}
         onWallet={() => navigation.navigate('Wallet')}
         onProfile={() => setProfileVisible(true)}
       />
@@ -152,8 +270,7 @@ export function HomeScreen({ navigation }: Props) {
       {/* Center content */}
       <View style={styles.center}>
         <Text style={styles.title}>Escolha o modo de jogo</Text>
-        <Text style={styles.subtitle}>Escolha como você quer jogar: individual ou time</Text>
-
+        <Text style={[styles.subtitle, { color: '#ffffff' }]}>Escolha como você quer jogar: individual ou time</Text>
         <View style={styles.modeRow}>
           {/* Livre button — cyan */}
           <TouchableOpacity
@@ -191,40 +308,44 @@ export function HomeScreen({ navigation }: Props) {
 
       {/* ── Settings Modal (Configurações) ── */}
       <Modal visible={settingsVisible} transparent animationType="fade">
-        <TouchableOpacity
+        <Pressable
           style={styles.overlay}
-          activeOpacity={1}
           onPress={() => setSettingsVisible(false)}
+          testID="settings-overlay"
         >
-          <View style={styles.settingsCard} onStartShouldSetResponder={() => true}>
+          <Pressable
+            style={styles.settingsCard}
+            onPress={() => {}}
+            onStartShouldSetResponder={() => true}
+            testID="settings-card"
+          >
+            <View pointerEvents="none" style={styles.settingsTextureWrap}>
+              <Image
+                source={require('../../assets/e27c2e8e377e60057010a8431706b96b0152436f.png')}
+                style={styles.settingsTexture}
+                resizeMode="cover"
+              />
+            </View>
+
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Configurações</Text>
-              <TouchableOpacity onPress={() => setSettingsVisible(false)}>
-                <IconX size={18} color="#fff" accessibilityLabel="Fechar" />
+              <View style={{ width: 26 }} />
+              <Text style={styles.settingsTitle}>Configurações</Text>
+              <TouchableOpacity onPress={() => setSettingsVisible(false)} accessibilityLabel="Fechar configurações">
+                <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.settingRow}>
+            <View style={styles.settingItem}>
               <Text style={styles.settingLabel}>Som:</Text>
-              <Switch
-                value={soundOn}
-                onValueChange={setSoundOn}
-                trackColor={{ false: '#f97316', true: '#4ade80' }}
-                thumbColor={soundOn ? '#fff' : '#fff'}
-              />
+              <GradientToggle value={soundOn} onValueChange={setSoundOn} pressableTestID="settings-sound-toggle" accessibilityLabel="Som" />
             </View>
 
-            <View style={styles.settingRow}>
+            <View style={styles.settingItem}>
               <Text style={styles.settingLabel}>Música:</Text>
-              <Switch
-                value={musicOn}
-                onValueChange={setMusicOn}
-                trackColor={{ false: '#f97316', true: '#4ade80' }}
-                thumbColor={musicOn ? '#fff' : '#fff'}
-              />
+              <GradientToggle value={musicOn} onValueChange={setMusicOn} pressableTestID="settings-music-toggle" accessibilityLabel="Música" />
             </View>
-          </View>
-        </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* ── Profile Modal ── */}
@@ -282,6 +403,34 @@ export function HomeScreen({ navigation }: Props) {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <Modal visible={logoutVisible} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.overlay}
+          activeOpacity={1}
+          onPress={() => setLogoutVisible(false)}
+        >
+          <View style={styles.logoutCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Sair</Text>
+              <TouchableOpacity onPress={() => setLogoutVisible(false)}>
+                <IconX size={18} color="#fff" accessibilityLabel="Fechar" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.logoutText}>Tem certeza que deseja sair da sua conta?</Text>
+
+            <View style={styles.logoutActions}>
+              <TouchableOpacity style={styles.logoutCancelBtn} onPress={() => setLogoutVisible(false)} activeOpacity={0.85}>
+                <Text style={styles.logoutCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.logoutConfirmBtn} onPress={handleLogout} activeOpacity={0.85}>
+                <Text style={styles.logoutConfirmText}>Sair</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
       </SafeAreaView>
     </ImageBackground>
   );
@@ -321,6 +470,9 @@ const styles = StyleSheet.create({
   modeBtn: {
     borderRadius: radius.lg,
     overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#BBFF00',
+    backgroundColor: 'rgba(0,0,0,0.25)',
     elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -328,12 +480,13 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   modeBtnGrad: {
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: 72,
+    paddingVertical: spacing.xxxl,
+    paddingHorizontal: 92,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 200,
-    minHeight: 90,
+    minWidth: 300,
+    minHeight: 120,
+    borderRadius: radius.lg - 3,
   },
   modeBtnText: {
     fontSize: fonts.sizes.xxl,
@@ -352,28 +505,45 @@ const styles = StyleSheet.create({
 
   // Settings modal
   settingsCard: {
-    width: 340,
-    backgroundColor: 'rgba(8, 20, 8, 0.96)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(74,222,128,0.55)',
+    width: Platform.OS === 'web' ? 640 : 520,
+    backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
-    padding: spacing.xl,
-    gap: spacing.lg,
+    padding: SETTINGS_CARD_PAD,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#BBFF00',
+    gap: SETTINGS_ITEM_GAP,
+    ...shadows.card,
   },
+  settingsTextureWrap: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  settingsTexture: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.06,
+    transform: [{ scale: 1.08 }],
+  } as any,
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   modalTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#fff' },
+  settingsTitle: { fontSize: fonts.sizes.xxxl, fontWeight: '900', color: '#fff', textAlign: 'center', flex: 1 },
   closeBtn:   { color: colors.textMuted, fontSize: fonts.sizes.lg, fontWeight: '700' },
 
-  settingRow: {
+  settingItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: SETTINGS_CARD_PAD,
+    paddingVertical: SETTINGS_ITEM_GAP,
+    borderRadius: radius.lg,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
   },
-  settingLabel: { fontSize: fonts.sizes.md, color: '#fff' },
+  settingLabel: { fontSize: fonts.sizes.xl, color: '#fff', fontWeight: '800' },
 
   // Profile modal
   profileCard: {
@@ -427,4 +597,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   profileActionText: { color: '#4ade80', fontWeight: '600', fontSize: fonts.sizes.sm },
+
+  logoutCard: {
+    width: 380,
+    backgroundColor: 'rgba(8, 20, 8, 0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(187, 255, 0, 0.22)',
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    gap: spacing.lg,
+  },
+  logoutText: { color: '#fff', fontSize: fonts.sizes.sm, lineHeight: 20 },
+  logoutActions: { flexDirection: 'row', gap: spacing.sm },
+  logoutCancelBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  logoutCancelText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+  logoutConfirmBtn: {
+    flex: 1,
+    backgroundColor: '#dc2626',
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  logoutConfirmText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
 });
