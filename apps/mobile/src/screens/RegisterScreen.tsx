@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ImageBackground,
   ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
@@ -111,130 +112,147 @@ export function RegisterScreen({ navigation, route }: Props) {
       style={styles.root}
       resizeMode="cover"
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.kav}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
+      <SafeAreaView style={styles.safe}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.kav}
         >
-          {/* Left column */}
-          <View style={styles.left}>
-            <Text style={styles.welcome}>Bem-vindo</Text>
-            <Text style={styles.subtitle}>Crie a sua conta ou faça o login</Text>
-          </View>
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* ONE frosted-glass panel */}
+            <View style={styles.panel}>
+              {/* Left column */}
+              <View style={styles.left}>
+                <Text style={styles.welcome}>Bem-vindo</Text>
+                <Text style={styles.subtitle}>Crie a sua conta ou faça o login</Text>
+              </View>
 
-          {/* Vertical divider */}
-          <View style={styles.vertDivider} />
+              {/* Vertical divider */}
+              <View style={styles.vertDivider} />
 
-          {/* Right column — form card */}
-          <View style={styles.card}>
-            <IconCircle>👤</IconCircle>
-            <Text style={styles.cardTitle}>Criar nova conta</Text>
+              {/* Right column — form */}
+              <View style={styles.right}>
+                <IconCircle>👤</IconCircle>
+                <Text style={styles.cardTitle}>Criar nova conta</Text>
 
-            <Input
-              label=""
-              placeholder="Nome completo"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-              error={errors.name}
-            />
-            <Input
-              label=""
-              placeholder="Número de telefone"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-            />
-            <View style={styles.cpfRow}>
-              <View style={{ flex: 1 }}>
                 <Input
                   label=""
-                  placeholder="CPF"
-                  value={cpf}
-                  onChangeText={(t) => { setCpf(formatCPF(t)); setCpfVerified(false); }}
-                  keyboardType="number-pad"
-                  error={errors.cpf}
+                  placeholder="Nome completo"
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                  error={errors.name}
                 />
-              </View>
-              {cpfFormatValid && !cpfVerified && (
-                <TouchableOpacity style={styles.verifyBtn} onPress={handleVerifyCpf} disabled={cpfLoading}>
-                  <Text style={styles.verifyBtnText}>{cpfLoading ? '...' : 'Verificar'}</Text>
+                <Input
+                  label=""
+                  placeholder="Número de telefone"
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                />
+                <View style={styles.cpfRow}>
+                  <View style={{ flex: 1 }}>
+                    <Input
+                      label=""
+                      placeholder="CPF"
+                      value={cpf}
+                      onChangeText={(t) => { setCpf(formatCPF(t)); setCpfVerified(false); }}
+                      keyboardType="number-pad"
+                      error={errors.cpf}
+                    />
+                  </View>
+                  {cpfFormatValid && !cpfVerified && (
+                    <TouchableOpacity style={styles.verifyBtn} onPress={handleVerifyCpf} disabled={cpfLoading}>
+                      <Text style={styles.verifyBtnText}>{cpfLoading ? '...' : 'Verificar'}</Text>
+                    </TouchableOpacity>
+                  )}
+                  {cpfVerified && <Text style={styles.cpfOk}>✓</Text>}
+                </View>
+                <Input
+                  label=""
+                  placeholder="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                <Input
+                  label=""
+                  placeholder="Senha"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                />
+                <Input
+                  label=""
+                  placeholder="Digite novamente a sua senha"
+                  value={confirm}
+                  onChangeText={setConfirm}
+                  secureTextEntry
+                />
+
+                {errors.general ? (
+                  <Text style={styles.generalError}>{errors.general}</Text>
+                ) : null}
+
+                <Button
+                  title="Criar Conta"
+                  onPress={handleSubmit}
+                  loading={loading}
+                  style={styles.btn}
+                />
+
+                <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+                  <Text style={styles.linkText}>Já tem conta? Faça o login</Text>
                 </TouchableOpacity>
-              )}
-              {cpfVerified && <Text style={styles.cpfOk}>✓</Text>}
+
+                <Text style={styles.orText}>Ou entre com</Text>
+
+                <View style={styles.socialRow}>
+                  <TouchableOpacity style={styles.socialBtn}>
+                    <Text style={styles.socialIcon}>🍎</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.socialBtn}>
+                    <Text style={styles.socialIcon}>G</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-            <Input
-              label=""
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <Input
-              label=""
-              placeholder="Senha"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-            <Input
-              label=""
-              placeholder="Digite novamente a sua senha"
-              value={confirm}
-              onChangeText={setConfirm}
-              secureTextEntry
-            />
-
-            {errors.general ? (
-              <Text style={styles.generalError}>{errors.general}</Text>
-            ) : null}
-
-            <Button
-              title="Criar Conta"
-              onPress={handleSubmit}
-              loading={loading}
-              style={styles.btn}
-            />
-
-            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-              <Text style={styles.linkText}>Já tem conta? Faça o login</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.orText}>Ou entre com</Text>
-
-            <View style={styles.socialRow}>
-              <TouchableOpacity style={styles.socialBtn}>
-                <Text style={styles.socialIcon}>🍎</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.socialBtn}>
-                <Text style={styles.socialIcon}>G</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
-  kav: { flex: 1 },
+  safe: { flex: 1 },
+  kav:  { flex: 1 },
   scroll: {
     flexGrow: 1,
-    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: spacing.xxl,
     paddingVertical: spacing.xl,
   },
 
+  panel: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(8, 20, 8, 0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.28)',
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+  },
+
   left: {
     flex: 1,
-    paddingRight: spacing.xxl,
+    padding: spacing.xl,
+    justifyContent: 'center',
     gap: spacing.md,
   },
   welcome: {
@@ -251,18 +269,12 @@ const styles = StyleSheet.create({
 
   vertDivider: {
     width: 1,
-    alignSelf: 'stretch',
     backgroundColor: 'rgba(74, 222, 128, 0.25)',
-    marginVertical: spacing.md,
-    marginRight: spacing.xl,
+    marginVertical: spacing.xl,
   },
 
-  card: {
+  right: {
     width: 360,
-    backgroundColor: 'rgba(8, 20, 8, 0.90)',
-    borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.30)',
-    borderRadius: radius.xl,
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.md,

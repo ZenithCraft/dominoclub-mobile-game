@@ -19,7 +19,23 @@ config.resolver.nodeModulesPaths = [
 // that occurs because the root node_modules has a different React version
 // (18.3.1 from admin) vs mobile's React (18.2.0).
 const FORCE_LOCAL = ['react', 'react-dom', 'react-native', 'react/jsx-runtime', 'react/jsx-dev-runtime'];
+const FORCE_LOCAL_PATHS = {
+  zustand: 'zustand/index.js',
+  'zustand/vanilla': 'zustand/vanilla.js',
+  'zustand/middleware': 'zustand/middleware.js',
+  'zustand/middleware/immer': 'zustand/middleware/immer.js',
+  'zustand/shallow': 'zustand/shallow.js',
+  'zustand/traditional': 'zustand/traditional.js',
+  'zustand/context': 'zustand/context.js',
+  'zustand/react/shallow': 'zustand/react/shallow.js',
+  'zustand/vanilla/shallow': 'zustand/vanilla/shallow.js',
+};
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  const forcedPath = FORCE_LOCAL_PATHS[moduleName];
+  if (forcedPath) {
+    const resolved = path.resolve(projectRoot, 'node_modules', forcedPath);
+    return { filePath: require.resolve(resolved), type: 'sourceFile' };
+  }
   if (FORCE_LOCAL.includes(moduleName)) {
     const resolved = path.resolve(projectRoot, 'node_modules', moduleName);
     return { filePath: require.resolve(resolved), type: 'sourceFile' };

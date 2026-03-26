@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { toast } from '../store/toast.store';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+const IS_MOCK  = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
 
 // Errors from these URLs are surfaced directly to the caller — don't double-toast
 const SILENT_PATHS = ['/auth/otp', '/auth/cpf/verify', '/auth/profile'];
@@ -12,6 +13,13 @@ export const api = axios.create({
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
+
+// ── Mock mode: interceptors must be installed BEFORE the real ones so the response
+//    interceptor runs first (FIFO) and the request interceptor runs last (LIFO).
+if (IS_MOCK) {
+  const { installMockInterceptors } = require('../mocks/interceptors');
+  installMockInterceptors(api);
+}
 
 // Attach auth token
 api.interceptors.request.use(async (config) => {
@@ -27,7 +35,7 @@ api.interceptors.response.use(
     const original = error.config;
 
     // 401 — attempt token refresh
-    if (error.response?.status === 401 && !original._retry) {
+    if (error.response?.status === 401 && !original?._retry) {
       original._retry = true;
       try {
         const refreshToken = await AsyncStorage.getItem('refresh_token');
@@ -38,7 +46,6 @@ api.interceptors.response.use(
         return api(original);
       } catch {
         await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
-        // Caller will handle redirect to login
         return Promise.reject(error);
       }
     }
@@ -50,7 +57,6 @@ api.interceptors.response.use(
 
     if (!isSilent) {
       if (!error.response) {
-        // Network error / timeout
         toast.error('Sem conexão com o servidor. Verifique sua internet.');
       } else if (error.response.status >= 500) {
         toast.error('Erro interno do servidor. Tente novamente em instantes.');
@@ -64,5 +70,5 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );

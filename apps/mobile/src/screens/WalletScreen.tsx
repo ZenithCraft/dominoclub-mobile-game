@@ -4,6 +4,7 @@ import {
   Modal, TextInput, Alert, RefreshControl, Animated,
   ImageBackground,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
@@ -257,6 +258,7 @@ export function WalletScreen() {
       style={styles.root}
       resizeMode="cover"
     >
+      <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Carteira</Text>
@@ -522,6 +524,7 @@ export function WalletScreen() {
           </View>
         </View>
       </Modal>
+      </SafeAreaView>
     </ImageBackground>
   );
 }
@@ -532,6 +535,7 @@ const LIME = '#4ade80';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
+  safe: { flex: 1 },
 
   // Header
   header: {

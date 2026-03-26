@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, Modal, Alert, Animated,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
@@ -413,15 +414,15 @@ export function GameScreen({ navigation, route }: Props) {
   // ── Loading state ──────────────────────────────────────────────────────────
   if (!currentGame) {
     return (
-      <View style={[styles.container, styles.centered]}>
+      <SafeAreaView style={[styles.container, styles.centered]}>
         <Text style={styles.loadingText}>Entrando na partida...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
 
       {/* Disconnect banner */}
       {disconnected && (
@@ -635,7 +636,7 @@ export function GameScreen({ navigation, route }: Props) {
           />
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 

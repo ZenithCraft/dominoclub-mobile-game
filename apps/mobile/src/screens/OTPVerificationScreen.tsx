@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ImageBackground,
-  TextInput, TouchableOpacity,
+  TextInput, TouchableOpacity, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '../components/Button';
 import { colors, spacing, fonts, radius } from '../theme';
@@ -74,86 +75,96 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
       style={styles.root}
       resizeMode="cover"
     >
-      <View style={styles.row}>
-        {/* Left column */}
-        <View style={styles.left}>
-          <Text style={styles.welcome}>Bem-vindo</Text>
-          <Text style={styles.subtitle}>A reserva da mesa, agora no seu celular</Text>
-        </View>
+      <SafeAreaView style={styles.safe}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.kav}
+        >
+          {/* ONE frosted-glass panel */}
+          <View style={styles.panel}>
+            {/* Left column */}
+            <View style={styles.left}>
+              <Text style={styles.welcome}>Bem-vindo</Text>
+              <Text style={styles.subtitle}>A reserva da mesa, agora no seu celular</Text>
+            </View>
 
-        {/* Vertical divider */}
-        <View style={styles.vertDivider} />
+            {/* Vertical divider */}
+            <View style={styles.vertDivider} />
 
-        {/* Right card */}
-        <View style={styles.card}>
-          {/* Icon circle */}
-          <View style={styles.iconCircle}>
-            <Text style={styles.iconText}>📱</Text>
-          </View>
+            {/* Right column — form */}
+            <View style={styles.right}>
+              <View style={styles.iconCircle}>
+                <Text style={styles.iconText}>📱</Text>
+              </View>
 
-          <Text style={styles.cardTitle}>Verificar SMS</Text>
+              <Text style={styles.cardTitle}>Verificar SMS</Text>
 
-          {/* 6-digit OTP boxes */}
-          <View style={styles.otpRow}>
-            {otp.map((digit, i) => (
-              <TextInput
-                key={i}
-                ref={(r) => { if (r) inputs.current[i] = r; }}
-                style={[
-                  styles.otpBox,
-                  digit && styles.otpBoxFilled,
-                  error && styles.otpBoxError,
-                ]}
-                value={digit}
-                onChangeText={(t) => handleChange(t, i)}
-                keyboardType="number-pad"
-                maxLength={1}
-                selectTextOnFocus
+              <View style={styles.otpRow}>
+                {otp.map((digit, i) => (
+                  <TextInput
+                    key={i}
+                    ref={(r) => { if (r) inputs.current[i] = r; }}
+                    style={[
+                      styles.otpBox,
+                      digit ? styles.otpBoxFilled : null,
+                      error ? styles.otpBoxError : null,
+                    ]}
+                    value={digit}
+                    onChangeText={(t) => handleChange(t, i)}
+                    keyboardType="number-pad"
+                    maxLength={1}
+                    selectTextOnFocus
+                  />
+                ))}
+              </View>
+
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+              <Button
+                title="Verificar"
+                onPress={handleVerify}
+                loading={loading}
+                disabled={otp.join('').length !== 6}
+                style={styles.btn}
               />
-            ))}
+
+              <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                <Text style={styles.linkText}>Criar uma conta</Text>
+              </TouchableOpacity>
+
+              {resendTimer > 0 ? (
+                <Text style={styles.timerText}>Reenviar em {resendTimer}s</Text>
+              ) : (
+                <TouchableOpacity onPress={handleResend}>
+                  <Text style={styles.resendLink}>Reenviar código</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <Button
-            title="Send"
-            onPress={handleVerify}
-            loading={loading}
-            disabled={otp.join('').length !== 6}
-            style={styles.btn}
-          />
-
-          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.linkText}>Criar uma conta</Text>
-          </TouchableOpacity>
-
-          {resendTimer > 0 ? (
-            <Text style={styles.timerText}>Reenviar em {resendTimer}s</Text>
-          ) : (
-            <TouchableOpacity onPress={handleResend}>
-              <Text style={styles.resendLink}>Reenviar código</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
+  safe: { flex: 1 },
+  kav: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xxl },
 
-  row: {
-    flex: 1,
+  panel: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.xl,
+    backgroundColor: 'rgba(8, 20, 8, 0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.28)',
+    borderRadius: radius.xl,
+    overflow: 'hidden',
   },
 
   left: {
     flex: 1,
-    paddingRight: spacing.xxl,
+    padding: spacing.xl,
+    justifyContent: 'center',
     gap: spacing.md,
   },
   welcome: { fontSize: 38, fontWeight: '800', color: '#ffffff', letterSpacing: 0.5 },
@@ -161,18 +172,12 @@ const styles = StyleSheet.create({
 
   vertDivider: {
     width: 1,
-    alignSelf: 'stretch',
     backgroundColor: 'rgba(74, 222, 128, 0.25)',
-    marginVertical: spacing.md,
-    marginRight: spacing.xl,
+    marginVertical: spacing.xl,
   },
 
-  card: {
+  right: {
     width: 360,
-    backgroundColor: 'rgba(8, 20, 8, 0.90)',
-    borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.30)',
-    borderRadius: radius.xl,
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.lg,
@@ -205,7 +210,6 @@ const styles = StyleSheet.create({
   linkText: {
     color: colors.textMuted,
     fontSize: fonts.sizes.sm,
-    marginTop: spacing.xs,
   },
   timerText: { color: colors.textMuted, fontSize: fonts.sizes.sm },
   resendLink: { color: LIME, fontSize: fonts.sizes.sm, fontWeight: '600' },

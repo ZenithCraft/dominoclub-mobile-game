@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ImageBackground, ScrollView,
   TouchableOpacity, Modal, ActivityIndicator, RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius } from '../theme';
 import { Button } from '../components/Button';
@@ -202,6 +203,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       style={styles.root}
       resizeMode="cover"
     >
+      <SafeAreaView style={styles.safe}>
       {/* Top bar */}
       <View style={styles.topBar}>
         <View style={styles.onlineRow}>
@@ -323,6 +325,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           </View>
         </TouchableOpacity>
       </Modal>
+      </SafeAreaView>
     </ImageBackground>
   );
 }
@@ -331,6 +334,7 @@ const LIME = '#4ade80';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
+  safe: { flex: 1 },
 
   topBar: {
     flexDirection: 'row',

@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ImageBackground,
   TouchableOpacity, Modal, Switch,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, fonts, radius } from '../theme';
@@ -135,6 +136,7 @@ export function HomeScreen({ navigation }: Props) {
       style={styles.root}
       resizeMode="cover"
     >
+      <SafeAreaView style={styles.safe}>
       <ConsentModal onAccepted={() => {}} />
 
       {/* Top bar */}
@@ -277,12 +279,14 @@ export function HomeScreen({ navigation }: Props) {
           </View>
         </TouchableOpacity>
       </Modal>
+      </SafeAreaView>
     </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
+  safe: { flex: 1 },
 
   center: {
     flex: 1,
