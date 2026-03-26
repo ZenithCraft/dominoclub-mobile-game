@@ -1,23 +1,21 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ImageBackground, ActivityIndicator, Animated } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Logo } from '../components/Logo';
-import { colors } from '../theme';
+import { colors, fonts, radius, spacing } from '../theme';
 import { useAuthStore } from '../store/auth.store';
 
-type Props = {
-  navigation: NativeStackNavigationProp<any>;
-};
+type Props = { navigation: NativeStackNavigationProp<any> };
 
 export function SplashScreen({ navigation }: Props) {
-  const { loadFromStorage, user, isLoading } = useAuthStore();
-  const opacity = new Animated.Value(0);
-  const scale = new Animated.Value(0.8);
+  const { loadFromStorage } = useAuthStore();
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale   = useRef(new Animated.Value(0.92)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 800, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 1, friction: 6, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+      Animated.spring(scale,   { toValue: 1, friction: 7, useNativeDriver: true }),
     ]).start();
 
     loadFromStorage().then(() => {
@@ -27,46 +25,52 @@ export function SplashScreen({ navigation }: Props) {
         } else {
           navigation.replace('Login');
         }
-      }, 2000);
+      }, 2200);
     });
   }, []);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.bgPattern}>
-        {Array.from({ length: 8 }).flatMap((_, row) =>
-          Array.from({ length: 12 }).map((__, col) => (
-            <View key={`${row}-${col}`} style={[styles.bgTile, { opacity: 0.08 }]} />
-          ))
-        )}
-      </View>
-
-      <Animated.View style={{ opacity, transform: [{ scale }], alignItems: 'center' }}>
+    <ImageBackground
+      source={require('../../assets/background.png')}
+      style={styles.root}
+      resizeMode="cover"
+    >
+      <Animated.View style={[styles.card, { opacity, transform: [{ scale }] }]}>
         <Logo size="lg" />
+
+        <View style={styles.loadingSection}>
+          <ActivityIndicator color={colors.primary} size="small" />
+          <Text style={styles.loadingText}>Carregando</Text>
+        </View>
       </Animated.View>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bgPattern: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  bgTile: {
-    width: 60,
-    height: 32,
+  card: {
+    backgroundColor: 'rgba(8, 22, 8, 0.72)',
     borderWidth: 1,
-    borderColor: colors.primary,
-    margin: 8,
-    borderRadius: 4,
+    borderColor: 'rgba(74, 222, 128, 0.22)',
+    borderRadius: radius.xl,
+    paddingVertical: spacing.xxxl,
+    paddingHorizontal: 64,
+    alignItems: 'center',
+    gap: spacing.xl,
+    minWidth: 300,
+  },
+  loadingSection: {
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  loadingText: {
+    color: colors.textMuted,
+    fontSize: fonts.sizes.sm,
+    letterSpacing: 1,
   },
 });

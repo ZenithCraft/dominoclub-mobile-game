@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Modal, TextInput, Alert, RefreshControl, Animated,
+  ImageBackground,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -9,12 +10,6 @@ import QRCode from 'react-native-qrcode-svg';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
-import { Button } from '../components/Button';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const DEPOSIT_PRESETS = [20, 30, 50, 100, 200, 500];
-const POLL_INTERVAL_MS = 3000;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,65 +20,132 @@ interface Transaction {
   balance_after: number | null;
   status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'PROCESSING';
   pix_qr_code?: string;
-  pix_key?: string;
   created_at: string;
 }
 
 type DepositStep = 'amount' | 'qr' | 'confirmed';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const DEPOSIT_PRESETS = [10, 25, 50, 100];
+const POLL_INTERVAL_MS = 3000;
 
 const TYPE_LABEL: Record<string, string> = {
   DEPOSIT: 'Depósito', WITHDRAWAL: 'Saque', BET: 'Aposta',
   WIN: 'Prêmio', BONUS: 'Bônus', REFUND: 'Reembolso', FEE: 'Taxa',
 };
-const TYPE_COLOR: Record<string, string> = {
-  DEPOSIT: colors.success, WITHDRAWAL: colors.error,
-  BET: colors.warning, WIN: colors.gold,
-};
+
 const STATUS_LABEL: Record<string, string> = {
   COMPLETED: 'Concluído', PENDING: 'Pendente',
   FAILED: 'Falhou', PROCESSING: 'Processando',
 };
-const STATUS_BG: Record<string, string> = {
-  COMPLETED: '#16a34a33', PENDING: '#ca8a0433',
-  FAILED: '#dc262633', PROCESSING: '#3b82f633',
-};
-const STATUS_COLOR: Record<string, string> = {
-  COMPLETED: colors.success, PENDING: colors.warning,
-  FAILED: colors.error, PROCESSING: colors.info,
-};
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Coin icon ────────────────────────────────────────────────────────────────
+
+function CoinIcon() {
+  return (
+    <View style={coinStyles.circle}>
+      <Text style={coinStyles.text}>$</Text>
+    </View>
+  );
+}
+const coinStyles = StyleSheet.create({
+  circle: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: '#facc15',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  text: { color: '#000', fontWeight: '900', fontSize: 12 },
+});
+
+// ─── Balance row ──────────────────────────────────────────────────────────────
+
+function BalanceRow({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={balRowStyles.row}>
+      <Text style={balRowStyles.label}>{label}</Text>
+      <View style={balRowStyles.right}>
+        <CoinIcon />
+        <Text style={balRowStyles.value}>{value.toLocaleString('pt-BR')}</Text>
+      </View>
+    </View>
+  );
+}
+const balRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(74,222,128,0.1)',
+  },
+  label: { color: '#fff', fontSize: fonts.sizes.sm, flex: 1 },
+  right: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  value: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+});
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: string }) {
+  const isCompleted  = status === 'COMPLETED';
+  const isProcessing = status === 'PROCESSING';
+  return (
+    <View style={[
+      badgeStyles.badge,
+      isCompleted  && badgeStyles.completed,
+      isProcessing && badgeStyles.processing,
+      !isCompleted && !isProcessing && badgeStyles.default,
+    ]}>
+      <Text style={[badgeStyles.text, isCompleted && badgeStyles.textDark]}>
+        {STATUS_LABEL[status] ?? status}
+      </Text>
+    </View>
+  );
+}
+const badgeStyles = StyleSheet.create({
+  badge: { borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 3 },
+  completed:  { backgroundColor: '#4ade80' },
+  processing: { backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  default:    { backgroundColor: 'rgba(255,255,255,0.1)' },
+  text:     { color: '#fff', fontSize: fonts.sizes.xs, fontWeight: '600' },
+  textDark: { color: '#000' },
+});
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
 
 export function WalletScreen() {
   const { user, refreshUser } = useAuthStore();
 
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const [transactions, setTransactions]   = useState<Transaction[]>([]);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [loadError, setLoadError]         = useState(false);
 
-  // Deposit modal state
-  const [depositModal, setDepositModal] = useState(false);
-  const [depositStep, setDepositStep] = useState<DepositStep>('amount');
-  const [depositAmount, setDepositAmount] = useState(50);
-  const [customAmount, setCustomAmount] = useState('');
-  const [useCustom, setUseCustom] = useState(false);
-  const [qrCode, setQrCode] = useState('');
-  const [depositTxId, setDepositTxId] = useState('');
+  // Deposit
+  const [depositModal, setDepositModal]   = useState(false);
+  const [depositStep, setDepositStep]     = useState<DepositStep>('amount');
+  const [depositAmount, setDepositAmount] = useState(10);
+  const [customAmount, setCustomAmount]   = useState('');
+  const [useCustom, setUseCustom]         = useState(false);
+  const [qrCode, setQrCode]               = useState('');
   const [depositLoading, setDepositLoading] = useState(false);
 
-  // Withdraw modal state
-  const [withdrawModal, setWithdrawModal] = useState(false);
+  // Withdraw
+  const [withdrawModal, setWithdrawModal]   = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [pixKey, setPixKey] = useState('');
+  const [pixKey, setPixKey]               = useState('');
   const [withdrawLoading, setWithdrawLoading] = useState(false);
 
   // Polling
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const successAnim = useRef(new Animated.Value(0)).current;
 
-  // ── Data loading ──────────────────────────────────────────────────────────
+  const realBalance    = user?.wallet?.real_balance ?? 0;
+  const bonusBalance   = user?.wallet?.bonus_balance ?? 0;
+  const rolloverRemaining = user?.wallet?.rollover_remaining ?? 0;
+  const canWithdraw    = rolloverRemaining === 0 && realBalance >= 20;
+
+  // ── Data ────────────────────────────────────────────────────────────────────
 
   const loadWallet = useCallback(async (silent = false) => {
     if (!silent) setLoadError(false);
@@ -104,7 +166,11 @@ export function WalletScreen() {
     setRefreshing(false);
   }, [loadWallet]);
 
-  // ── Deposit polling ───────────────────────────────────────────────────────
+  // ── Deposit polling ─────────────────────────────────────────────────────────
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }, []);
 
   const startPolling = useCallback((txId: string) => {
     stopPolling();
@@ -114,7 +180,6 @@ export function WalletScreen() {
         if (data.status === 'COMPLETED') {
           stopPolling();
           setDepositStep('confirmed');
-          // Pulse animation for success
           Animated.sequence([
             Animated.timing(successAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
             Animated.timing(successAnim, { toValue: 0.8, duration: 200, useNativeDriver: true }),
@@ -126,38 +191,23 @@ export function WalletScreen() {
           Alert.alert('Pagamento falhou', 'O pagamento PIX não foi confirmado.');
           closeDepositModal();
         }
-      } catch {
-        // keep polling silently
-      }
+      } catch { /* keep polling silently */ }
     }, POLL_INTERVAL_MS);
-  }, [successAnim, loadWallet]);
-
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
+  }, [successAnim, loadWallet, stopPolling]);
 
   useEffect(() => () => stopPolling(), []);
 
-  // ── Deposit flow ──────────────────────────────────────────────────────────
+  // ── Deposit actions ─────────────────────────────────────────────────────────
 
-  const effectiveDepositAmount = useCustom
-    ? parseFloat(customAmount) || 0
-    : depositAmount;
+  const effectiveAmount = useCustom ? (parseFloat(customAmount) || 0) : depositAmount;
 
   const handleDeposit = async () => {
-    const amount = effectiveDepositAmount;
-    if (amount < 20) {
-      Alert.alert('Valor inválido', 'O depósito mínimo é R$ 20,00');
-      return;
-    }
+    const amount = effectiveAmount;
+    if (amount < 10) { Alert.alert('Valor inválido', 'O depósito mínimo é R$ 10,00'); return; }
     setDepositLoading(true);
     try {
       const { data } = await api.post('/wallet/deposit', { amount });
       setQrCode(data.qrCode);
-      setDepositTxId(data.transactionId);
       setDepositStep('qr');
       startPolling(data.transactionId);
     } catch (err: any) {
@@ -172,39 +222,23 @@ export function WalletScreen() {
     setDepositModal(false);
     setDepositStep('amount');
     setQrCode('');
-    setDepositTxId('');
-    setUseCustom(false);
-    setCustomAmount('');
+    setUseCustom(false); setCustomAmount('');
     loadWallet(true);
   }, [stopPolling, loadWallet]);
 
-  // ── Withdraw flow ─────────────────────────────────────────────────────────
-
-  const rolloverRemaining = user?.wallet?.rollover_remaining ?? 0;
-  const realBalance = user?.wallet?.real_balance ?? 0;
-  const canWithdraw = rolloverRemaining === 0 && realBalance >= 20;
+  // ── Withdraw actions ────────────────────────────────────────────────────────
 
   const handleWithdraw = async () => {
     const amount = parseFloat(withdrawAmount.replace(',', '.'));
-    if (!amount || amount < 20) {
-      Alert.alert('Valor inválido', 'O saque mínimo é R$ 20,00');
-      return;
-    }
-    if (amount > realBalance) {
-      Alert.alert('Saldo insuficiente', `Seu saldo é R$ ${realBalance.toFixed(2)}`);
-      return;
-    }
-    if (!pixKey.trim()) {
-      Alert.alert('Chave PIX obrigatória', 'Informe sua chave PIX para receber');
-      return;
-    }
+    if (!amount || amount < 20) { Alert.alert('Valor inválido', 'O saque mínimo é R$ 20,00'); return; }
+    if (amount > realBalance)   { Alert.alert('Saldo insuficiente', `Seu saldo é R$ ${realBalance.toFixed(2)}`); return; }
+    if (!pixKey.trim())         { Alert.alert('Chave PIX obrigatória', 'Informe sua chave PIX'); return; }
     setWithdrawLoading(true);
     try {
       await api.post('/wallet/withdraw', { amount, pixKey: pixKey.trim() });
-      Alert.alert('Saque solicitado! ✅', 'Você receberá o valor em instantes na sua chave PIX.');
+      Alert.alert('Saque solicitado! ✅', 'Você receberá o valor na sua chave PIX em instantes.');
       setWithdrawModal(false);
-      setWithdrawAmount('');
-      setPixKey('');
+      setWithdrawAmount(''); setPixKey('');
       await loadWallet(true);
     } catch (err: any) {
       Alert.alert('Erro no saque', err.response?.data?.error || 'Tente novamente em instantes');
@@ -213,473 +247,528 @@ export function WalletScreen() {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  const today = new Date().toLocaleDateString('pt-BR');
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <View style={styles.container}>
-
-      {/* ── Header ──────────────────────────────────────────────────────── */}
+    <ImageBackground
+      source={require('../../assets/background.png')}
+      style={styles.root}
+      resizeMode="cover"
+    >
+      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Carteira</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.iconBtn}>
+            <Text style={styles.iconText}>⚙</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtn}>
+            <Text style={styles.iconText}>⊣</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
+      {/* Two-column body */}
       <ScrollView
-        style={styles.content}
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4ade80" />
         }
       >
+        {/* ── Left panel: balances + actions ── */}
+        <View style={styles.leftPanel}>
+          <BalanceRow label="Saldo em conta" value={realBalance} />
+          <BalanceRow label="Saldo de bônus" value={bonusBalance} />
+          <BalanceRow label="Saldo disponível para saque" value={canWithdraw ? realBalance : 0} />
 
-        {/* ── Balance Card ─────────────────────────────────────────────── */}
-        <View style={styles.balanceCard}>
-          <View style={styles.userRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.userName}>{user?.name || 'Jogador'}</Text>
-              <Text style={styles.userPhone}>{user?.phone}</Text>
-            </View>
-          </View>
-
-          <View style={styles.balanceRow}>
-            <View style={styles.balanceItem}>
-              <Text style={styles.balanceLabel}>Saldo real</Text>
-              <Text style={styles.balanceValue}>R$ {realBalance.toFixed(2)}</Text>
-            </View>
-            <View style={styles.balanceDivider} />
-            <View style={styles.balanceItem}>
-              <Text style={styles.balanceLabel}>Bônus</Text>
-              <Text style={[styles.balanceValue, { color: colors.gold }]}>
-                R$ {(user?.wallet?.bonus_balance || 0).toFixed(2)}
-              </Text>
-            </View>
-          </View>
-
-          {/* Rollover warning */}
-          {rolloverRemaining > 0 && (
-            <View style={styles.rolloverRow}>
-              <Text style={styles.rolloverIcon}>🔒</Text>
-              <Text style={styles.rolloverText}>
-                Aposte mais R$ {rolloverRemaining.toFixed(2)} em jogos para liberar o saque
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.depositBtn} onPress={() => setDepositModal(true)}>
-              <LinearGradient colors={['#4ade80', '#16a34a']} style={styles.btnGradient}>
-                <Text style={styles.depositBtnText}>+ Depositar</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
+          <View style={styles.actionsCol}>
             <TouchableOpacity
-              style={[styles.withdrawBtn, !canWithdraw && styles.btnDisabled]}
+              style={styles.withdrawBtn}
               onPress={() => {
-                if (rolloverRemaining > 0) {
-                  Alert.alert('Saque bloqueado', `Complete o rollover de R$ ${rolloverRemaining.toFixed(2)} antes de sacar.`);
-                } else if (realBalance < 20) {
-                  Alert.alert('Saldo insuficiente', 'Saldo mínimo para saque é R$ 20,00');
+                if (!canWithdraw) {
+                  Alert.alert('Saque bloqueado',
+                    rolloverRemaining > 0
+                      ? `Complete o rollover de R$ ${rolloverRemaining.toFixed(2)}`
+                      : 'Saldo mínimo para saque é R$ 20,00');
                 } else {
                   setWithdrawModal(true);
                 }
               }}
             >
-              <Text style={[styles.withdrawBtnText, !canWithdraw && { color: colors.textMuted }]}>
-                Sacar
-              </Text>
+              <Text style={styles.withdrawBtnText}>Sacar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.depositBtn} onPress={() => setDepositModal(true)}>
+              <LinearGradient
+                colors={['#4ade80', '#16a34a']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={styles.depositBtnGrad}
+              >
+                <Text style={styles.depositBtnText}>+ Depositar</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* ── Transaction History ──────────────────────────────────────── */}
-        <Text style={styles.sectionTitle}>Histórico</Text>
-
-        {loadError && (
-          <TouchableOpacity style={styles.errorRow} onPress={() => loadWallet()}>
-            <Text style={styles.errorText}>Erro ao carregar. Toque para tentar novamente.</Text>
-          </TouchableOpacity>
-        )}
-
-        <View style={styles.transactionTable}>
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Tipo</Text>
-            <Text style={styles.tableHeaderCell}>Valor</Text>
-            <Text style={styles.tableHeaderCell}>Status</Text>
-            <Text style={[styles.tableHeaderCell, { flex: 1.5 }]}>Data</Text>
+        {/* ── Right panel: transaction table ── */}
+        <View style={styles.rightPanel}>
+          <View style={styles.tableTopRow}>
+            <Text style={styles.tableTitle}>Histórico de transações</Text>
+            <View style={styles.datePill}>
+              <Text style={styles.datePillText}>{today} ▾</Text>
+            </View>
           </View>
 
-          {transactions.map((tx) => (
-            <View key={tx.id} style={styles.tableRow}>
-              <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={[styles.typeDot, { backgroundColor: TYPE_COLOR[tx.type] || colors.textMuted }]} />
-                <Text style={styles.typeText}>{TYPE_LABEL[tx.type] || tx.type}</Text>
-              </View>
-              <Text style={[styles.amountText, { color: tx.amount > 0 ? colors.success : colors.error }]}>
-                {tx.amount > 0 ? '+' : ''}R$ {Math.abs(tx.amount).toFixed(2)}
-              </Text>
-              <View style={[styles.statusBadge, { backgroundColor: STATUS_BG[tx.status] || colors.bgCard }]}>
-                <Text style={[styles.statusText, { color: STATUS_COLOR[tx.status] || colors.textMuted }]}>
-                  {STATUS_LABEL[tx.status] || tx.status}
-                </Text>
-              </View>
-              <Text style={styles.dateText}>
-                {new Date(tx.created_at).toLocaleDateString('pt-BR')}
-              </Text>
-            </View>
-          ))}
+          {/* Table header */}
+          <View style={styles.tableHead}>
+            <Text style={[styles.thCell, { width: 32 }]}>ID</Text>
+            <Text style={[styles.thCell, { width: 80 }]}>Data</Text>
+            <Text style={[styles.thCell, { flex: 1 }]}>Tipo</Text>
+            <Text style={[styles.thCell, { width: 70 }]}>Valor</Text>
+            <Text style={[styles.thCell, { width: 90 }]}>Status</Text>
+          </View>
 
-          {transactions.length === 0 && !loadError && (
+          {/* Table rows */}
+          {loadError ? (
+            <TouchableOpacity style={styles.errorRow} onPress={() => loadWallet()}>
+              <Text style={styles.errorText}>Erro ao carregar. Toque para tentar novamente.</Text>
+            </TouchableOpacity>
+          ) : transactions.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Nenhuma transação ainda</Text>
             </View>
+          ) : (
+            transactions.map((tx, idx) => (
+              <View key={tx.id} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
+                <Text style={[styles.tdCell, { width: 32 }]}>{String(idx + 1).padStart(2, '0')}</Text>
+                <Text style={[styles.tdCell, { width: 80 }]}>
+                  {new Date(tx.created_at).toLocaleDateString('pt-BR')}
+                </Text>
+                <Text style={[styles.tdCell, { flex: 1 }]}>{TYPE_LABEL[tx.type] ?? tx.type}</Text>
+                <Text style={[styles.tdCell, { width: 70, color: tx.amount > 0 ? '#4ade80' : '#f87171', fontWeight: '700' }]}>
+                  R${Math.abs(tx.amount)}
+                </Text>
+                <View style={{ width: 90 }}>
+                  <StatusBadge status={tx.status} />
+                </View>
+              </View>
+            ))
           )}
         </View>
       </ScrollView>
 
-      {/* ── Deposit Modal ────────────────────────────────────────────────── */}
-      <Modal visible={depositModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+      {/* ── Deposit modal — matching Deposite.png ── */}
+      <Modal visible={depositModal} transparent animationType="fade">
+        <View style={styles.overlay}>
           <View style={styles.modalCard}>
 
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {depositStep === 'confirmed' ? '✅ Pago!' : 'Depositar via PIX'}
-              </Text>
-              <TouchableOpacity onPress={closeDepositModal}>
-                <Text style={styles.modalClose}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Step 1: Choose amount */}
             {depositStep === 'amount' && (
               <>
-                <Text style={styles.modalLabel}>Escolha o valor</Text>
-                <View style={styles.presetGrid}>
+                <Text style={styles.modalTitle}>Depositar</Text>
+                <Text style={styles.modalSubtitle}>Faça um depósito utilizando o Pix</Text>
+
+                {/* 4 preset buttons in a row */}
+                <View style={styles.presetsRow}>
                   {DEPOSIT_PRESETS.map((amt) => (
                     <TouchableOpacity
                       key={amt}
-                      style={[
-                        styles.presetBtn,
-                        !useCustom && depositAmount === amt && styles.presetBtnActive,
-                      ]}
+                      style={[styles.presetBtn, !useCustom && depositAmount === amt && styles.presetBtnActive]}
                       onPress={() => { setDepositAmount(amt); setUseCustom(false); }}
                     >
-                      <Text style={[
-                        styles.presetText,
-                        !useCustom && depositAmount === amt && styles.presetTextActive,
-                      ]}>
-                        R$ {amt}
+                      <Text style={[styles.presetText, !useCustom && depositAmount === amt && styles.presetTextActive]}>
+                        R${amt}
                       </Text>
                     </TouchableOpacity>
                   ))}
-
-                  {/* Custom amount option */}
-                  <TouchableOpacity
-                    style={[styles.presetBtn, useCustom && styles.presetBtnActive, { flex: 1 }]}
-                    onPress={() => setUseCustom(true)}
-                  >
-                    <Text style={[styles.presetText, useCustom && styles.presetTextActive]}>
-                      Outro
-                    </Text>
-                  </TouchableOpacity>
                 </View>
 
-                {useCustom && (
-                  <View style={[styles.inputWrapper, { marginTop: spacing.sm }]}>
-                    <Text style={styles.currencyPrefix}>R$</Text>
-                    <TextInput
-                      style={styles.amountInput}
-                      value={customAmount}
-                      onChangeText={setCustomAmount}
-                      keyboardType="decimal-pad"
-                      placeholder="0,00"
-                      placeholderTextColor={colors.textMuted}
-                      autoFocus
-                    />
-                  </View>
-                )}
+                <Text style={styles.orText}>ou</Text>
 
-                <Text style={styles.minNote}>Mínimo R$ 20 · Máximo R$ 10.000</Text>
-
-                <Button
-                  title={`Gerar PIX • R$ ${effectiveDepositAmount.toFixed(2)}`}
-                  onPress={handleDeposit}
-                  loading={depositLoading}
-                  style={{ marginTop: spacing.lg }}
-                />
-              </>
-            )}
-
-            {/* Step 2: QR Code + waiting for payment */}
-            {depositStep === 'qr' && (
-              <View style={styles.pixContainer}>
-                <View style={styles.pollingBadge}>
-                  <Text style={styles.pollingText}>⏳ Aguardando pagamento...</Text>
-                </View>
-
-                {/* Actual QR Code */}
-                <View style={styles.qrWrapper}>
-                  <QRCode
-                    value={qrCode}
-                    size={180}
-                    color="#000"
-                    backgroundColor="#fff"
+                {/* Custom amount input */}
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.input}
+                    value={useCustom ? customAmount : ''}
+                    onFocus={() => setUseCustom(true)}
+                    onChangeText={setCustomAmount}
+                    keyboardType="decimal-pad"
+                    placeholder="Digite o valor"
+                    placeholderTextColor="rgba(255,255,255,0.35)"
                   />
                 </View>
 
-                <Text style={styles.pixAmountLabel}>
-                  R$ {effectiveDepositAmount.toFixed(2)}
-                </Text>
+                {/* Yellow PIX button */}
+                <TouchableOpacity
+                  style={[styles.pixBtn, depositLoading && styles.pixBtnLoading]}
+                  onPress={handleDeposit}
+                  disabled={depositLoading}
+                >
+                  <Text style={styles.pixBtnText}>
+                    {depositLoading ? '⏳ Gerando...' : '⬛ Gerar Código PIX'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
 
+            {depositStep === 'qr' && (
+              <View style={styles.qrSection}>
+                <Text style={styles.modalTitle}>Depositar</Text>
+                <View style={styles.pollingBadge}>
+                  <Text style={styles.pollingText}>⏳ Aguardando pagamento...</Text>
+                </View>
+                <View style={styles.qrWrap}>
+                  <QRCode value={qrCode} size={160} color="#000" backgroundColor="#fff" />
+                </View>
+                <Text style={styles.qrAmount}>R$ {effectiveAmount.toFixed(2)}</Text>
                 <TouchableOpacity
                   style={styles.copyBtn}
                   onPress={async () => {
                     await Clipboard.setStringAsync(qrCode);
-                    Alert.alert('Copiado!', 'Abra seu banco e cole o código PIX para pagar');
+                    Alert.alert('Copiado!', 'Cole no seu app de banco para pagar');
                   }}
                 >
-                  <Text style={styles.copyBtnText}>📋  Copiar código PIX (Copia e Cola)</Text>
+                  <Text style={styles.copyBtnText}>📋 Copiar código PIX (Copia e Cola)</Text>
                 </TouchableOpacity>
-
-                <Text style={styles.pixNote}>
-                  O saldo será creditado automaticamente após o pagamento
-                </Text>
-                <Text style={styles.pixNote}>Este código expira em 1 hora</Text>
-
-                <Button
-                  title="Cancelar"
-                  onPress={closeDepositModal}
-                  variant="ghost"
-                  size="sm"
-                  style={{ marginTop: spacing.sm }}
-                />
+                <TouchableOpacity onPress={closeDepositModal} style={styles.cancelLink}>
+                  <Text style={styles.cancelLinkText}>Cancelar</Text>
+                </TouchableOpacity>
               </View>
             )}
 
-            {/* Step 3: Payment confirmed */}
             {depositStep === 'confirmed' && (
-              <Animated.View style={[styles.confirmedContainer, { opacity: successAnim }]}>
-                <Text style={styles.confirmedEmoji}>🎉</Text>
+              <Animated.View style={[styles.confirmedSection, { opacity: successAnim }]}>
+                <Text style={{ fontSize: 56 }}>🎉</Text>
                 <Text style={styles.confirmedTitle}>Depósito confirmado!</Text>
-                <Text style={styles.confirmedAmount}>
-                  + R$ {effectiveDepositAmount.toFixed(2)}
-                </Text>
-                <Text style={styles.confirmedBalance}>
-                  Novo saldo: R$ {(user?.wallet?.real_balance ?? 0).toFixed(2)}
-                </Text>
-                <Button
-                  title="Fechar"
-                  onPress={closeDepositModal}
-                  style={{ marginTop: spacing.lg, width: '100%' }}
-                />
+                <Text style={styles.confirmedAmount}>+ R$ {effectiveAmount.toFixed(2)}</Text>
+                <TouchableOpacity style={styles.closeConfirmBtn} onPress={closeDepositModal}>
+                  <Text style={styles.closeConfirmText}>Fechar</Text>
+                </TouchableOpacity>
               </Animated.View>
             )}
 
+            {/* Close X */}
+            {depositStep !== 'confirmed' && (
+              <TouchableOpacity style={styles.closeX} onPress={closeDepositModal}>
+                <Text style={styles.closeXText}>✕</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>
 
-      {/* ── Withdraw Modal ───────────────────────────────────────────────── */}
-      <Modal visible={withdrawModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+      {/* ── Withdraw modal — matching Withdraw.png ── */}
+      <Modal visible={withdrawModal} transparent animationType="fade">
+        <View style={styles.overlay}>
           <View style={styles.modalCard}>
+            <TouchableOpacity
+              style={styles.closeX}
+              onPress={() => { setWithdrawModal(false); setWithdrawAmount(''); setPixKey(''); }}
+            >
+              <Text style={styles.closeXText}>✕</Text>
+            </TouchableOpacity>
 
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Sacar via PIX</Text>
-              <TouchableOpacity onPress={() => { setWithdrawModal(false); setWithdrawAmount(''); setPixKey(''); }}>
-                <Text style={styles.modalClose}>✕</Text>
-              </TouchableOpacity>
+            <Text style={styles.modalTitle}>Sacar</Text>
+            <Text style={styles.modalSubtitle}>Saque através do Pix</Text>
+
+            {/* Available balance */}
+            <Text style={styles.fieldLabel}>Valor disponível para saque</Text>
+            <View style={styles.availablePill}>
+              <CoinIcon />
+              <Text style={styles.availablePillText}>{realBalance.toLocaleString('pt-BR')}</Text>
             </View>
+            <Text style={styles.minNote}>Saque mínimo: R$ 20</Text>
 
-            <View style={styles.availableRow}>
-              <Text style={styles.availableLabel}>Saldo disponível</Text>
-              <Text style={styles.availableValue}>R$ {realBalance.toFixed(2)}</Text>
-            </View>
-
-            <Text style={styles.modalLabel}>Valor do saque</Text>
-            <View style={styles.inputWrapper}>
-              <Text style={styles.currencyPrefix}>R$</Text>
+            {/* Amount */}
+            <Text style={styles.fieldLabel}>Valor do saque</Text>
+            <View style={styles.inputWrap}>
               <TextInput
-                style={styles.amountInput}
+                style={styles.input}
                 value={withdrawAmount}
                 onChangeText={setWithdrawAmount}
                 keyboardType="decimal-pad"
-                placeholder="0,00"
-                placeholderTextColor={colors.textMuted}
+                placeholder="Enter amount"
+                placeholderTextColor="rgba(255,255,255,0.35)"
               />
-              <TouchableOpacity
-                onPress={() => setWithdrawAmount(realBalance.toFixed(2))}
-                style={styles.maxBtn}
-              >
-                <Text style={styles.maxBtnText}>MAX</Text>
-              </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalLabel}>Chave PIX para receber</Text>
-            <View style={[styles.inputWrapper, { marginBottom: spacing.xs }]}>
+            {/* PIX key */}
+            <Text style={styles.fieldLabel}>Chave Pix</Text>
+            <Text style={styles.pixKeyNote}>Salvo: {pixKey || '—'} (Chave aleatória)</Text>
+            <View style={styles.inputWrap}>
               <TextInput
-                style={[styles.amountInput, { flex: 1 }]}
+                style={styles.input}
                 value={pixKey}
                 onChangeText={setPixKey}
-                placeholder="CPF, e-mail, celular ou chave aleatória"
-                placeholderTextColor={colors.textMuted}
+                placeholder="Pix key"
+                placeholderTextColor="rgba(255,255,255,0.35)"
                 autoCapitalize="none"
                 autoCorrect={false}
               />
             </View>
-            <Text style={styles.pixKeyNote}>
-              Certifique-se de que a chave está correta — não é possível reverter um saque
-            </Text>
 
-            <Button
-              title="Solicitar saque"
+            {/* Submit */}
+            <TouchableOpacity
+              style={[styles.submitBtn, withdrawLoading && styles.submitBtnLoading]}
               onPress={handleWithdraw}
-              loading={withdrawLoading}
-              style={{ marginTop: spacing.lg }}
-            />
+              disabled={withdrawLoading}
+            >
+              <Text style={styles.submitBtnText}>
+                {withdrawLoading ? 'Solicitando...' : 'Pedir Saque'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
-
-    </View>
+    </ImageBackground>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
+const LIME = '#4ade80';
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  root: { flex: 1 },
 
+  // Header
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(74,222,128,0.15)',
   },
-  headerTitle: { fontSize: fonts.sizes.xl, fontWeight: '800', color: colors.textPrimary },
-
-  content: { flex: 1, padding: spacing.lg },
-
-  // Balance card
-  balanceCard: {
-    backgroundColor: colors.bgCard, borderRadius: radius.xl,
-    padding: spacing.xl, marginBottom: spacing.xl,
-    borderWidth: 1, borderColor: colors.border, ...shadows.card,
+  headerTitle: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: '#fff' },
+  headerRight: { flexDirection: 'row', gap: spacing.sm },
+  iconBtn: {
+    width: 34, height: 34, borderRadius: radius.sm,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  userRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
-  avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#000', fontWeight: '800', fontSize: fonts.sizes.xl },
-  userName: { fontSize: fonts.sizes.lg, fontWeight: '700', color: colors.textPrimary },
-  userPhone: { fontSize: fonts.sizes.sm, color: colors.textMuted },
+  iconText: { color: '#fff', fontSize: 16 },
 
-  balanceRow: { flexDirection: 'row', marginBottom: spacing.md },
-  balanceItem: { flex: 1, alignItems: 'center', gap: 4 },
-  balanceDivider: { width: 1, backgroundColor: colors.border },
-  balanceLabel: { fontSize: fonts.sizes.xs, color: colors.textMuted },
-  balanceValue: { fontSize: fonts.sizes.xl, fontWeight: '800', color: colors.primary },
-
-  rolloverRow: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
-    backgroundColor: '#ca8a0422', borderRadius: radius.md,
-    padding: spacing.md, marginBottom: spacing.md,
+  // Body
+  body: {
+    flexDirection: 'row',
+    padding: spacing.lg,
+    gap: spacing.lg,
+    flexGrow: 1,
+    alignItems: 'flex-start',
   },
-  rolloverIcon: { fontSize: 14 },
-  rolloverText: { flex: 1, fontSize: fonts.sizes.xs, color: colors.warning, lineHeight: 18 },
 
-  actionRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
-  depositBtn: { flex: 1, borderRadius: radius.md, overflow: 'hidden' },
-  btnGradient: { paddingVertical: 13, alignItems: 'center' },
-  depositBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.md },
+  // Left panel
+  leftPanel: {
+    width: 240,
+    backgroundColor: 'rgba(8,25,8,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.2)',
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    gap: spacing.xs,
+  },
+  actionsCol: { gap: spacing.sm, marginTop: spacing.lg },
   withdrawBtn: {
-    flex: 1, borderRadius: radius.md, borderWidth: 1,
-    borderColor: colors.border, paddingVertical: 13, alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
-  withdrawBtnText: { color: colors.textPrimary, fontWeight: '600', fontSize: fonts.sizes.md },
-  btnDisabled: { opacity: 0.5 },
+  withdrawBtnText: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.sm },
+  depositBtn: { borderRadius: radius.md, overflow: 'hidden' },
+  depositBtnGrad: { paddingVertical: 12, alignItems: 'center' },
+  depositBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
 
-  // Transactions
-  sectionTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.md },
-  errorRow: { backgroundColor: '#dc262622', borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md, alignItems: 'center' },
+  // Right panel
+  rightPanel: {
+    flex: 1,
+    backgroundColor: 'rgba(8,25,8,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.2)',
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+  },
+  tableTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  tableTitle: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
+  datePill: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: radius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  datePillText: { color: '#fff', fontSize: fonts.sizes.xs },
+
+  // Table
+  tableHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    paddingBottom: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  thCell: { color: 'rgba(255,255,255,0.5)', fontSize: fonts.sizes.xs, fontWeight: '600' },
+
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  tableRowAlt: { backgroundColor: 'rgba(255,255,255,0.03)' },
+  tdCell: { color: '#fff', fontSize: fonts.sizes.xs },
+
+  errorRow: { padding: spacing.md, alignItems: 'center' },
   errorText: { color: colors.error, fontSize: fonts.sizes.sm },
-  transactionTable: { backgroundColor: colors.bgCard, borderRadius: radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginBottom: spacing.xxxl },
-  tableHeader: { flexDirection: 'row', padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.bgOverlay },
-  tableHeaderCell: { flex: 1, fontSize: fonts.sizes.xs, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase' },
-  tableRow: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border + '44' },
-  typeDot: { width: 8, height: 8, borderRadius: 4 },
-  typeText: { fontSize: fonts.sizes.sm, color: colors.textPrimary, fontWeight: '500' },
-  amountText: { flex: 1, fontSize: fonts.sizes.sm, fontWeight: '700' },
-  statusBadge: { flex: 1, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start' },
-  statusText: { fontSize: fonts.sizes.xs, fontWeight: '600' },
-  dateText: { flex: 1.5, fontSize: fonts.sizes.xs, color: colors.textMuted },
   emptyState: { padding: spacing.xl, alignItems: 'center' },
-  emptyText: { color: colors.textMuted, fontSize: fonts.sizes.sm },
+  emptyText: { color: 'rgba(255,255,255,0.4)', fontSize: fonts.sizes.sm },
 
-  // Modals
-  modalOverlay: { flex: 1, backgroundColor: colors.overlay80, justifyContent: 'flex-end' },
+  // Modals overlay
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   modalCard: {
-    backgroundColor: colors.bgCard,
-    borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
-    padding: spacing.xl, paddingBottom: spacing.xxxl,
-    borderTopWidth: 1, borderColor: colors.border,
+    width: 340,
+    backgroundColor: '#0d1f0d',
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    gap: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.2)',
+    ...shadows.card,
   },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
-  modalTitle: { fontSize: fonts.sizes.xl, fontWeight: '800', color: colors.textPrimary },
-  modalClose: { fontSize: 20, color: colors.textMuted, fontWeight: '700' },
-  modalLabel: { fontSize: fonts.sizes.sm, color: colors.textSecondary, marginBottom: spacing.sm, marginTop: spacing.md },
-  minNote: { fontSize: fonts.sizes.xs, color: colors.textMuted, marginTop: spacing.sm, textAlign: 'center' },
+  closeX: { position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 10 },
+  closeXText: { color: 'rgba(255,255,255,0.5)', fontSize: 18, fontWeight: '700' },
 
-  // Deposit: preset grid
-  presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  modalTitle: {
+    fontSize: fonts.sizes.xl,
+    fontWeight: '800',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: fonts.sizes.sm,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+    marginTop: -spacing.xs,
+  },
+
+  // Deposit: presets
+  presetsRow: { flexDirection: 'row', gap: spacing.sm },
   presetBtn: {
-    paddingVertical: 10, paddingHorizontal: 16, borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgCard,
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
   },
-  presetBtnActive: { borderColor: colors.primary, backgroundColor: 'rgba(74,222,128,0.15)' },
-  presetText: { color: colors.textMuted, fontWeight: '600', fontSize: fonts.sizes.sm },
-  presetTextActive: { color: colors.primary },
+  presetBtnActive: { backgroundColor: LIME, borderColor: LIME },
+  presetText: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.sm },
+  presetTextActive: { color: '#000' },
 
-  // Deposit: QR step
-  pixContainer: { alignItems: 'center', gap: spacing.md },
-  pollingBadge: { backgroundColor: '#ca8a0422', borderRadius: radius.full, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
-  pollingText: { color: colors.warning, fontSize: fonts.sizes.sm, fontWeight: '600' },
-  qrWrapper: { backgroundColor: '#fff', padding: spacing.md, borderRadius: radius.lg, ...shadows.card },
-  pixAmountLabel: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: colors.primary },
+  orText: {
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: fonts.sizes.sm,
+  },
+
+  // Input
+  inputWrap: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  input: {
+    color: '#fff',
+    fontSize: fonts.sizes.sm,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+  },
+
+  // Yellow PIX button
+  pixBtn: {
+    backgroundColor: '#fbbf24',
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  pixBtnLoading: { opacity: 0.7 },
+  pixBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.md },
+
+  // QR section
+  qrSection: { alignItems: 'center', gap: spacing.md },
+  pollingBadge: {
+    backgroundColor: '#ca8a0433',
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.xs,
+  },
+  pollingText: { color: '#fbbf24', fontWeight: '600', fontSize: fonts.sizes.sm },
+  qrWrap: { backgroundColor: '#fff', padding: spacing.md, borderRadius: radius.lg, ...shadows.card },
+  qrAmount: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: LIME },
   copyBtn: {
-    backgroundColor: colors.bgCard, borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.border,
-    paddingVertical: 12, paddingHorizontal: 20, width: '100%', alignItems: 'center',
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
   },
-  copyBtnText: { color: colors.textPrimary, fontWeight: '600', fontSize: fonts.sizes.sm },
-  pixNote: { fontSize: fonts.sizes.xs, color: colors.textMuted, textAlign: 'center' },
+  copyBtnText: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.sm },
+  cancelLink: { marginTop: -spacing.xs },
+  cancelLinkText: { color: 'rgba(255,255,255,0.4)', fontSize: fonts.sizes.sm },
 
-  // Deposit: confirmed step
-  confirmedContainer: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.lg },
-  confirmedEmoji: { fontSize: 64 },
-  confirmedTitle: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: colors.textPrimary },
-  confirmedAmount: { fontSize: fonts.sizes.xxxl, fontWeight: '800', color: colors.primary },
-  confirmedBalance: { fontSize: fonts.sizes.md, color: colors.textSecondary },
+  // Confirmed
+  confirmedSection: { alignItems: 'center', gap: spacing.md },
+  confirmedTitle: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.xl },
+  confirmedAmount: { color: LIME, fontWeight: '800', fontSize: fonts.sizes.xxxl },
+  closeConfirmBtn: {
+    backgroundColor: LIME, borderRadius: radius.md,
+    paddingVertical: 12, paddingHorizontal: 48, marginTop: spacing.sm,
+  },
+  closeConfirmText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.md },
 
   // Withdraw
-  availableRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: spacing.lg, padding: spacing.md,
-    backgroundColor: colors.bgOverlay, borderRadius: radius.md,
+  fieldLabel: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: fonts.sizes.xs,
+    fontWeight: '600',
+    marginBottom: -spacing.xs,
   },
-  availableLabel: { color: colors.textMuted, fontSize: fonts.sizes.sm },
-  availableValue: { color: colors.primary, fontWeight: '800', fontSize: fonts.sizes.lg },
-  inputWrapper: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderWidth: 1, borderColor: colors.border,
-    borderRadius: radius.md, paddingHorizontal: spacing.md, marginBottom: spacing.sm,
+  availablePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: '#fbbf24',
+    borderRadius: radius.full,
+    paddingHorizontal: 14, paddingVertical: 6,
+    alignSelf: 'flex-start',
   },
-  currencyPrefix: { color: colors.textSecondary, fontWeight: '600', marginRight: spacing.xs },
-  amountInput: { paddingVertical: 14, color: colors.textPrimary, fontSize: fonts.sizes.md, flex: 1 },
-  maxBtn: { paddingHorizontal: spacing.sm, paddingVertical: 4, backgroundColor: colors.primaryDark, borderRadius: radius.sm },
-  maxBtnText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  pixKeyNote: { fontSize: fonts.sizes.xs, color: colors.warning, lineHeight: 17 },
+  availablePillText: { color: '#000', fontWeight: '800', fontSize: fonts.sizes.sm },
+  minNote: { color: 'rgba(255,255,255,0.4)', fontSize: fonts.sizes.xs, marginTop: -spacing.xs },
+  pixKeyNote: { color: 'rgba(255,255,255,0.4)', fontSize: fonts.sizes.xs, marginTop: -spacing.xs },
+  submitBtn: {
+    backgroundColor: LIME, borderRadius: radius.md,
+    paddingVertical: 14, alignItems: 'center', marginTop: spacing.xs,
+  },
+  submitBtnLoading: { opacity: 0.7 },
+  submitBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.md },
 });

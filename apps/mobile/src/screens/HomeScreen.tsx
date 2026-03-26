@@ -1,30 +1,120 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import {
+  View, Text, StyleSheet, ImageBackground,
+  TouchableOpacity, Modal, Switch,
+} from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { colors, spacing, fonts, radius } from '../theme';
 import { useAuthStore } from '../store/auth.store';
-import { connectSocket, getSocket } from '../services/socket';
-import { Logo } from '../components/Logo';
+import { connectSocket } from '../services/socket';
 import { ConsentModal } from '../components/ConsentModal';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
-const GAME_MODES = [
-  { id: 'ARENA_1V1', label: 'Arena 1v1', icon: '⚔️', desc: 'Sit & Go', color: '#16a34a', betRange: 'R$5-R$500' },
-  { id: 'CUP_1V1', label: 'Copa 1v1', icon: '🏆', desc: 'Eliminatória', color: '#ca8a04', betRange: 'R$10-R$200' },
-  { id: 'TOURNAMENT_2V2', label: 'Torneio 2x2', icon: '🎯', desc: 'Duplas rotativas', color: '#7c3aed', betRange: 'R$20 entrada' },
-  { id: 'RECREATIONAL_2V2', label: 'Recreativo 2x2', icon: '🎲', desc: 'Apostas baixas', color: '#0891b2', betRange: 'R$1-R$20' },
-];
+// ─── Shared top-bar used across logged-in screens ──────────────────────────
+
+export function GameTopBar({
+  user,
+  onSettings,
+  onExit,
+  onWallet,
+}: {
+  user: any;
+  onSettings?: () => void;
+  onExit?: () => void;
+  onWallet?: () => void;
+}) {
+  const balance = user?.wallet?.real_balance ?? 0;
+  const level   = 2; // TODO: pull from user profile
+
+  return (
+    <View style={topBar.bar}>
+      {/* Left: avatar + name + level */}
+      <View style={topBar.left}>
+        <View style={topBar.avatar}>
+          <Text style={topBar.avatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
+        </View>
+        <View>
+          <Text style={topBar.name}>{user?.name || 'Jogador'}</Text>
+          <Text style={topBar.level}>Lev: {String(level).padStart(2, '0')}</Text>
+        </View>
+      </View>
+
+      {/* Right: balance + add + settings + exit */}
+      <View style={topBar.right}>
+        <TouchableOpacity style={topBar.balancePill} onPress={onWallet}>
+          <Text style={topBar.balanceText}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={topBar.addBtn} onPress={onWallet}>
+          <Text style={topBar.addText}>+</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={topBar.iconBtn} onPress={onSettings}>
+          <Text style={topBar.iconText}>⚙</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={topBar.iconBtn} onPress={onExit}>
+          <Text style={topBar.iconText}>⊣</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const topBar = StyleSheet.create({
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(74,222,128,0.15)',
+  },
+  left: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  avatar: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#4a7c4a',
+    borderWidth: 2, borderColor: 'rgba(74,222,128,0.4)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
+  name:   { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+  level:  { color: colors.textMuted, fontSize: fonts.sizes.xs },
+  right:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  balancePill: {
+    backgroundColor: '#4ade80',
+    borderRadius: radius.full,
+    paddingHorizontal: 12, paddingVertical: 4,
+  },
+  balanceText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
+  addBtn: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: '#dc2626',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  addText: { color: '#fff', fontWeight: '800', fontSize: 14, lineHeight: 16 },
+  iconBtn: {
+    width: 34, height: 34, borderRadius: radius.sm,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconText: { color: '#fff', fontSize: 16 },
+});
+
+// ─── Main HomeScreen ────────────────────────────────────────────────────────
 
 export function HomeScreen({ navigation }: Props) {
   const { user } = useAuthStore();
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [profileVisible, setProfileVisible]   = useState(false);
+  const [soundOn, setSoundOn]   = useState(true);
+  const [musicOn, setMusicOn]   = useState(true);
   const [onlineCount, setOnlineCount] = useState(0);
-  const [profileModal, setProfileModal] = useState(false);
-  const [settingsModal, setSettingsModal] = useState(false);
-  const [consentReady, setConsentReady] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [musicEnabled, setMusicEnabled] = useState(true);
 
   useEffect(() => {
     connectSocket().then((socket) => {
@@ -32,272 +122,299 @@ export function HomeScreen({ navigation }: Props) {
     });
   }, []);
 
-  const handleModeSelect = (modeId: string) => {
-    navigation.navigate('ModeSelect', { mode: modeId });
+  const handleLogout = () => {
+    setProfileVisible(false);
+    useAuthStore.getState().logout().then(() => navigation.replace('Login'));
   };
 
   return (
-    <View style={styles.container}>
-      <ConsentModal onAccepted={() => setConsentReady(true)} />
+    <ImageBackground
+      source={require('../../assets/background.png')}
+      style={styles.root}
+      resizeMode="cover"
+    >
+      <ConsentModal onAccepted={() => {}} />
+
       {/* Top bar */}
-      <View style={styles.topBar}>
-        <Logo size="sm" />
-        <View style={styles.onlineIndicator}>
-          <View style={styles.onlineDot} />
-          <Text style={styles.onlineText}>Jogadores online: {onlineCount}</Text>
-        </View>
-        <View style={styles.topActions}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setSettingsModal(true)}>
-            <Text style={styles.iconText}>⚙️</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn}>
-            <Text style={styles.iconText}>🔔</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <GameTopBar
+        user={user}
+        onSettings={() => setSettingsVisible(true)}
+        onExit={handleLogout}
+        onWallet={() => navigation.navigate('Wallet')}
+      />
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Game mode grid */}
-        <Text style={styles.sectionTitle}>Escolha o modo de jogo</Text>
-        <View style={styles.modesGrid}>
-          {GAME_MODES.map((mode) => (
-            <TouchableOpacity
-              key={mode.id}
-              onPress={() => handleModeSelect(mode.id)}
-              activeOpacity={0.8}
-              style={styles.modeCardWrapper}
+      {/* Center content */}
+      <View style={styles.center}>
+        <Text style={styles.title}>Escolha o modo de jogo</Text>
+        <Text style={styles.subtitle}>Escolha como você quer jogar: individual ou time</Text>
+
+        <View style={styles.modeRow}>
+          {/* Livre button — cyan */}
+          <TouchableOpacity
+            style={styles.modeBtn}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('ModeSelect', { mode: 'LIVRE' })}
+          >
+            <LinearGradient
+              colors={['#22d3ee', '#0891b2']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.modeBtnGrad}
             >
-              <LinearGradient
-                colors={[mode.color + '33', mode.color + '11']}
-                style={styles.modeCard}
-              >
-                <View style={[styles.modeIconBg, { backgroundColor: mode.color + '22' }]}>
-                  <Text style={styles.modeIcon}>{mode.icon}</Text>
-                </View>
-                <Text style={styles.modeLabel}>{mode.label}</Text>
-                <Text style={styles.modeDesc}>{mode.desc}</Text>
-                <View style={[styles.modeBadge, { backgroundColor: mode.color + '33' }]}>
-                  <Text style={[styles.modeBetRange, { color: mode.color }]}>{mode.betRange}</Text>
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-          ))}
-        </View>
+              <Text style={styles.modeBtnText}>Livre</Text>
+            </LinearGradient>
+          </TouchableOpacity>
 
-        {/* Upcoming tournaments */}
-        <Text style={styles.sectionTitle}>Torneios em breve</Text>
-        <View style={styles.tournamentCard}>
-          <Text style={styles.tournamentIcon}>🏆</Text>
-          <View style={styles.tournamentInfo}>
-            <Text style={styles.tournamentName}>Copa Dominó Noturna</Text>
-            <Text style={styles.tournamentMeta}>Hoje 20:00 · R$20 entrada · Prêmio: R$500</Text>
-          </View>
-          <TouchableOpacity style={styles.joinBtn}>
-            <Text style={styles.joinBtnText}>Entrar</Text>
+          {/* Torneio button — yellow/gold */}
+          <TouchableOpacity
+            style={styles.modeBtn}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('ModeSelect', { mode: 'TORNEIO' })}
+          >
+            <LinearGradient
+              colors={['#fbbf24', '#d97706']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.modeBtnGrad}
+            >
+              <Text style={styles.modeBtnText}>Torneio</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-
-      {/* Bottom player bar */}
-      <View style={styles.playerBar}>
-        <TouchableOpacity style={styles.avatarBtn} onPress={() => setProfileModal(true)}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
-          </View>
-          <View>
-            <Text style={styles.playerName}>{user?.name || 'Jogador'}</Text>
-            <Text style={styles.playerStatus}>● Online</Text>
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.balanceInfo}>
-          <Text style={styles.balanceLabel}>Saldo</Text>
-          <Text style={styles.balanceValue}>
-            R$ {(user?.wallet?.real_balance || 0).toFixed(2)}
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.playBtn}
-          onPress={() => navigation.navigate('ModeSelect', {})}
-        >
-          <LinearGradient colors={['#4ade80', '#16a34a']} style={styles.playBtnGradient}>
-            <Text style={styles.playBtnText}>JOGAR</Text>
-          </LinearGradient>
-        </TouchableOpacity>
       </View>
 
-      {/* Settings Modal */}
-      <Modal visible={settingsModal} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setSettingsModal(false)}>
-          <View style={styles.modalCard}>
+      {/* ── Settings Modal (Configurações) ── */}
+      <Modal visible={settingsVisible} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.overlay}
+          activeOpacity={1}
+          onPress={() => setSettingsVisible(false)}
+        >
+          <View style={styles.settingsCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Settings</Text>
-              <TouchableOpacity onPress={() => setSettingsModal(false)}>
-                <Text style={styles.modalClose}>✕</Text>
+              <Text style={styles.modalTitle}>Configurações</Text>
+              <TouchableOpacity onPress={() => setSettingsVisible(false)}>
+                <Text style={styles.closeBtn}>✕</Text>
               </TouchableOpacity>
             </View>
+
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Som:</Text>
-              <TouchableOpacity
-                style={[styles.toggle, soundEnabled && styles.toggleOn]}
-                onPress={() => setSoundEnabled(!soundEnabled)}
-              >
-                <View style={[styles.toggleThumb, soundEnabled && styles.toggleThumbOn]} />
-              </TouchableOpacity>
+              <Switch
+                value={soundOn}
+                onValueChange={setSoundOn}
+                trackColor={{ false: '#f97316', true: '#4ade80' }}
+                thumbColor={soundOn ? '#fff' : '#fff'}
+              />
             </View>
+
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Música:</Text>
-              <TouchableOpacity
-                style={[styles.toggle, musicEnabled && styles.toggleOn]}
-                onPress={() => setMusicEnabled(!musicEnabled)}
-              >
-                <View style={[styles.toggleThumb, musicEnabled && styles.toggleThumbOn]} />
-              </TouchableOpacity>
+              <Switch
+                value={musicOn}
+                onValueChange={setMusicOn}
+                trackColor={{ false: '#f97316', true: '#4ade80' }}
+                thumbColor={musicOn ? '#fff' : '#fff'}
+              />
             </View>
           </View>
         </TouchableOpacity>
       </Modal>
 
-      {/* Profile Modal */}
-      <Modal visible={profileModal} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setProfileModal(false)}>
-          <View style={styles.modalCard}>
+      {/* ── Profile Modal ── */}
+      <Modal visible={profileVisible} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.overlay}
+          activeOpacity={1}
+          onPress={() => setProfileVisible(false)}
+        >
+          <View style={styles.profileCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Profile</Text>
-              <TouchableOpacity onPress={() => setProfileModal(false)}>
-                <Text style={styles.modalClose}>✕</Text>
+              <Text style={styles.modalTitle}>Perfil</Text>
+              <TouchableOpacity onPress={() => setProfileVisible(false)}>
+                <Text style={styles.closeBtn}>✕</Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.profileContent}>
-              <View style={styles.profileAvatar}>
-                <Text style={styles.profileAvatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
+
+            <View style={styles.profileBody}>
+              {/* Left: avatar + info */}
+              <View style={styles.profileLeft}>
+                <View style={styles.profileAvatar}>
+                  <Text style={styles.profileAvatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
+                </View>
+                <Text style={styles.profileName}>{user?.name || 'Jogador'}</Text>
+                <Text style={styles.profileBadge}>Bronze</Text>
+                <Text style={styles.profileStar}>⭐</Text>
+                <View style={styles.xpBarBg}>
+                  <View style={[styles.xpBarFill, { width: '40%' }]} />
+                </View>
               </View>
-              <Text style={styles.profileName}>{user?.name || 'Jogador'}</Text>
-              <View style={styles.xpBar}>
-                <View style={[styles.xpFill, { width: '60%' }]} />
+
+              {/* Right: stats */}
+              <View style={styles.profileRight}>
+                <Text style={styles.statLabel}>Total de vitórias</Text>
+                <View style={styles.statBox}><Text style={styles.statValue}>250</Text></View>
+
+                <Text style={styles.statLabel}>Taxa de vitória</Text>
+                <View style={styles.statBox}><Text style={styles.statValue}>63%</Text></View>
+
+                <Text style={styles.statLabel}>Torneios ganhos</Text>
+                <View style={styles.statBox}><Text style={styles.statValue}>123</Text></View>
               </View>
-              <Text style={styles.xpLabel}>Nível 3 · 600 XP</Text>
             </View>
-            <View style={styles.legalLinks}>
-              <TouchableOpacity onPress={() => { setProfileModal(false); navigation.navigate('Terms'); }}>
-                <Text style={styles.legalLink}>Termos de Uso</Text>
+
+            <View style={styles.profileActions}>
+              <TouchableOpacity style={styles.profileActionBtn}>
+                <Text style={styles.profileActionText}>Histórico De Partidas</Text>
               </TouchableOpacity>
-              <Text style={styles.legalSep}>·</Text>
-              <TouchableOpacity onPress={() => { setProfileModal(false); navigation.navigate('PrivacyPolicy'); }}>
-                <Text style={styles.legalLink}>Privacidade</Text>
-              </TouchableOpacity>
-              <Text style={styles.legalSep}>·</Text>
-              <TouchableOpacity onPress={() => { setProfileModal(false); navigation.navigate('ResponsibleGambling'); }}>
-                <Text style={styles.legalLink}>Jogo Responsável</Text>
+              <TouchableOpacity style={styles.profileActionBtn}>
+                <Text style={styles.profileActionText}>Conquistas</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.logoutBtn} onPress={() => {
-              setProfileModal(false);
-              useAuthStore.getState().logout().then(() => navigation.replace('Login'));
-            }}>
-              <Text style={styles.logoutText}>Sair</Text>
-            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  topBar: {
-    flexDirection: 'row',
+  root: { flex: 1 },
+
+  center: {
+    flex: 1,
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.bgOverlay,
-    gap: spacing.lg,
+    justifyContent: 'center',
+    gap: spacing.xl,
+    paddingHorizontal: spacing.xxl,
   },
-  onlineIndicator: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
-  onlineText: { color: colors.textSecondary, fontSize: fonts.sizes.sm },
-  topActions: { flexDirection: 'row', gap: spacing.sm },
-  iconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bgCard, alignItems: 'center', justifyContent: 'center' },
-  iconText: { fontSize: 16 },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  sectionTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
-  modesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  modeCardWrapper: { width: '47%' },
-  modeCard: { borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, gap: spacing.sm, minHeight: 120 },
-  modeIconBg: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  modeIcon: { fontSize: 24 },
-  modeLabel: { fontSize: fonts.sizes.md, fontWeight: '700', color: colors.textPrimary },
-  modeDesc: { fontSize: fonts.sizes.xs, color: colors.textMuted },
-  modeBadge: { borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 3, alignSelf: 'flex-start' },
-  modeBetRange: { fontSize: fonts.sizes.xs, fontWeight: '600' },
-  tournamentCard: {
+
+  title: {
+    fontSize: fonts.sizes.xl,
+    fontWeight: '700',
+    color: '#ffffff',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: fonts.sizes.sm,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: -spacing.md,
+  },
+
+  modeRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgCard,
+    gap: spacing.xl,
+    marginTop: spacing.lg,
+  },
+
+  modeBtn: {
     borderRadius: radius.lg,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.md,
+    overflow: 'hidden',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
   },
-  tournamentIcon: { fontSize: 32 },
-  tournamentInfo: { flex: 1 },
-  tournamentName: { fontSize: fonts.sizes.md, fontWeight: '700', color: colors.textPrimary },
-  tournamentMeta: { fontSize: fonts.sizes.xs, color: colors.textMuted, marginTop: 2 },
-  joinBtn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 8, paddingHorizontal: 16 },
-  joinBtnText: { color: colors.textOnPrimary, fontWeight: '700', fontSize: fonts.sizes.sm },
-  playerBar: {
-    flexDirection: 'row',
+  modeBtnGrad: {
+    paddingVertical: spacing.xl,
+    paddingHorizontal: 60,
     alignItems: 'center',
-    padding: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.bgOverlay,
-    gap: spacing.md,
+    justifyContent: 'center',
+    minWidth: 180,
+    minHeight: 80,
   },
-  avatarBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: fonts.sizes.lg, fontWeight: '700', color: colors.textOnPrimary },
-  playerName: { fontSize: fonts.sizes.md, fontWeight: '700', color: colors.textPrimary },
-  playerStatus: { fontSize: fonts.sizes.xs, color: colors.primary },
-  balanceInfo: { flex: 1, alignItems: 'center' },
-  balanceLabel: { fontSize: fonts.sizes.xs, color: colors.textMuted },
-  balanceValue: { fontSize: fonts.sizes.lg, fontWeight: '800', color: colors.gold },
-  playBtn: { borderRadius: radius.md, overflow: 'hidden' },
-  playBtnGradient: { paddingVertical: 12, paddingHorizontal: 28 },
-  playBtnText: { color: colors.textOnPrimary, fontWeight: '800', fontSize: fonts.sizes.md, letterSpacing: 1 },
-  modalOverlay: { flex: 1, backgroundColor: colors.overlay80, alignItems: 'center', justifyContent: 'center' },
-  modalCard: {
-    backgroundColor: colors.bgCard,
+  modeBtnText: {
+    fontSize: fonts.sizes.xxl,
+    fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 1,
+  },
+
+  // Overlay
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Settings modal
+  settingsCard: {
+    width: 320,
+    backgroundColor: 'rgba(8, 30, 8, 0.97)',
+    borderWidth: 2,
+    borderColor: '#4ade80',
     borderRadius: radius.xl,
     padding: spacing.xl,
-    width: 300,
-    borderWidth: 1,
-    borderColor: colors.border,
+    gap: spacing.lg,
   },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
-  modalTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: colors.textPrimary },
-  modalClose: { fontSize: fonts.sizes.lg, color: colors.textMuted, fontWeight: '700' },
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm },
-  settingLabel: { fontSize: fonts.sizes.md, color: colors.textPrimary },
-  toggle: { width: 48, height: 26, borderRadius: 13, backgroundColor: colors.bgOverlay, borderWidth: 1, borderColor: colors.border, padding: 2 },
-  toggleOn: { backgroundColor: colors.primaryDark, borderColor: colors.primary },
-  toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.textMuted },
-  toggleThumbOn: { backgroundColor: colors.primary, transform: [{ translateX: 22 }] },
-  profileContent: { alignItems: 'center', paddingVertical: spacing.md, gap: spacing.md },
-  profileAvatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  profileAvatarText: { fontSize: 32, fontWeight: '700', color: colors.textOnPrimary },
-  profileName: { fontSize: fonts.sizes.xl, fontWeight: '700', color: colors.textPrimary },
-  xpBar: { width: '100%', height: 8, backgroundColor: colors.bgOverlay, borderRadius: 4, overflow: 'hidden' },
-  xpFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 4 },
-  xpLabel: { fontSize: fonts.sizes.sm, color: colors.textMuted },
-  legalLinks: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 4, marginTop: spacing.md },
-  legalLink: { fontSize: fonts.sizes.xs, color: colors.primary, textDecorationLine: 'underline' },
-  legalSep: { fontSize: fonts.sizes.xs, color: colors.textMuted },
-  logoutBtn: { marginTop: spacing.sm, alignItems: 'center', padding: spacing.sm },
-  logoutText: { color: colors.error, fontWeight: '600' },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#fff' },
+  closeBtn:   { color: colors.textMuted, fontSize: fonts.sizes.lg, fontWeight: '700' },
+
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  settingLabel: { fontSize: fonts.sizes.md, color: '#fff' },
+
+  // Profile modal
+  profileCard: {
+    width: 480,
+    backgroundColor: 'rgba(8, 30, 8, 0.97)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.3)',
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    gap: spacing.lg,
+  },
+  profileBody: {
+    flexDirection: 'row',
+    gap: spacing.xl,
+    alignItems: 'flex-start',
+  },
+  profileLeft: { alignItems: 'center', gap: spacing.sm, width: 140 },
+  profileAvatar: {
+    width: 72, height: 72, borderRadius: 8,
+    backgroundColor: '#4a7c4a',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  profileAvatarText: { color: '#fff', fontSize: 32, fontWeight: '700' },
+  profileName:  { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
+  profileBadge: { color: '#cd7f32', fontSize: fonts.sizes.sm, fontWeight: '600' },
+  profileStar:  { fontSize: 18 },
+  xpBarBg: {
+    width: '100%', height: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 3, overflow: 'hidden',
+  },
+  xpBarFill: { height: '100%', backgroundColor: '#4ade80', borderRadius: 3 },
+
+  profileRight: { flex: 1, gap: spacing.sm },
+  statLabel: { color: colors.textMuted, fontSize: fonts.sizes.xs },
+  statBox: {
+    backgroundColor: '#4ade80',
+    borderRadius: radius.sm,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    alignSelf: 'stretch',
+  },
+  statValue: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
+
+  profileActions: { gap: spacing.sm },
+  profileActionBtn: {
+    borderWidth: 1,
+    borderColor: '#4ade80',
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  profileActionText: { color: '#4ade80', fontWeight: '600', fontSize: fonts.sizes.sm },
 });

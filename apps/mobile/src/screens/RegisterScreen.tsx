@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View, Text, StyleSheet, ImageBackground,
+  ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity,
+} from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Logo } from '../components/Logo';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { colors, spacing, fonts, radius } from '../theme';
@@ -13,7 +15,6 @@ type Props = {
   route: { params?: { phone?: string } };
 };
 
-// CPF checksum validation (mirrors backend validators.ts)
 function isValidCpf(cpf: string): boolean {
   if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
   let sum = 0;
@@ -28,76 +29,74 @@ function isValidCpf(cpf: string): boolean {
   return rest === parseInt(cpf[10]);
 }
 
+const LIME = '#4ade80';
+
+function IconCircle({ children }: { children: React.ReactNode }) {
+  return (
+    <View style={iconCircleStyles.circle}>
+      <Text style={iconCircleStyles.icon}>{children}</Text>
+    </View>
+  );
+}
+const iconCircleStyles = StyleSheet.create({
+  circle: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: LIME,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  icon: { fontSize: 22 },
+});
+
 export function RegisterScreen({ navigation, route }: Props) {
-  const [name, setName] = useState('');
-  const [cpf, setCpf] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [name, setName]             = useState('');
+  const [phone, setPhone]           = useState(route.params?.phone?.replace('+55', '') || '');
+  const [cpf, setCpf]               = useState('');
+  const [email, setEmail]           = useState('');
+  const [password, setPassword]     = useState('');
+  const [confirm, setConfirm]       = useState('');
+  const [loading, setLoading]       = useState(false);
   const [cpfLoading, setCpfLoading] = useState(false);
   const [cpfVerified, setCpfVerified] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors]         = useState<Record<string, string>>({});
   const { refreshUser } = useAuthStore();
 
   const rawCpf = cpf.replace(/\D/g, '');
   const cpfComplete = rawCpf.length === 11;
   const cpfFormatValid = cpfComplete && isValidCpf(rawCpf);
 
-  const formatCPF = (text: string) => {
-    const digits = text.replace(/\D/g, '').slice(0, 11);
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
-    if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
-    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  const formatCPF = (t: string) => {
+    const d = t.replace(/\D/g, '').slice(0, 11);
+    if (d.length <= 3) return d;
+    if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+    if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+    return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
   };
 
-  const handleCpfChange = (text: string) => {
-    setCpf(formatCPF(text));
-    setCpfVerified(false);
-    setErrors((e) => ({ ...e, cpf: '' }));
-  };
-
-  // Explicit CPF verification step (calls Serpro via backend)
   const handleVerifyCpf = async () => {
-    if (!cpfFormatValid) {
-      setErrors((e) => ({ ...e, cpf: 'CPF inválido' }));
-      return;
-    }
+    if (!cpfFormatValid) { setErrors((e) => ({ ...e, cpf: 'CPF inválido' })); return; }
     setCpfLoading(true);
-    setErrors((e) => ({ ...e, cpf: '' }));
     try {
       await api.post('/auth/cpf/verify', { cpf: rawCpf });
       setCpfVerified(true);
     } catch (err: any) {
-      const msg = err.response?.data?.error || 'Não foi possível verificar o CPF';
-      setErrors((e) => ({ ...e, cpf: msg }));
+      setErrors((e) => ({ ...e, cpf: err.response?.data?.error || 'Não foi possível verificar o CPF' }));
       setCpfVerified(false);
     } finally {
       setCpfLoading(false);
     }
   };
 
-  const validate = () => {
-    const newErrors: Record<string, string> = {};
-    if (!name.trim() || name.trim().length < 3) {
-      newErrors.name = 'Nome deve ter ao menos 3 caracteres';
-    }
-    if (cpf && !cpfFormatValid) {
-      newErrors.cpf = 'CPF inválido';
-    }
-    if (cpf && cpfFormatValid && !cpfVerified) {
-      newErrors.cpf = 'Verifique seu CPF antes de continuar';
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleSubmit = async () => {
-    if (!validate()) return;
+    const newErrors: Record<string, string> = {};
+    if (!name.trim() || name.trim().length < 3) newErrors.name = 'Nome deve ter ao menos 3 caracteres';
+    if (cpf && cpfFormatValid && !cpfVerified) newErrors.cpf = 'Verifique seu CPF antes de continuar';
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length) return;
+
     setLoading(true);
     try {
-      await api.put('/auth/profile', {
-        name: name.trim(),
-        // CPF already saved during verification — pass it again so profile name is also saved
-      });
+      await api.put('/auth/profile', { name: name.trim() });
       await refreshUser();
       navigation.replace('Main');
     } catch (err: any) {
@@ -107,125 +106,220 @@ export function RegisterScreen({ navigation, route }: Props) {
     }
   };
 
-  // CPF status indicator
-  const cpfStatus = () => {
-    if (!cpf) return null;
-    if (!cpfComplete) return null;
-    if (!cpfFormatValid) return { color: colors.error, text: 'CPF inválido' };
-    if (cpfVerified) return { color: colors.success, text: '✓ CPF verificado' };
-    return null;
-  };
-  const status = cpfStatus();
-
   return (
-    <View style={styles.container}>
-      <View style={styles.bgPattern} pointerEvents="none">
-        {Array.from({ length: 60 }).map((_, i) => <View key={i} style={styles.bgTile} />)}
-      </View>
-
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+    <ImageBackground
+      source={require('../../assets/background.png')}
+      style={styles.root}
+      resizeMode="cover"
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.kav}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Left column */}
           <View style={styles.left}>
-            <Logo size="lg" />
-            <Text style={styles.tagline}>Bem-vindo</Text>
-            <Text style={styles.subtitle}>Complete seu perfil{'\n'}para começar a jogar</Text>
+            <Text style={styles.welcome}>Bem-vindo</Text>
+            <Text style={styles.subtitle}>Crie a sua conta ou faça o login</Text>
           </View>
 
+          {/* Vertical divider */}
+          <View style={styles.vertDivider} />
+
+          {/* Right column — form card */}
           <View style={styles.card}>
-            <Text style={styles.title}>Criar conta</Text>
-            <Text style={styles.subtitle2}>Preencha seus dados para continuar</Text>
+            <IconCircle>👤</IconCircle>
+            <Text style={styles.cardTitle}>Criar nova conta</Text>
 
             <Input
-              label="Nome completo"
-              placeholder="Seu nome"
+              label=""
+              placeholder="Nome completo"
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
               error={errors.name}
             />
-
-            {/* CPF field + inline verify button */}
+            <Input
+              label=""
+              placeholder="Número de telefone"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+            />
             <View style={styles.cpfRow}>
-              <View style={styles.cpfInputWrap}>
+              <View style={{ flex: 1 }}>
                 <Input
-                  label="CPF (obrigatório para saques)"
-                  placeholder="000.000.000-00"
+                  label=""
+                  placeholder="CPF"
                   value={cpf}
-                  onChangeText={handleCpfChange}
+                  onChangeText={(t) => { setCpf(formatCPF(t)); setCpfVerified(false); }}
                   keyboardType="number-pad"
                   error={errors.cpf}
                 />
-                {status && (
-                  <Text style={[styles.cpfStatus, { color: status.color }]}>{status.text}</Text>
-                )}
               </View>
-
               {cpfFormatValid && !cpfVerified && (
-                <View style={styles.verifyBtnWrap}>
-                  <Button
-                    title={cpfLoading ? '...' : 'Verificar'}
-                    onPress={handleVerifyCpf}
-                    loading={cpfLoading}
-                    variant="outline"
-                    size="sm"
-                    style={styles.verifyBtn}
-                  />
-                </View>
+                <TouchableOpacity style={styles.verifyBtn} onPress={handleVerifyCpf} disabled={cpfLoading}>
+                  <Text style={styles.verifyBtnText}>{cpfLoading ? '...' : 'Verificar'}</Text>
+                </TouchableOpacity>
               )}
+              {cpfVerified && <Text style={styles.cpfOk}>✓</Text>}
             </View>
-
-            <Text style={styles.cpfNote}>
-              O CPF é validado junto à Receita Federal e é necessário para saques via PIX.
-            </Text>
+            <Input
+              label=""
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <Input
+              label=""
+              placeholder="Senha"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+            <Input
+              label=""
+              placeholder="Digite novamente a sua senha"
+              value={confirm}
+              onChangeText={setConfirm}
+              secureTextEntry
+            />
 
             {errors.general ? (
               <Text style={styles.generalError}>{errors.general}</Text>
             ) : null}
 
             <Button
-              title="Criar conta"
+              title="Criar Conta"
               onPress={handleSubmit}
               loading={loading}
               style={styles.btn}
             />
-            <Button
-              title="Pular por agora"
-              onPress={() => navigation.replace('Main')}
-              variant="ghost"
-              style={styles.btn}
-            />
+
+            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+              <Text style={styles.linkText}>Já tem conta? Faça o login</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.orText}>Ou entre com</Text>
+
+            <View style={styles.socialRow}>
+              <TouchableOpacity style={styles.socialBtn}>
+                <Text style={styles.socialIcon}>🍎</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.socialBtn}>
+                <Text style={styles.socialIcon}>G</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  flex: { flex: 1 },
+  root: { flex: 1 },
+  kav: { flex: 1 },
   scroll: {
-    flexGrow: 1, flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: spacing.xxl, paddingVertical: spacing.xl, gap: spacing.xxl,
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xl,
+    gap: 0,
   },
-  bgPattern: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row', flexWrap: 'wrap', overflow: 'hidden' },
-  bgTile: { width: 50, height: 28, borderWidth: 1, borderColor: colors.primary, margin: 8, borderRadius: 3, opacity: 0.06 },
-  left: { flex: 1, gap: spacing.lg },
-  tagline: { fontSize: fonts.sizes.xxxl, fontWeight: '800', color: colors.textPrimary, marginTop: spacing.xxl },
-  subtitle: { fontSize: fonts.sizes.lg, color: colors.textSecondary, lineHeight: 26 },
+
+  left: {
+    flex: 1,
+    paddingRight: spacing.xxl,
+    gap: spacing.md,
+  },
+  welcome: {
+    fontSize: 38,
+    fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+  },
+  subtitle: {
+    fontSize: fonts.sizes.sm,
+    color: colors.textMuted,
+    lineHeight: 20,
+  },
+
+  vertDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(74, 222, 128, 0.25)',
+    marginVertical: spacing.md,
+    marginRight: spacing.xxl,
+  },
+
   card: {
-    width: 360, backgroundColor: 'rgba(10,31,10,0.92)',
-    borderWidth: 1, borderColor: colors.border,
-    borderRadius: radius.xl, padding: spacing.xxl,
+    width: 340,
+    backgroundColor: 'rgba(8, 22, 8, 0.80)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.22)',
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.sm,
   },
-  title: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: colors.textPrimary, marginBottom: spacing.xs },
-  subtitle2: { fontSize: fonts.sizes.sm, color: colors.textMuted, marginBottom: spacing.xl },
-  cpfRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  cpfInputWrap: { flex: 1 },
-  cpfStatus: { fontSize: fonts.sizes.xs, marginTop: 2, marginBottom: spacing.xs },
-  verifyBtnWrap: { paddingTop: 22 }, // align with input (label height offset)
-  verifyBtn: { minWidth: 80 },
-  cpfNote: { fontSize: fonts.sizes.xs, color: colors.textMuted, lineHeight: 17, marginBottom: spacing.md },
-  btn: { width: '100%', marginTop: spacing.sm },
-  generalError: { color: colors.error, fontSize: fonts.sizes.sm, marginBottom: spacing.sm, textAlign: 'center' },
+  cardTitle: {
+    fontSize: fonts.sizes.lg,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginBottom: spacing.xs,
+  },
+
+  cpfRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    gap: spacing.sm,
+  },
+  verifyBtn: {
+    backgroundColor: 'rgba(74,222,128,0.15)',
+    borderWidth: 1,
+    borderColor: LIME,
+    borderRadius: radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 2,
+  },
+  verifyBtnText: { color: LIME, fontSize: fonts.sizes.xs, fontWeight: '600' },
+  cpfOk: { color: LIME, fontSize: fonts.sizes.lg, fontWeight: '700', marginTop: 2 },
+
+  btn: { width: '100%', marginTop: spacing.xs },
+
+  generalError: {
+    color: colors.error,
+    fontSize: fonts.sizes.sm,
+    textAlign: 'center',
+  },
+
+  linkText: {
+    color: colors.textMuted,
+    fontSize: fonts.sizes.sm,
+    marginTop: spacing.xs,
+  },
+  orText: {
+    color: colors.textMuted,
+    fontSize: fonts.sizes.sm,
+    marginTop: spacing.xs,
+  },
+
+  socialRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.xs },
+  socialBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  socialIcon: { fontSize: 18, color: '#fff', fontWeight: '700' },
 });

@@ -1,0 +1,153 @@
+import React, { useState } from 'react';
+import {
+  View, Text, StyleSheet, ImageBackground, TouchableOpacity,
+} from 'react-native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Input } from '../components/Input';
+import { Button } from '../components/Button';
+import { colors, spacing, fonts, radius } from '../theme';
+import { api } from '../services/api';
+
+type Props = { navigation: NativeStackNavigationProp<any> };
+
+const LIME = '#4ade80';
+
+export function ForgotPasswordScreen({ navigation }: Props) {
+  const [email, setEmail]     = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent]       = useState(false);
+  const [error, setError]     = useState('');
+
+  const handleSend = async () => {
+    if (!email.trim()) { setError('Digite seu e-mail'); return; }
+    setLoading(true); setError('');
+    try {
+      await api.post('/auth/forgot-password', { email: email.trim() });
+      setSent(true);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Erro ao enviar. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <ImageBackground
+      source={require('../../assets/background.png')}
+      style={styles.root}
+      resizeMode="cover"
+    >
+      <View style={styles.row}>
+        {/* Left column */}
+        <View style={styles.left}>
+          <Text style={styles.welcome}>Bem-vindo</Text>
+          <Text style={styles.subtitle}>A reserva da mesa, agora no seu celular</Text>
+        </View>
+
+        {/* Vertical divider */}
+        <View style={styles.vertDivider} />
+
+        {/* Right card */}
+        <View style={styles.card}>
+          <View style={styles.iconCircle}>
+            <Text style={styles.iconText}>🔒</Text>
+          </View>
+
+          <Text style={styles.cardTitle}>Esqueceu a senha?</Text>
+
+          {sent ? (
+            <Text style={styles.sentText}>
+              Enviamos um link de redefinição para {email}
+            </Text>
+          ) : (
+            <>
+              <Input
+                label=""
+                placeholder="Insira seu e-mail"
+                value={email}
+                onChangeText={(t) => { setEmail(t); setError(''); }}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                error={error}
+              />
+
+              <Button
+                title="Send"
+                onPress={handleSend}
+                loading={loading}
+                style={styles.btn}
+              />
+            </>
+          )}
+
+          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+            <Text style={styles.linkText}>Criar uma conta</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ImageBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+
+  row: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xl,
+  },
+
+  left: {
+    flex: 1,
+    paddingRight: spacing.xxl,
+    gap: spacing.md,
+  },
+  welcome: { fontSize: 38, fontWeight: '800', color: '#ffffff', letterSpacing: 0.5 },
+  subtitle: { fontSize: fonts.sizes.sm, color: colors.textMuted, lineHeight: 20 },
+
+  vertDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(74, 222, 128, 0.25)',
+    marginVertical: spacing.md,
+    marginRight: spacing.xxl,
+  },
+
+  card: {
+    width: 320,
+    backgroundColor: 'rgba(8, 22, 8, 0.80)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.22)',
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+
+  iconCircle: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: LIME,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconText: { fontSize: 22 },
+
+  cardTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#ffffff' },
+
+  sentText: {
+    color: LIME,
+    fontSize: fonts.sizes.sm,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  btn: { width: '100%' },
+
+  linkText: {
+    color: colors.textMuted,
+    fontSize: fonts.sizes.sm,
+    marginTop: spacing.xs,
+  },
+});

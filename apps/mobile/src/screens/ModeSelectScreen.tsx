@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Modal, ActivityIndicator, RefreshControl,
+  View, Text, StyleSheet, ImageBackground, ScrollView,
+  TouchableOpacity, Modal, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, fonts, radius } from '../theme';
 import { Button } from '../components/Button';
 import { useGameStore } from '../store/game.store';
@@ -12,569 +11,469 @@ import { useAuthStore } from '../store/auth.store';
 import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
 import { toast } from '../store/toast.store';
+import { GameTopBar } from './HomeScreen';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
   route: { params?: { mode?: string } };
 };
 
-type Tab = 'quickmatch' | 'tournaments';
+const IS_TORNEIO = (mode?: string) => mode === 'TORNEIO';
+
+// ── Room data for Livre mode ────────────────────────────────────────────────
+
+interface RoomOption {
+  id: string;
+  buyIn: number | null; // null = Grátis
+  prize: number;
+  players: number;
+  max: number;
+}
+
+const LIVRE_1V1: RoomOption[] = [
+  { id: 'l1', buyIn: null, prize: 0,    players: 10, max: 21 },
+  { id: 'l2', buyIn: 2,    prize: 3.8,  players: 10, max: 21 },
+  { id: 'l3', buyIn: 10,   prize: 19,   players: 10, max: 21 },
+  { id: 'l4', buyIn: 25,   prize: 47.5, players: 10, max: 21 },
+  { id: 'l5', buyIn: 50,   prize: 95,   players: 10, max: 21 },
+];
+
+const LIVRE_2V2: RoomOption[] = [
+  { id: 'd1', buyIn: null, prize: 0,    players: 10, max: 21 },
+  { id: 'd2', buyIn: 2,    prize: 3.8,  players: 10, max: 21 },
+  { id: 'd3', buyIn: 10,   prize: 19,   players: 10, max: 21 },
+  { id: 'd4', buyIn: 25,   prize: 47.5, players: 10, max: 21 },
+  { id: 'd5', buyIn: 50,   prize: 95,   players: 10, max: 21 },
+];
+
+// ── Tournament data type ────────────────────────────────────────────────────
 
 interface Tournament {
   id: string;
   name: string;
-  mode: string;
-  variant: string;
   status: string;
   entry_fee: number;
   prize_pool: number;
   max_players: number;
   current_players: number;
-  current_round: number;
   starts_at: string;
 }
 
-const BET_OPTIONS = [5, 10, 20, 50, 100, 200];
+const fmtBrl = (n: number) =>
+  n % 1 === 0
+    ? `R$ ${n}`
+    : `R$ ${n.toFixed(1).replace('.', ',')}`;
 
-const MODE_OPTIONS = [
-  { id: 'ARENA_1V1',        label: '1 vs 1',       icon: '⚔️', desc: 'Partida rápida' },
-  { id: 'RECREATIONAL_2V2', label: '2 vs 2',        icon: '👥', desc: 'Equipes aleatórias' },
-  { id: 'CUP_1V1',          label: 'Copa 1v1',      icon: '🏆', desc: 'Formato eliminatório' },
-];
+// ── Room Card ───────────────────────────────────────────────────────────────
 
-const STATUS_LABEL: Record<string, string> = {
-  OPEN: 'Aberto',
-  FULL: 'Lotado',
-  IN_PROGRESS: 'Em andamento',
-  FINISHED: 'Encerrado',
-  CANCELLED: 'Cancelado',
-};
+function RoomCard({ room, onJoin }: { room: RoomOption; onJoin: () => void }) {
+  const isFree = room.buyIn === null;
+  return (
+    <TouchableOpacity
+      style={[styles.roomCard, isFree ? styles.roomCardFree : styles.roomCardPaid]}
+      activeOpacity={0.85}
+      onPress={onJoin}
+    >
+      <View style={styles.roomRow}>
+        <Text style={styles.roomIcon}>👤</Text>
+        <Text style={styles.roomCount}>Jogadores</Text>
+      </View>
+      <Text style={styles.roomPlayers}>{room.players}/{room.max}</Text>
 
-const STATUS_COLOR: Record<string, string> = {
-  OPEN: colors.success,
-  FULL: colors.warning,
-  IN_PROGRESS: colors.info,
-  FINISHED: colors.textMuted,
-  CANCELLED: colors.error,
-};
+      <Text style={styles.roomFieldLabel}>Buy in</Text>
+      <View style={[styles.pill, styles.pillGray]}>
+        <Text style={styles.pillText}>{isFree ? 'Grátis' : `R$ ${room.buyIn}`}</Text>
+      </View>
 
-function formatDate(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-    + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      <Text style={styles.roomFieldLabel}>Prêmio</Text>
+      <View style={[styles.pill, room.prize > 0 ? styles.pillGold : styles.pillGray]}>
+        <Text style={[styles.pillText, room.prize > 0 && styles.pillTextGold]}>
+          {fmtBrl(room.prize)}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
 }
 
-export function ModeSelectScreen({ navigation, route }: Props) {
-  const isTournamentMode = route.params?.mode === 'TOURNAMENT_2V2';
-  const [tab, setTab] = useState<Tab>(isTournamentMode ? 'tournaments' : 'quickmatch');
+// ── Tournament Card ─────────────────────────────────────────────────────────
 
-  // ── Quick match state ────────────────────────────────────────────────────────
-  const [selectedMode, setSelectedMode] = useState<string>(
-    route.params?.mode && route.params.mode !== 'TOURNAMENT_2V2'
-      ? route.params.mode
-      : 'ARENA_1V1'
+function TournamentCard({ t, onJoin }: { t: Tournament; onJoin: () => void }) {
+  const mins = Math.max(0, Math.round((new Date(t.starts_at).getTime() - Date.now()) / 60000));
+  const timerStr = mins > 60
+    ? `${Math.floor(mins / 60)}h${mins % 60}m`
+    : `00:${String(mins).padStart(2, '0')}:20`;
+
+  const isExpiring = mins < 15;
+
+  return (
+    <View style={styles.tourCard}>
+      <View style={[styles.tourTimer, isExpiring ? styles.tourTimerRed : styles.tourTimerGreen]}>
+        <Text style={styles.tourTimerText}>{timerStr}</Text>
+      </View>
+      <Text style={styles.tourName}>{t.name}</Text>
+
+      <View style={styles.roomRow}>
+        <Text style={styles.roomIcon}>👤</Text>
+        <Text style={styles.tourPlayers}>Jogadores {t.current_players}/{t.max_players}</Text>
+      </View>
+
+      <Text style={styles.roomFieldLabel}>Inscrição</Text>
+      <View style={[styles.pill, styles.pillGray]}>
+        <Text style={styles.pillText}>R${t.entry_fee}</Text>
+      </View>
+
+      <Text style={styles.roomFieldLabel}>Prêmio</Text>
+      <View style={[styles.pill, styles.pillGold]}>
+        <Text style={[styles.pillText, styles.pillTextGold]}>R${t.prize_pool.toLocaleString('pt-BR')}</Text>
+      </View>
+
+      <TouchableOpacity style={styles.joinBtn} onPress={onJoin}>
+        <Text style={styles.joinBtnText}>Entrar</Text>
+      </TouchableOpacity>
+    </View>
   );
-  const [betAmount, setBetAmount] = useState<number>(10);
-  const [searching, setSearching] = useState(false);
-  const { setQueueStatus } = useGameStore();
+}
 
-  // ── Tournament state ─────────────────────────────────────────────────────────
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [tourLoading, setTourLoading] = useState(false);
-  const [tourRefreshing, setTourRefreshing] = useState(false);
-  const [confirmTour, setConfirmTour] = useState<Tournament | null>(null);
-  const [joining, setJoining] = useState(false);
-  const [joinedTourId, setJoinedTourId] = useState<string | null>(null);
+// ── Main screen ─────────────────────────────────────────────────────────────
+
+export function ModeSelectScreen({ navigation, route }: Props) {
+  const mode = route.params?.mode ?? 'LIVRE';
+  const isTorneio = IS_TORNEIO(mode);
 
   const { user, refreshUser } = useAuthStore();
-  const balance = user?.wallet?.real_balance ?? 0;
+  const { setQueueStatus } = useGameStore();
+  const [onlineCount, setOnlineCount]   = useState(6654);
+  const [tournaments, setTournaments]   = useState<Tournament[]>([]);
+  const [tourLoading, setTourLoading]   = useState(false);
+  const [tourRefreshing, setTourRefreshing] = useState(false);
+  const [confirmTour, setConfirmTour]   = useState<Tournament | null>(null);
+  const [joining, setJoining]           = useState(false);
+  const [searching, setSearching]       = useState(false);
 
-  // ── Fetch tournaments ────────────────────────────────────────────────────────
+  useEffect(() => {
+    connectSocket().then((s) => {
+      s.on('online:count', ({ count }: { count: number }) => setOnlineCount(count));
+    });
+    if (isTorneio) fetchTournaments();
+  }, []);
+
   const fetchTournaments = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setTourRefreshing(true);
-    else setTourLoading(true);
+    if (isRefresh) setTourRefreshing(true); else setTourLoading(true);
     try {
       const { data } = await api.get('/game/tournaments');
       setTournaments(data.tournaments ?? []);
     } finally {
-      setTourLoading(false);
-      setTourRefreshing(false);
+      setTourLoading(false); setTourRefreshing(false);
     }
   }, []);
 
-  useEffect(() => {
-    if (tab === 'tournaments') fetchTournaments();
-  }, [tab]);
-
-  // ── Quick match handlers ─────────────────────────────────────────────────────
-  const handleSearch = async () => {
+  const handleJoinRoom = async (room: RoomOption) => {
     setSearching(true);
     setQueueStatus('queuing');
-
+    const gameMode = room.id.startsWith('d') ? 'RECREATIONAL_2V2' : 'ARENA_1V1';
     const socket = await connectSocket();
-    socket.emit('queue:join', { mode: selectedMode, betAmount });
-
+    socket.emit('queue:join', { mode: gameMode, betAmount: room.buyIn ?? 0 });
     socket.once('game:found', ({ gameId }: { gameId: string }) => {
       setQueueStatus('found');
       navigation.replace('Game', { gameId });
     });
-
     socket.once('queue:error', ({ message }: { message: string }) => {
-      setSearching(false);
-      setQueueStatus('idle');
-      toast.error(message);
+      setSearching(false); setQueueStatus('idle'); toast.error(message);
     });
   };
 
-  const handleCancel = async () => {
-    const socket = await connectSocket();
-    socket.emit('queue:leave');
-    setSearching(false);
-    setQueueStatus('idle');
-  };
-
-  // ── Tournament handlers ──────────────────────────────────────────────────────
-  const handleJoinConfirm = async () => {
+  const handleJoinTournament = async () => {
     if (!confirmTour) return;
     setJoining(true);
     try {
       await api.post(`/game/tournaments/${confirmTour.id}/join`);
       await refreshUser();
-      setJoinedTourId(confirmTour.id);
       toast.success('Inscrição confirmada!');
       fetchTournaments();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Erro ao entrar no torneio');
     } finally {
-      setJoining(false);
-      setConfirmTour(null);
+      setJoining(false); setConfirmTour(null);
     }
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <View style={styles.container}>
-      <View style={styles.bgPattern} pointerEvents="none">
-        {Array.from({ length: 40 }).map((_, i) => <View key={i} style={styles.bgTile} />)}
+    <ImageBackground
+      source={require('../../assets/background.png')}
+      style={styles.root}
+      resizeMode="cover"
+    >
+      {/* Top bar */}
+      <View style={styles.topBar}>
+        <View style={styles.onlineRow}>
+          <Text style={styles.onlineIcon}>👥</Text>
+          <Text style={styles.onlineText}>Jogadores online {onlineCount.toLocaleString('pt-BR')}</Text>
+        </View>
+
+        <View style={styles.topRight}>
+          <View style={styles.balancePill}>
+            <Text style={styles.balanceText}>
+              R$ {(user?.wallet?.real_balance ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.addBtn}>
+            <Text style={styles.addText}>+</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.iconText}>⚙</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.replace('Main')}>
+            <Text style={styles.iconText}>⊣</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={styles.card}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.backArrow}>←</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>Jogar</Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, tab === 'quickmatch' && styles.tabActive]}
-            onPress={() => setTab('quickmatch')}
-          >
-            <Text style={[styles.tabText, tab === 'quickmatch' && styles.tabTextActive]}>
-              Partida Rápida
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, tab === 'tournaments' && styles.tabActive]}
-            onPress={() => setTab('tournaments')}
-          >
-            <Text style={[styles.tabText, tab === 'tournaments' && styles.tabTextActive]}>
-              Torneios
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Quick Match Tab ── */}
-        {tab === 'quickmatch' && (
-          <View style={styles.tabContent}>
-            <Text style={styles.sectionLabel}>Modo</Text>
-            <View style={styles.modeRow}>
-              {MODE_OPTIONS.map((m) => (
-                <TouchableOpacity
-                  key={m.id}
-                  style={[styles.modeBtn, selectedMode === m.id && styles.modeBtnActive]}
-                  onPress={() => setSelectedMode(m.id)}
-                >
-                  <Text style={styles.modeBtnIcon}>{m.icon}</Text>
-                  <Text style={[styles.modeBtnText, selectedMode === m.id && styles.modeBtnTextActive]}>
-                    {m.label}
-                  </Text>
-                  <Text style={styles.modeBtnDesc}>{m.desc}</Text>
-                </TouchableOpacity>
-              ))}
+      {/* Content */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          isTorneio
+            ? <RefreshControl refreshing={tourRefreshing} onRefresh={() => fetchTournaments(true)} tintColor="#4ade80" />
+            : undefined
+        }
+      >
+        {/* ── Livre mode ── */}
+        {!isTorneio && (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsRow}>
+                {LIVRE_1V1.map((r) => (
+                  <RoomCard key={r.id} room={r} onJoin={() => handleJoinRoom(r)} />
+                ))}
+              </ScrollView>
             </View>
 
-            <Text style={styles.sectionLabel}>Aposta</Text>
-            <View style={styles.betGrid}>
-              {BET_OPTIONS.map((amount) => (
-                <TouchableOpacity
-                  key={amount}
-                  style={[styles.betBtn, betAmount === amount && styles.betBtnActive]}
-                  onPress={() => setBetAmount(amount)}
-                >
-                  <Text style={[styles.betBtnText, betAmount === amount && styles.betBtnTextActive]}>
-                    R${amount}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsRow}>
+                {LIVRE_2V2.map((r) => (
+                  <RoomCard key={r.id} room={r} onJoin={() => handleJoinRoom(r)} />
+                ))}
+              </ScrollView>
             </View>
+          </>
+        )}
 
-            {balance < betAmount && (
-              <Text style={styles.balanceWarn}>
-                Saldo insuficiente (R$ {balance.toFixed(2)})
-              </Text>
-            )}
-
-            {searching ? (
-              <View style={styles.searchingBox}>
-                <View style={styles.searchingDots}>
-                  {[0, 1, 2].map((i) => (
-                    <View key={i} style={[styles.dot, { opacity: 0.3 + i * 0.3 }]} />
-                  ))}
-                </View>
-                <Text style={styles.searchingText}>Procurando oponente...</Text>
-                <Button title="Cancelar" onPress={handleCancel} variant="ghost" size="sm" />
-              </View>
+        {/* ── Torneio mode ── */}
+        {isTorneio && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Torneios individuais (1x1)</Text>
+            {tourLoading ? (
+              <ActivityIndicator color="#4ade80" style={{ marginTop: spacing.xl }} />
+            ) : tournaments.length === 0 ? (
+              <Text style={styles.emptyText}>Nenhum torneio disponível agora</Text>
             ) : (
-              <Button
-                title="Buscar partida"
-                onPress={handleSearch}
-                disabled={balance < betAmount}
-                style={styles.actionBtn}
-              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsRow}>
+                {tournaments.map((t) => (
+                  <TournamentCard key={t.id} t={t} onJoin={() => setConfirmTour(t)} />
+                ))}
+              </ScrollView>
             )}
           </View>
         )}
+      </ScrollView>
 
-        {/* ── Tournaments Tab ── */}
-        {tab === 'tournaments' && (
-          <ScrollView
-            style={styles.tourScroll}
-            contentContainerStyle={styles.tourContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={tourRefreshing}
-                onRefresh={() => fetchTournaments(true)}
-                tintColor={colors.primary}
-              />
-            }
+      {/* Searching overlay */}
+      {searching && (
+        <View style={styles.searchingOverlay}>
+          <ActivityIndicator color="#4ade80" size="large" />
+          <Text style={styles.searchingText}>Procurando partida...</Text>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={async () => {
+              const s = await connectSocket();
+              s.emit('queue:leave');
+              setSearching(false);
+              setQueueStatus('idle');
+            }}
           >
-            {tourLoading ? (
-              <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
-            ) : tournaments.length === 0 ? (
-              <View style={styles.emptyBox}>
-                <Text style={styles.emptyIcon}>🏆</Text>
-                <Text style={styles.emptyText}>Nenhum torneio disponível no momento</Text>
-                <Text style={styles.emptySubtext}>Puxe para baixo para atualizar</Text>
-              </View>
-            ) : (
-              tournaments.map((t) => (
-                <TournamentCard
-                  key={t.id}
-                  tournament={t}
-                  balance={balance}
-                  joined={joinedTourId === t.id}
-                  onJoin={() => setConfirmTour(t)}
-                />
-              ))
-            )}
-          </ScrollView>
-        )}
-      </View>
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
-      {/* ── Enroll Confirmation Modal ── */}
+      {/* Tournament confirm modal */}
       <Modal visible={!!confirmTour} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.overlay}
-          activeOpacity={1}
-          onPress={() => !joining && setConfirmTour(null)}
-        >
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => !joining && setConfirmTour(null)}>
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <Text style={styles.modalTitle}>Confirmar inscrição</Text>
-
             {confirmTour && (
               <>
                 <Text style={styles.modalTourName}>{confirmTour.name}</Text>
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Taxa de entrada</Text>
-                  <Text style={styles.modalValue}>R$ {confirmTour.entry_fee.toFixed(2)}</Text>
+                  <Text style={styles.modalValue}>R$ {confirmTour.entry_fee}</Text>
                 </View>
                 <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Prêmio acumulado</Text>
-                  <Text style={[styles.modalValue, styles.modalPrize]}>
-                    R$ {confirmTour.prize_pool.toFixed(2)}
-                  </Text>
+                  <Text style={styles.modalLabel}>Prêmio</Text>
+                  <Text style={[styles.modalValue, { color: '#fbbf24' }]}>R$ {confirmTour.prize_pool.toLocaleString('pt-BR')}</Text>
                 </View>
-                <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Seu saldo após</Text>
-                  <Text style={[
-                    styles.modalValue,
-                    balance - confirmTour.entry_fee < 0 && { color: colors.error },
-                  ]}>
-                    R$ {(balance - confirmTour.entry_fee).toFixed(2)}
-                  </Text>
-                </View>
-
-                {balance < confirmTour.entry_fee ? (
-                  <Text style={styles.modalError}>Saldo insuficiente para entrar neste torneio.</Text>
-                ) : (
-                  <Text style={styles.modalNote}>
-                    O valor será debitado do seu saldo imediatamente. O torneio começa assim que todas
-                    as vagas forem preenchidas.
-                  </Text>
-                )}
-
                 <View style={styles.modalActions}>
-                  <Button
-                    title="Cancelar"
-                    onPress={() => setConfirmTour(null)}
-                    variant="ghost"
-                    style={styles.modalBtn}
-                    disabled={joining}
-                  />
-                  <Button
-                    title="Confirmar"
-                    onPress={handleJoinConfirm}
-                    loading={joining}
-                    disabled={balance < confirmTour.entry_fee}
-                    style={styles.modalBtn}
-                  />
+                  <Button title="Cancelar" onPress={() => setConfirmTour(null)} variant="ghost" style={{ flex: 1 }} disabled={joining} />
+                  <Button title="Confirmar" onPress={handleJoinTournament} loading={joining} style={{ flex: 1 }} />
                 </View>
               </>
             )}
           </View>
         </TouchableOpacity>
       </Modal>
-    </View>
+    </ImageBackground>
   );
 }
 
-// ─── Tournament Card ──────────────────────────────────────────────────────────
-
-function TournamentCard({
-  tournament: t,
-  balance,
-  joined,
-  onJoin,
-}: {
-  tournament: Tournament;
-  balance: number;
-  joined: boolean;
-  onJoin: () => void;
-}) {
-  const filledPct = Math.min(1, t.current_players / t.max_players);
-  const canJoin = (t.status === 'OPEN') && !joined && balance >= t.entry_fee;
-  const statusColor = STATUS_COLOR[t.status] ?? colors.textMuted;
-
-  return (
-    <View style={styles.tourCard}>
-      <View style={styles.tourCardHeader}>
-        <View style={styles.tourCardLeft}>
-          <Text style={styles.tourCardName}>{t.name}</Text>
-          <Text style={styles.tourCardMeta}>
-            {t.variant} · {formatDate(t.starts_at)}
-          </Text>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: statusColor + '22', borderColor: statusColor }]}>
-          <Text style={[styles.statusText, { color: statusColor }]}>{STATUS_LABEL[t.status] ?? t.status}</Text>
-        </View>
-      </View>
-
-      <View style={styles.tourCardStats}>
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>Entrada</Text>
-          <Text style={styles.statValue}>R$ {t.entry_fee.toFixed(2)}</Text>
-        </View>
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>Prêmio</Text>
-          <Text style={[styles.statValue, styles.statGold]}>R$ {t.prize_pool.toFixed(2)}</Text>
-        </View>
-        {t.status === 'IN_PROGRESS' && (
-          <View style={styles.stat}>
-            <Text style={styles.statLabel}>Rodada</Text>
-            <Text style={styles.statValue}>{t.current_round}</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Fill bar */}
-      <View style={styles.fillBarWrap}>
-        <View style={styles.fillBarBg}>
-          <View style={[styles.fillBar, { width: `${filledPct * 100}%` as any }]} />
-        </View>
-        <Text style={styles.fillLabel}>
-          {t.current_players}/{t.max_players} jogadores
-        </Text>
-      </View>
-
-      {joined ? (
-        <View style={styles.joinedBadge}>
-          <Text style={styles.joinedText}>Inscrito — aguardando início</Text>
-        </View>
-      ) : (
-        <Button
-          title={
-            t.status === 'OPEN'
-              ? balance < t.entry_fee
-                ? 'Saldo insuficiente'
-                : 'Entrar no torneio'
-              : STATUS_LABEL[t.status]
-          }
-          onPress={onJoin}
-          disabled={!canJoin}
-          size="sm"
-          style={styles.joinBtn}
-        />
-      )}
-    </View>
-  );
-}
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
+const LIME = '#4ade80';
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  bgPattern: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row', flexWrap: 'wrap', overflow: 'hidden' },
-  bgTile: { width: 60, height: 32, borderWidth: 1, borderColor: colors.primary, margin: 10, borderRadius: 3, opacity: 0.06 },
+  root: { flex: 1 },
 
-  card: {
-    width: 440,
-    maxHeight: '90%',
-    backgroundColor: 'rgba(10,31,10,0.97)',
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-
-  header: {
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
-  },
-  backArrow: { color: colors.textMuted, fontSize: fonts.sizes.xl, fontWeight: '600' },
-  title: { fontSize: fonts.sizes.xl, fontWeight: '800', color: colors.textPrimary },
-
-  tabs: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    marginHorizontal: spacing.xl,
-  },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.sm + 2,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabActive: { borderBottomColor: colors.primary },
-  tabText: { color: colors.textMuted, fontWeight: '600', fontSize: fonts.sizes.sm },
-  tabTextActive: { color: colors.primary },
-
-  // ── Quick Match ──
-  tabContent: { padding: spacing.xl, gap: spacing.md },
-  sectionLabel: { fontSize: fonts.sizes.sm, fontWeight: '600', color: colors.textSecondary },
-
-  modeRow: { flexDirection: 'row', gap: spacing.sm },
-  modeBtn: {
-    flex: 1, paddingVertical: spacing.md, borderRadius: radius.lg,
-    borderWidth: 2, borderColor: colors.border,
-    alignItems: 'center', gap: 4, backgroundColor: colors.bgCard,
-  },
-  modeBtnActive: { borderColor: colors.primary, backgroundColor: 'rgba(74,222,128,0.12)' },
-  modeBtnIcon: { fontSize: 22 },
-  modeBtnText: { fontSize: fonts.sizes.sm, fontWeight: '700', color: colors.textMuted },
-  modeBtnTextActive: { color: colors.primary },
-  modeBtnDesc: { fontSize: fonts.sizes.xs, color: colors.textMuted },
-
-  betGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  betBtn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgCard },
-  betBtnActive: { borderColor: colors.primary, backgroundColor: 'rgba(74,222,128,0.15)' },
-  betBtnText: { color: colors.textMuted, fontWeight: '600', fontSize: fonts.sizes.sm },
-  betBtnTextActive: { color: colors.primary },
-
-  balanceWarn: { color: colors.error, fontSize: fonts.sizes.xs, textAlign: 'center' },
-  actionBtn: { width: '100%', marginTop: spacing.xs },
-
-  searchingBox: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.lg },
-  searchingDots: { flexDirection: 'row', gap: spacing.sm },
-  dot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.primary },
-  searchingText: { color: colors.textSecondary, fontSize: fonts.sizes.md },
-
-  // ── Tournaments ──
-  tourScroll: { maxHeight: 460 },
-  tourContent: { padding: spacing.xl, gap: spacing.md },
-
-  emptyBox: { alignItems: 'center', paddingVertical: spacing.xxxl, gap: spacing.sm },
-  emptyIcon: { fontSize: 40 },
-  emptyText: { color: colors.textSecondary, fontSize: fonts.sizes.md, textAlign: 'center' },
-  emptySubtext: { color: colors.textMuted, fontSize: fonts.sizes.sm },
-
-  tourCard: {
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  tourCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  tourCardLeft: { flex: 1 },
-  tourCardName: { fontSize: fonts.sizes.md, fontWeight: '700', color: colors.textPrimary },
-  tourCardMeta: { fontSize: fonts.sizes.xs, color: colors.textMuted, marginTop: 2 },
-  statusBadge: { borderRadius: radius.sm, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3 },
-  statusText: { fontSize: fonts.sizes.xs, fontWeight: '700' },
-
-  tourCardStats: { flexDirection: 'row', gap: spacing.xl },
-  stat: { gap: 2 },
-  statLabel: { fontSize: fonts.sizes.xs, color: colors.textMuted },
-  statValue: { fontSize: fonts.sizes.md, fontWeight: '700', color: colors.textPrimary },
-  statGold: { color: colors.gold },
-
-  fillBarWrap: { gap: 4 },
-  fillBarBg: { height: 6, backgroundColor: colors.bgOverlay, borderRadius: 3, overflow: 'hidden' },
-  fillBar: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
-  fillLabel: { fontSize: fonts.sizes.xs, color: colors.textMuted },
-
-  joinedBadge: {
-    backgroundColor: colors.success + '22',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.success,
-    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(74,222,128,0.15)',
   },
-  joinedText: { color: colors.success, fontWeight: '600', fontSize: fonts.sizes.sm },
-  joinBtn: { width: '100%' },
+  onlineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  onlineIcon: { fontSize: 16 },
+  onlineText: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.sm },
+  topRight:   { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  balancePill: {
+    backgroundColor: LIME, borderRadius: radius.full,
+    paddingHorizontal: 12, paddingVertical: 4,
+  },
+  balanceText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
+  addBtn: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: '#dc2626',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  addText: { color: '#fff', fontWeight: '800', fontSize: 14, lineHeight: 16 },
+  iconBtn: {
+    width: 34, height: 34, borderRadius: radius.sm,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconText: { color: '#fff', fontSize: 16 },
 
-  // ── Modal ──
-  overlay: { flex: 1, backgroundColor: colors.overlay80, alignItems: 'center', justifyContent: 'center' },
-  modalCard: {
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    width: 340,
+  content: { padding: spacing.lg, gap: spacing.xl },
+
+  section: { gap: spacing.md },
+  sectionTitle: {
+    color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md,
+    marginLeft: spacing.xs,
+  },
+  cardsRow: { gap: spacing.md, paddingBottom: spacing.xs },
+
+  // Room card
+  roomCard: {
+    width: 130,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: spacing.xs,
     borderWidth: 1,
-    borderColor: colors.border,
+  },
+  roomCardFree: {
+    backgroundColor: 'rgba(220,220,220,0.12)',
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  roomCardPaid: {
+    backgroundColor: 'rgba(10,40,10,0.85)',
+    borderColor: 'rgba(74,222,128,0.25)',
+  },
+  roomRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  roomIcon: { fontSize: 12 },
+  roomCount: { color: colors.textMuted, fontSize: fonts.sizes.xs },
+  roomPlayers: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+  roomFieldLabel: { color: colors.textMuted, fontSize: fonts.sizes.xs, marginTop: spacing.xs },
+
+  pill: {
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
+  pillGray: { backgroundColor: 'rgba(255,255,255,0.12)' },
+  pillGold: { backgroundColor: '#fbbf24' },
+  pillText: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.xs },
+  pillTextGold: { color: '#000' },
+
+  // Tournament card
+  tourCard: {
+    width: 150,
+    borderRadius: radius.lg,
+    backgroundColor: 'rgba(10,40,10,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.25)',
+    padding: spacing.md,
+    gap: spacing.xs,
+    alignItems: 'flex-start',
+  },
+  tourTimer: {
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
+  tourTimerRed:   { backgroundColor: '#dc2626' },
+  tourTimerGreen: { backgroundColor: '#16a34a' },
+  tourTimerText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.xs },
+  tourName: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.xs },
+  tourPlayers: { color: colors.textMuted, fontSize: fonts.sizes.xs },
+  joinBtn: {
+    backgroundColor: LIME,
+    borderRadius: radius.sm,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.md,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+  },
+  joinBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.xs },
+
+  emptyText: { color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.xl },
+
+  // Searching overlay
+  searchingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.lg,
+  },
+  searchingText: { color: '#fff', fontSize: fonts.sizes.lg, fontWeight: '600' },
+  cancelBtn: {
+    borderWidth: 1, borderColor: LIME, borderRadius: radius.md,
+    paddingVertical: 10, paddingHorizontal: 32,
+  },
+  cancelBtnText: { color: LIME, fontWeight: '700' },
+
+  // Modal
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center' },
+  modalCard: {
+    width: 320,
+    backgroundColor: 'rgba(8,30,8,0.98)',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.3)',
+    padding: spacing.xl,
     gap: spacing.md,
   },
-  modalTitle: { fontSize: fonts.sizes.xl, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
-  modalTourName: { fontSize: fonts.sizes.md, color: colors.textSecondary, textAlign: 'center' },
-  modalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalTitle: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.xl, textAlign: 'center' },
+  modalTourName: { color: colors.textMuted, fontSize: fonts.sizes.sm, textAlign: 'center' },
+  modalRow: { flexDirection: 'row', justifyContent: 'space-between' },
   modalLabel: { color: colors.textMuted, fontSize: fonts.sizes.sm },
-  modalValue: { color: colors.textPrimary, fontWeight: '700', fontSize: fonts.sizes.sm },
-  modalPrize: { color: colors.gold },
-  modalNote: { color: colors.textMuted, fontSize: fonts.sizes.xs, lineHeight: 17, textAlign: 'center' },
-  modalError: { color: colors.error, fontSize: fonts.sizes.xs, textAlign: 'center' },
-  modalActions: { flexDirection: 'row', gap: spacing.md },
-  modalBtn: { flex: 1 },
+  modalValue: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+  modalActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
 });

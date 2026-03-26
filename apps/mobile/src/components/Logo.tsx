@@ -1,34 +1,39 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, fonts } from '../theme';
 
 interface Props {
   size?: 'sm' | 'md' | 'lg';
 }
 
+const LIME = '#4ade80';
+
 export function Logo({ size = 'md' }: Props) {
-  const scale = size === 'sm' ? 0.6 : size === 'lg' ? 1.5 : 1;
+  const fontSize  = size === 'sm' ? 15 : size === 'lg' ? 30 : 21;
+  const tileW     = size === 'sm' ? 22 : size === 'lg' ? 42 : 30;
+  const tileH     = size === 'sm' ? 12 : size === 'lg' ? 22 : 16;
+  const pipRadius = size === 'sm' ? 1.5 : size === 'lg' ? 3 : 2;
 
   return (
     <View style={styles.container}>
-      {/* Domino tile icon */}
-      <View style={[styles.dominoIcon, { transform: [{ scale }] }]}>
-        <View style={styles.dominoTop}>
-          {[0, 1, 2].map((i) => (
-            <View key={i} style={styles.pip} />
-          ))}
-        </View>
-        <View style={styles.dominoDivider} />
-        <View style={styles.dominoBottom}>
-          {[0, 1, 2].map((i) => (
-            <View key={i} style={styles.pip} />
-          ))}
-        </View>
-      </View>
+      {/* "DOMINO" line */}
+      <Text style={[styles.domino, { fontSize }]}>DOMINO</Text>
 
-      <View style={[styles.textContainer, { transform: [{ scale }] }]}>
-        <Text style={styles.dominoText}>DOMINO</Text>
-        <Text style={styles.clubText}>CLUB</Text>
+      {/* "[domino-icon] CLUB" line */}
+      <View style={styles.bottomRow}>
+        {/* Horizontal domino tile */}
+        <View style={[styles.tile, { width: tileW, height: tileH, borderRadius: tileH * 0.25 }]}>
+          <View style={styles.halfLeft}>
+            <View style={[styles.pip, { width: pipRadius * 2, height: pipRadius * 2, borderRadius: pipRadius }]} />
+            <View style={[styles.pip, { width: pipRadius * 2, height: pipRadius * 2, borderRadius: pipRadius }]} />
+          </View>
+          <View style={styles.tileDivider} />
+          <View style={styles.halfRight}>
+            <View style={[styles.pip, { width: pipRadius * 2, height: pipRadius * 2, borderRadius: pipRadius }]} />
+            <View style={[styles.pip, { width: pipRadius * 2, height: pipRadius * 2, borderRadius: pipRadius }]} />
+          </View>
+        </View>
+
+        <Text style={[styles.club, { fontSize }]}> CLUB</Text>
       </View>
     </View>
   );
@@ -36,61 +41,50 @@ export function Logo({ size = 'md' }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  dominoIcon: {
-    width: 36,
-    height: 64,
-    backgroundColor: colors.primary,
-    borderRadius: 4,
-    padding: 4,
-    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  dominoTop: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 2,
-    justifyContent: 'center',
-    width: '100%',
-    paddingHorizontal: 2,
+  domino: {
+    fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 4,
+    lineHeight: undefined,
   },
-  dominoDivider: {
-    width: '80%',
-    height: 1,
-    backgroundColor: colors.primaryDark,
-  },
-  dominoBottom: {
+  bottomRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 2,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  tile: {
+    borderWidth: 1.5,
+    borderColor: LIME,
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  halfLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
-    paddingHorizontal: 2,
+    gap: 2,
+  },
+  tileDivider: {
+    width: 1,
+    backgroundColor: LIME,
+    alignSelf: 'stretch',
+  },
+  halfRight: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
   },
   pip: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.bgCard,
+    backgroundColor: LIME,
   },
-  textContainer: {
-    alignItems: 'flex-start',
-  },
-  dominoText: {
-    fontSize: 22,
+  club: {
     fontWeight: '800',
-    color: colors.textPrimary,
-    letterSpacing: 2,
-    lineHeight: 24,
-  },
-  clubText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.primary,
-    letterSpacing: 2,
-    lineHeight: 24,
+    color: LIME,
+    letterSpacing: 4,
   },
 });
