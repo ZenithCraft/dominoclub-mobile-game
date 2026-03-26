@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ImageBackground,
-  KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity,
+  KeyboardAvoidingView, Platform, TouchableOpacity,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Logo } from '../components/Logo';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { colors, spacing, fonts, radius } from '../theme';
 import { api } from '../services/api';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
+
+const LIME = '#4ade80';
 
 export function LoginScreen({ navigation }: Props) {
   const [phone, setPhone]     = useState('');
@@ -50,19 +51,28 @@ export function LoginScreen({ navigation }: Props) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.kav}
       >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Logo card — matches "log in.png" exactly */}
-          <View style={styles.logoCard}>
-            <Logo size="lg" />
+        <View style={styles.row}>
+          {/* Left column */}
+          <View style={styles.left}>
+            <Text style={styles.welcome}>Bem-vindo</Text>
+            <Text style={styles.subtitle}>Crie a sua conta ou faça o login</Text>
           </View>
 
-          {/* Auth form — below the logo card */}
-          <View style={styles.formCard}>
+          {/* Vertical divider */}
+          <View style={styles.vertDivider} />
+
+          {/* Right card */}
+          <View style={styles.card}>
+            {/* Icon circle */}
+            <View style={styles.iconCircle}>
+              <Text style={styles.iconText}>📱</Text>
+            </View>
+
+            <Text style={styles.cardTitle}>Entrar</Text>
+            <Text style={styles.cardSubtitle}>Informe seu número de celular</Text>
+
             <Input
-              label="Número de celular"
+              label=""
               placeholder="(11) 99999-9999"
               value={phone}
               onChangeText={(t) => { setPhone(formatPhone(t)); setError(''); }}
@@ -85,56 +95,84 @@ export function LoginScreen({ navigation }: Props) {
             </View>
 
             <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-              <Text style={styles.linkText}>Criar uma conta</Text>
+              <Text style={styles.linkPrimary}>Criar uma conta</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => navigation.navigate('ForgotPassword')}
-              style={{ marginTop: spacing.xs }}
-            >
+            <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
               <Text style={styles.linkMuted}>Esqueceu a senha?</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#0a1f0a' },
   kav:  { flex: 1 },
-  scroll: {
-    flexGrow: 1,
+
+  row: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxxl,
-    paddingHorizontal: spacing.xl,
-    gap: spacing.xl,
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xl,
   },
 
-  /* The logo card — the hero element matching "log in.png" */
-  logoCard: {
-    backgroundColor: 'rgba(8, 22, 8, 0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.22)',
-    borderRadius: radius.xl,
-    paddingVertical: spacing.xxxl,
-    paddingHorizontal: 64,
-    alignItems: 'center',
-    minWidth: 300,
+  left: {
+    flex: 1,
+    paddingRight: spacing.xxl,
+    gap: spacing.md,
+  },
+  welcome: {
+    fontSize: 38,
+    fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+  },
+  subtitle: {
+    fontSize: fonts.sizes.sm,
+    color: colors.textMuted,
+    lineHeight: 20,
   },
 
-  /* Auth form card below */
-  formCard: {
-    width: 320,
-    backgroundColor: 'rgba(8, 22, 8, 0.80)',
+  vertDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(74, 222, 128, 0.25)',
+    marginVertical: spacing.md,
+    marginRight: spacing.xxl,
+  },
+
+  card: {
+    width: 340,
+    backgroundColor: 'rgba(8, 20, 8, 0.90)',
     borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.2)',
+    borderColor: 'rgba(74, 222, 128, 0.30)',
     borderRadius: radius.xl,
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.md,
+  },
+
+  iconCircle: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: LIME,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  iconText: { fontSize: 24 },
+
+  cardTitle: {
+    fontSize: fonts.sizes.xl,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  cardSubtitle: {
+    fontSize: fonts.sizes.sm,
+    color: colors.textMuted,
+    marginTop: -spacing.xs,
   },
 
   btn: { width: '100%' },
@@ -148,10 +186,10 @@ const styles = StyleSheet.create({
   divLine: { flex: 1, height: 1, backgroundColor: 'rgba(74,222,128,0.15)' },
   divText: { color: colors.textMuted, fontSize: fonts.sizes.sm },
 
-  linkText: {
-    color: colors.primary,
+  linkPrimary: {
+    color: LIME,
     fontSize: fonts.sizes.sm,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   linkMuted: {
     color: colors.textMuted,

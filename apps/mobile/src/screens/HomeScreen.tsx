@@ -19,19 +19,21 @@ export function GameTopBar({
   onSettings,
   onExit,
   onWallet,
+  onProfile,
 }: {
   user: any;
   onSettings?: () => void;
   onExit?: () => void;
   onWallet?: () => void;
+  onProfile?: () => void;
 }) {
   const balance = user?.wallet?.real_balance ?? 0;
   const level   = 2; // TODO: pull from user profile
 
   return (
     <View style={topBar.bar}>
-      {/* Left: avatar + name + level */}
-      <View style={topBar.left}>
+      {/* Left: avatar + name + level (tappable → profile) */}
+      <TouchableOpacity style={topBar.left} onPress={onProfile} activeOpacity={0.75}>
         <View style={topBar.avatar}>
           <Text style={topBar.avatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
         </View>
@@ -39,7 +41,7 @@ export function GameTopBar({
           <Text style={topBar.name}>{user?.name || 'Jogador'}</Text>
           <Text style={topBar.level}>Lev: {String(level).padStart(2, '0')}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
 
       {/* Right: balance + add + settings + exit */}
       <View style={topBar.right}>
@@ -141,6 +143,7 @@ export function HomeScreen({ navigation }: Props) {
         onSettings={() => setSettingsVisible(true)}
         onExit={handleLogout}
         onWallet={() => navigation.navigate('Wallet')}
+        onProfile={() => setProfileVisible(true)}
       />
 
       {/* Center content */}
@@ -279,7 +282,7 @@ export function HomeScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#0a1f0a' },
 
   center: {
     flex: 1,
@@ -318,16 +321,16 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   modeBtnGrad: {
-    paddingVertical: spacing.xl,
-    paddingHorizontal: 60,
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: 72,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 180,
-    minHeight: 80,
+    minWidth: 200,
+    minHeight: 90,
   },
   modeBtnText: {
     fontSize: fonts.sizes.xxl,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#ffffff',
     letterSpacing: 1,
   },
@@ -342,10 +345,10 @@ const styles = StyleSheet.create({
 
   // Settings modal
   settingsCard: {
-    width: 320,
-    backgroundColor: 'rgba(8, 30, 8, 0.97)',
-    borderWidth: 2,
-    borderColor: '#4ade80',
+    width: 340,
+    backgroundColor: 'rgba(8, 20, 8, 0.96)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(74,222,128,0.55)',
     borderRadius: radius.xl,
     padding: spacing.xl,
     gap: spacing.lg,
@@ -367,10 +370,10 @@ const styles = StyleSheet.create({
 
   // Profile modal
   profileCard: {
-    width: 480,
-    backgroundColor: 'rgba(8, 30, 8, 0.97)',
+    width: 500,
+    backgroundColor: 'rgba(8, 20, 8, 0.96)',
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.3)',
+    borderColor: 'rgba(74,222,128,0.35)',
     borderRadius: radius.xl,
     padding: spacing.xl,
     gap: spacing.lg,

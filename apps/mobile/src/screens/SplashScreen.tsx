@@ -10,12 +10,12 @@ type Props = { navigation: NativeStackNavigationProp<any> };
 export function SplashScreen({ navigation }: Props) {
   const { loadFromStorage } = useAuthStore();
   const opacity = useRef(new Animated.Value(0)).current;
-  const scale   = useRef(new Animated.Value(0.92)).current;
+  const scale   = useRef(new Animated.Value(0.94)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-      Animated.spring(scale,   { toValue: 1, friction: 7, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.spring(scale,   { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
     ]).start();
 
     loadFromStorage().then(() => {
@@ -50,19 +50,20 @@ export function SplashScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: '#0a1f0a',
     alignItems: 'center',
     justifyContent: 'center',
   },
   card: {
-    backgroundColor: 'rgba(8, 22, 8, 0.72)',
+    backgroundColor: 'rgba(8, 20, 8, 0.82)',
     borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.22)',
+    borderColor: 'rgba(74, 222, 128, 0.30)',
     borderRadius: radius.xl,
     paddingVertical: spacing.xxxl,
-    paddingHorizontal: 64,
+    paddingHorizontal: 80,
     alignItems: 'center',
     gap: spacing.xl,
-    minWidth: 300,
+    minWidth: 360,
   },
   loadingSection: {
     alignItems: 'center',
@@ -71,6 +72,6 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.textMuted,
     fontSize: fonts.sizes.sm,
-    letterSpacing: 1,
+    letterSpacing: 2,
   },
 });

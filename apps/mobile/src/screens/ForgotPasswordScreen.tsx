@@ -90,7 +90,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#0a1f0a' },
 
   row: {
     flex: 1,
@@ -113,14 +113,14 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     backgroundColor: 'rgba(74, 222, 128, 0.25)',
     marginVertical: spacing.md,
-    marginRight: spacing.xxl,
+    marginRight: spacing.xl,
   },
 
   card: {
-    width: 320,
-    backgroundColor: 'rgba(8, 22, 8, 0.80)',
+    width: 340,
+    backgroundColor: 'rgba(8, 20, 8, 0.90)',
     borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.22)',
+    borderColor: 'rgba(74, 222, 128, 0.30)',
     borderRadius: radius.xl,
     padding: spacing.xl,
     alignItems: 'center',
@@ -128,11 +128,11 @@ const styles = StyleSheet.create({
   },
 
   iconCircle: {
-    width: 48, height: 48, borderRadius: 24,
+    width: 52, height: 52, borderRadius: 26,
     backgroundColor: LIME,
     alignItems: 'center', justifyContent: 'center',
   },
-  iconText: { fontSize: 22 },
+  iconText: { fontSize: 24 },
 
   cardTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#ffffff' },
 

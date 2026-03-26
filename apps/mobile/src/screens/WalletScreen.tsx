@@ -531,7 +531,7 @@ export function WalletScreen() {
 const LIME = '#4ade80';
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#0a1f0a' },
 
   // Header
   header: {
@@ -565,10 +565,10 @@ const styles = StyleSheet.create({
 
   // Left panel
   leftPanel: {
-    width: 240,
-    backgroundColor: 'rgba(8,25,8,0.82)',
+    width: 260,
+    backgroundColor: 'rgba(8, 20, 8, 0.90)',
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.2)',
+    borderColor: 'rgba(74,222,128,0.28)',
     borderRadius: radius.xl,
     padding: spacing.lg,
     gap: spacing.xs,
@@ -589,9 +589,9 @@ const styles = StyleSheet.create({
   // Right panel
   rightPanel: {
     flex: 1,
-    backgroundColor: 'rgba(8,25,8,0.82)',
+    backgroundColor: 'rgba(8, 20, 8, 0.90)',
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.2)',
+    borderColor: 'rgba(74,222,128,0.28)',
     borderRadius: radius.xl,
     padding: spacing.lg,
   },
@@ -644,13 +644,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalCard: {
-    width: 340,
-    backgroundColor: '#0d1f0d',
+    width: 360,
+    backgroundColor: 'rgba(8, 20, 8, 0.97)',
     borderRadius: radius.xl,
     padding: spacing.xl,
     gap: spacing.md,
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.2)',
+    borderColor: 'rgba(74,222,128,0.35)',
     ...shadows.card,
   },
   closeX: { position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 10 },

@@ -63,7 +63,7 @@ export function Input({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: spacing.md,
+    width: '100%',
   },
   label: {
     color: colors.textSecondary,

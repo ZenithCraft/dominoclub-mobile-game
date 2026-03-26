@@ -141,7 +141,7 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#0a1f0a' },
 
   row: {
     flex: 1,
@@ -164,38 +164,38 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     backgroundColor: 'rgba(74, 222, 128, 0.25)',
     marginVertical: spacing.md,
-    marginRight: spacing.xxl,
+    marginRight: spacing.xl,
   },
 
   card: {
-    width: 340,
-    backgroundColor: 'rgba(8, 22, 8, 0.80)',
+    width: 360,
+    backgroundColor: 'rgba(8, 20, 8, 0.90)',
     borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.22)',
+    borderColor: 'rgba(74, 222, 128, 0.30)',
     borderRadius: radius.xl,
     padding: spacing.xl,
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.lg,
   },
 
   iconCircle: {
-    width: 48, height: 48, borderRadius: 24,
+    width: 52, height: 52, borderRadius: 26,
     backgroundColor: LIME,
     alignItems: 'center', justifyContent: 'center',
   },
-  iconText: { fontSize: 22 },
+  iconText: { fontSize: 24 },
 
   cardTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#ffffff' },
 
-  otpRow: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'center' },
+  otpRow: { flexDirection: 'row', gap: spacing.md, justifyContent: 'center' },
   otpBox: {
-    width: 42, height: 50, borderRadius: radius.md,
-    borderWidth: 1.5, borderColor: 'rgba(74,222,128,0.3)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    textAlign: 'center', fontSize: fonts.sizes.xl,
+    width: 46, height: 54, borderRadius: radius.md,
+    borderWidth: 1.5, borderColor: 'rgba(74,222,128,0.35)',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    textAlign: 'center', fontSize: fonts.sizes.xxl,
     color: '#ffffff', fontWeight: '700',
   },
-  otpBoxFilled: { borderColor: LIME },
+  otpBoxFilled: { borderColor: LIME, backgroundColor: 'rgba(74,222,128,0.08)' },
   otpBoxError:  { borderColor: colors.error },
 
   errorText: { color: colors.error, fontSize: fonts.sizes.sm, textAlign: 'center' },

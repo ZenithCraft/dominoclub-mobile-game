@@ -40,12 +40,11 @@ function IconCircle({ children }: { children: React.ReactNode }) {
 }
 const iconCircleStyles = StyleSheet.create({
   circle: {
-    width: 48, height: 48, borderRadius: 24,
+    width: 52, height: 52, borderRadius: 26,
     backgroundColor: LIME,
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: spacing.sm,
   },
-  icon: { fontSize: 22 },
+  icon: { fontSize: 24 },
 });
 
 export function RegisterScreen({ navigation, route }: Props) {
@@ -223,7 +222,7 @@ export function RegisterScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#0a1f0a' },
   kav: { flex: 1 },
   scroll: {
     flexGrow: 1,
@@ -231,7 +230,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.xxl,
     paddingVertical: spacing.xl,
-    gap: 0,
   },
 
   left: {
@@ -256,18 +254,18 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     backgroundColor: 'rgba(74, 222, 128, 0.25)',
     marginVertical: spacing.md,
-    marginRight: spacing.xxl,
+    marginRight: spacing.xl,
   },
 
   card: {
-    width: 340,
-    backgroundColor: 'rgba(8, 22, 8, 0.80)',
+    width: 360,
+    backgroundColor: 'rgba(8, 20, 8, 0.90)',
     borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.22)',
+    borderColor: 'rgba(74, 222, 128, 0.30)',
     borderRadius: radius.xl,
     padding: spacing.xl,
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   cardTitle: {
     fontSize: fonts.sizes.lg,

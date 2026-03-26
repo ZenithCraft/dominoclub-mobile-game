@@ -11,7 +11,6 @@ import { useAuthStore } from '../store/auth.store';
 import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
 import { toast } from '../store/toast.store';
-import { GameTopBar } from './HomeScreen';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -241,7 +240,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
         {/* ── Livre mode ── */}
         {!isTorneio && (
           <>
-            <View style={styles.section}>
+            <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsRow}>
                 {LIVRE_1V1.map((r) => (
@@ -250,7 +249,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
               </ScrollView>
             </View>
 
-            <View style={styles.section}>
+            <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsRow}>
                 {LIVRE_2V2.map((r) => (
@@ -263,7 +262,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
         {/* ── Torneio mode ── */}
         {isTorneio && (
-          <View style={styles.section}>
+          <View style={styles.sectionContainer}>
             <Text style={styles.sectionTitle}>Torneios individuais (1x1)</Text>
             {tourLoading ? (
               <ActivityIndicator color="#4ade80" style={{ marginTop: spacing.xl }} />
@@ -331,7 +330,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 const LIME = '#4ade80';
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: '#0a1f0a' },
 
   topBar: {
     flexDirection: 'row',
@@ -366,30 +365,37 @@ const styles = StyleSheet.create({
   },
   iconText: { color: '#fff', fontSize: 16 },
 
-  content: { padding: spacing.lg, gap: spacing.xl },
+  content: { padding: spacing.lg, gap: spacing.xl, paddingBottom: spacing.xl },
 
   section: { gap: spacing.md },
+  sectionContainer: {
+    backgroundColor: 'rgba(8, 20, 8, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.18)',
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
   sectionTitle: {
     color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md,
-    marginLeft: spacing.xs,
   },
   cardsRow: { gap: spacing.md, paddingBottom: spacing.xs },
 
   // Room card
   roomCard: {
-    width: 130,
+    width: 140,
     borderRadius: radius.lg,
     padding: spacing.md,
     gap: spacing.xs,
     borderWidth: 1,
   },
   roomCardFree: {
-    backgroundColor: 'rgba(220,220,220,0.12)',
-    borderColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(220,220,220,0.10)',
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   roomCardPaid: {
-    backgroundColor: 'rgba(10,40,10,0.85)',
-    borderColor: 'rgba(74,222,128,0.25)',
+    backgroundColor: 'rgba(8, 28, 8, 0.90)',
+    borderColor: 'rgba(74,222,128,0.30)',
   },
   roomRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   roomIcon: { fontSize: 12 },
@@ -400,7 +406,7 @@ const styles = StyleSheet.create({
   pill: {
     borderRadius: radius.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    paddingVertical: 4,
     alignSelf: 'flex-start',
   },
   pillGray: { backgroundColor: 'rgba(255,255,255,0.12)' },
@@ -410,11 +416,11 @@ const styles = StyleSheet.create({
 
   // Tournament card
   tourCard: {
-    width: 150,
+    width: 170,
     borderRadius: radius.lg,
-    backgroundColor: 'rgba(10,40,10,0.85)',
+    backgroundColor: 'rgba(8, 28, 8, 0.90)',
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.25)',
+    borderColor: 'rgba(74,222,128,0.30)',
     padding: spacing.md,
     gap: spacing.xs,
     alignItems: 'flex-start',
@@ -422,25 +428,25 @@ const styles = StyleSheet.create({
   tourTimer: {
     borderRadius: radius.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    paddingVertical: 4,
     alignSelf: 'stretch',
     alignItems: 'center',
   },
   tourTimerRed:   { backgroundColor: '#dc2626' },
   tourTimerGreen: { backgroundColor: '#16a34a' },
   tourTimerText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.xs },
-  tourName: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.xs },
+  tourName: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.sm },
   tourPlayers: { color: colors.textMuted, fontSize: fonts.sizes.xs },
   joinBtn: {
     backgroundColor: LIME,
     borderRadius: radius.sm,
-    paddingVertical: 4,
+    paddingVertical: 6,
     paddingHorizontal: spacing.md,
     alignSelf: 'stretch',
     alignItems: 'center',
     marginTop: spacing.xs,
   },
-  joinBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.xs },
+  joinBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
 
   emptyText: { color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.xl },
 
