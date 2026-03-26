@@ -10,7 +10,7 @@ import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../
 import { useAuthStore } from '../store/auth.store';
 import { connectSocket } from '../services/socket';
 import { ConsentModal } from '../components/ConsentModal';
-import { IconSettings, IconStar, IconLogOut, IconX } from '../components/Icons';
+import { IconSettings, IconStar, IconLogOut, IconX, IconVolumeUp, IconMusic } from '../components/Icons';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -24,11 +24,13 @@ function GradientToggle({
   onValueChange,
   pressableTestID,
   accessibilityLabel,
+  kind,
 }: {
   value: boolean;
   onValueChange: (next: boolean) => void;
   pressableTestID?: string;
   accessibilityLabel?: string;
+  kind?: 'sound' | 'music';
 }) {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
@@ -48,7 +50,8 @@ function GradientToggle({
   }, [anim, value]);
 
   const trackColors = value ? ['#FFFFFF', '#EDF186', '#CEF910'] : ['#FEDB00', '#FA8A28', '#F96910'];
-  const thumbColors = value ? ['#FFFFFF', '#EDF186', '#CEF910'] : ['#FEDB00', '#FA8A28', '#F96910'];
+  const thumbBgColor = value ? '#EDF186' : '#FA8A28';
+  const iconColor = value ? '#0a1f0a' : '#ffffff';
 
   const translateX = anim.interpolate({
     inputRange: [0, 1],
@@ -73,13 +76,13 @@ function GradientToggle({
         style={toggleStyles.track}
       >
         <Animated.View style={[toggleStyles.thumbWrap, { transform: [{ translateX }] }]}>
-          <LinearGradient
-            colors={thumbColors}
-            locations={[0, 0.5, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={toggleStyles.thumb}
-          />
+          <View style={[toggleStyles.thumb, { backgroundColor: thumbBgColor, alignItems: 'center', justifyContent: 'center' }]}>
+            {kind === 'sound' ? (
+              <IconVolumeUp size={18} color={iconColor} accessibilityLabel="Som" />
+            ) : kind === 'music' ? (
+              <IconMusic size={18} color={iconColor} accessibilityLabel="Música" />
+            ) : null}
+          </View>
         </Animated.View>
       </LinearGradient>
     </Pressable>
@@ -337,12 +340,24 @@ export function HomeScreen({ navigation }: Props) {
 
             <View style={styles.settingItem}>
               <Text style={styles.settingLabel}>Som:</Text>
-              <GradientToggle value={soundOn} onValueChange={setSoundOn} pressableTestID="settings-sound-toggle" accessibilityLabel="Som" />
+              <GradientToggle
+                value={soundOn}
+                onValueChange={setSoundOn}
+                pressableTestID="settings-sound-toggle"
+                accessibilityLabel="Som"
+                kind="sound"
+              />
             </View>
 
             <View style={styles.settingItem}>
               <Text style={styles.settingLabel}>Música:</Text>
-              <GradientToggle value={musicOn} onValueChange={setMusicOn} pressableTestID="settings-music-toggle" accessibilityLabel="Música" />
+              <GradientToggle
+                value={musicOn}
+                onValueChange={setMusicOn}
+                pressableTestID="settings-music-toggle"
+                accessibilityLabel="Música"
+                kind="music"
+              />
             </View>
           </Pressable>
         </Pressable>
@@ -529,7 +544,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#fff' },
-  settingsTitle: { fontSize: fonts.sizes.xxxl, fontWeight: '900', color: '#fff', textAlign: 'center', flex: 1 },
+  settingsTitle: {
+    fontSize: fonts.sizes.xxxl,
+    fontWeight: '900',
+    color: '#fff',
+    textAlign: 'center',
+    flex: 1,
+    fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
+  },
   closeBtn:   { color: colors.textMuted, fontSize: fonts.sizes.lg, fontWeight: '700' },
 
   settingItem: {
@@ -539,11 +561,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: SETTINGS_CARD_PAD,
     paddingVertical: SETTINGS_ITEM_GAP,
     borderRadius: radius.lg,
-    backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
   },
-  settingLabel: { fontSize: fonts.sizes.xl, color: '#fff', fontWeight: '800' },
+  settingLabel: {
+    fontSize: fonts.sizes.xl,
+    color: '#fff',
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
+  },
 
   // Profile modal
   profileCard: {

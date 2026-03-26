@@ -8,6 +8,8 @@ import {
   MessageCircle,
   Globe,
   Target,
+  Volume2,
+  Music,
   AlertTriangle,
   Ban,
   Pause,
@@ -85,6 +87,10 @@ export const IconGlobe = (props: Omit<IconProps, 'icon'>) => <Icon icon={Globe} 
 export const IconTarget = (props: Omit<IconProps, 'icon'>) => <Icon icon={Target} {...props} />;
 export const IconSquare = (props: Omit<IconProps, 'icon'>) => <Icon icon={Square} {...props} />;
 export const IconShieldAlert = (props: Omit<IconProps, 'icon'>) => <Icon icon={ShieldAlert} {...props} />;
+
+// Media Icons
+export const IconVolumeUp = (props: Omit<IconProps, 'icon'>) => <Icon icon={Volume2} {...props} />;
+export const IconMusic = (props: Omit<IconProps, 'icon'>) => <Icon icon={Music} {...props} />;
 
 export function IconGoogle({ size = 24, style, accessibilityLabel }: { size?: number; style?: any; accessibilityLabel?: string }) {
   const s = size;
