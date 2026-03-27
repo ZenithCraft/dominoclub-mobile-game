@@ -10,6 +10,8 @@ export interface PlacedTile {
 
 export interface PlayerState {
   userId: string;
+  name?: string;
+  avatarUrl?: string;
   team: number;
   seat: number;
   hand: (Tile | null)[];

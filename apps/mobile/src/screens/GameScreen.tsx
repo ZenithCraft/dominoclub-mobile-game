@@ -25,6 +25,49 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
 const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
 
+function asNumber(v: any, fallback: number) {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizePlayer(raw: any, index: number) {
+  const userId = String(raw?.userId ?? raw?.user_id ?? raw?.user?.id ?? raw?.id ?? `p${index}`);
+  const seat = asNumber(raw?.seat, index);
+  const team = asNumber(raw?.team, (seat % 2) + 1);
+  const hand = Array.isArray(raw?.hand) ? raw.hand : [];
+  return {
+    userId,
+    name: raw?.name ?? raw?.user?.name,
+    avatarUrl: raw?.avatarUrl ?? raw?.avatar_url ?? raw?.user?.avatarUrl ?? raw?.user?.avatar_url,
+    team,
+    seat,
+    hand,
+    isBot: !!raw?.isBot,
+    connected: raw?.connected !== false,
+  };
+}
+
+function normalizeGameState(raw: any): GameState {
+  const players = (Array.isArray(raw?.players) ? raw.players : []).map(normalizePlayer);
+  return {
+    id: String(raw?.id ?? ''),
+    mode: String(raw?.mode ?? ''),
+    variant: String(raw?.variant ?? ''),
+    players,
+    board: (Array.isArray(raw?.board) ? raw.board : []) as PlacedTile[],
+    leftOpen: asNumber(raw?.leftOpen, -1),
+    rightOpen: asNumber(raw?.rightOpen, -1),
+    topOpen: raw?.topOpen,
+    bottomOpen: raw?.bottomOpen,
+    currentPlayerIndex: asNumber(raw?.currentPlayerIndex, 0),
+    turnCount: asNumber(raw?.turnCount, 0),
+    status: (raw?.status ?? 'playing') as any,
+    turnStartedAt: raw?.turnStartedAt,
+    boneyard: Array.isArray(raw?.boneyard) ? raw.boneyard : [],
+    firstPlayMade: !!raw?.firstPlayMade,
+  };
+}
+
 // ─── Game logic (unchanged) ───────────────────────────────────────────────────
 
 function canPlayTile(tile: Tile, game: GameState): PlayOption[] {
@@ -389,7 +432,7 @@ const scoreStyles = StyleSheet.create({
 function OpponentCard({ player, tileCount }: { player: any; tileCount: number }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
-  const avatarUri: string | undefined = player?.avatar;
+  const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
   return (
     <LinearGradient
       colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
@@ -505,31 +548,110 @@ const oppStyles = StyleSheet.create({
 function SidePlayerCard({ player, tileCount }: { player: any; tileCount: number }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
+  const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
   return (
-    <View style={sideStyles.card}>
-      <View style={sideStyles.countBadge}>
-        <Text style={sideStyles.countText}>{tileCount}</Text>
+    <LinearGradient
+      colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+      style={sideStyles.card}
+    >
+      <View style={sideStyles.sideSlot}>
+        <View style={sideStyles.stackWrap}>
+          <View style={[sideStyles.stackTile, sideStyles.stackTile3]} />
+          <View style={[sideStyles.stackTile, sideStyles.stackTile2]} />
+          <View style={sideStyles.stackTile} />
+        </View>
+        <Text style={sideStyles.tileCount}>{tileCount}</Text>
       </View>
-      <Text style={sideStyles.name} numberOfLines={1}>{name}</Text>
-      <Text style={sideStyles.sub}>{tileCount}/7</Text>
-    </View>
+
+      <View style={sideStyles.nameWrap}>
+        <Text style={sideStyles.name} numberOfLines={1}>{name}</Text>
+        <Text style={sideStyles.sub}>{tileCount}/7</Text>
+      </View>
+
+      <View style={[sideStyles.sideSlot, sideStyles.sideSlotRight]}>
+        <View style={sideStyles.avatar}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={sideStyles.avatarImg} />
+          ) : (
+            <Text style={sideStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
+          )}
+        </View>
+      </View>
+    </LinearGradient>
   );
 }
 const sideStyles = StyleSheet.create({
   card: {
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    paddingVertical: 8,
+    paddingLeft: 10,
+    paddingRight: 10,
+    gap: 8,
+    minWidth: 168,
+    minHeight: 48,
+  },
+  sideSlot: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: spacing.sm,
+    gap: 6,
+    width: 58,
   },
-  countBadge: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: radius.sm,
-    paddingHorizontal: 8, paddingVertical: 2,
+  sideSlotRight: { justifyContent: 'flex-end' },
+  stackWrap: {
+    width: 22,
+    height: 28,
+    position: 'relative',
   },
-  countText: { color: '#111', fontWeight: '800', fontSize: fonts.sizes.sm },
-  name: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.xs, maxWidth: 64 },
-  sub:  { color: 'rgba(255,255,255,0.5)', fontSize: 10 },
+  stackTile: {
+    position: 'absolute',
+    width: 14,
+    height: 22,
+    backgroundColor: 'rgba(220,220,220,0.9)',
+    borderRadius: 3,
+    top: 0,
+    left: 0,
+    borderWidth: 0.5,
+    borderColor: 'rgba(0,0,0,0.15)',
+  },
+  stackTile2: {
+    transform: [{ rotate: '-5deg' }],
+    top: 3,
+    left: 3,
+    opacity: 0.65,
+  },
+  stackTile3: {
+    transform: [{ rotate: '-11deg' }],
+    top: 6,
+    left: 6,
+    opacity: 0.35,
+  },
+  tileCount: {
+    color: '#c8c8c8',
+    fontWeight: '800',
+    fontSize: 24,
+    lineHeight: 26,
+  },
+  nameWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  sub:  { color: 'rgba(255,255,255,0.55)', fontSize: 12, textAlign: 'center' },
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: { width: '100%', height: '100%' },
+  avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
 });
 
 // ─── My player card (right side, below emoji) ────────────────────────────────
@@ -613,7 +735,17 @@ export function GameScreen({ navigation, route }: Props) {
   const errorFadeAnim  = useRef(new Animated.Value(0)).current;
 
   // ── Derived ────────────────────────────────────────────────────────────────
-  const myPlayerIndex = currentGame?.players.findIndex((p) => p.userId === user?.id) ?? -1;
+  const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
+  const myPlayerIndex = (() => {
+    const players = currentGame?.players ?? [];
+    if (!players.length) return -1;
+    const byId = myUserId ? players.findIndex((p) => p.userId === myUserId) : -1;
+    if (byId >= 0) return byId;
+    const bySeat0 = players.findIndex((p) => p.seat === 0);
+    return bySeat0 >= 0 ? bySeat0 : 0;
+  })();
+  const myEffectiveUserId = currentGame?.players[myPlayerIndex]?.userId ?? myUserId;
+  const mySeat = myPlayerIndex >= 0 ? (currentGame?.players[myPlayerIndex]?.seat ?? 0) : 0;
   const isMyTurn      = currentGame?.currentPlayerIndex === myPlayerIndex && currentGame?.status === 'playing';
   const myHand        = (currentGame?.players[myPlayerIndex]?.hand || []) as (Tile | null)[];
 
@@ -629,29 +761,29 @@ export function GameScreen({ navigation, route }: Props) {
     : [];
   const uniqueSides = [...new Set(validPlaysForSelected.map((p) => p.side))];
 
-  const is4Player = (currentGame?.players.length ?? 0) === 4;
+  const is4Player = (currentGame?.mode?.includes('2V2') ?? false) || (currentGame?.players.length ?? 0) >= 4;
 
   // Opponents (all players that are not me)
-  const opponents = currentGame?.players.filter((p) => p.userId !== user?.id) ?? [];
+  const opponents = currentGame?.players.filter((p) => p.userId !== myEffectiveUserId) ?? [];
 
   // For 2-player: one opponent at top centre
-  // For 4-player: top=seat 2, left=seat 1, right=seat 3 (relative to my seat 0)
+  // For 4-player: top=partner, left/right=opponents
   const topOpponent   = is4Player
-    ? currentGame?.players.find((p) => p.seat === (myPlayerIndex + 2) % 4)
+    ? currentGame?.players.find((p) => p.seat === (mySeat + 2) % 4)
     : opponents[0];
   const leftOpponent  = is4Player
-    ? currentGame?.players.find((p) => p.seat === (myPlayerIndex + 3) % 4)
+    ? currentGame?.players.find((p) => p.seat === (mySeat + 3) % 4)
     : null;
   const rightOpponent = is4Player
-    ? currentGame?.players.find((p) => p.seat === (myPlayerIndex + 1) % 4)
+    ? currentGame?.players.find((p) => p.seat === (mySeat + 1) % 4)
     : null;
 
   // Scores (tile counts per team)
-  const myTeam  = currentGame?.players[myPlayerIndex]?.team;
+  const myTeam  = currentGame?.players[myPlayerIndex]?.team ?? ((mySeat % 2) + 1);
   const myTeamTiles  = currentGame?.players.filter((p) => p.team === myTeam)
-    .reduce((s, p) => s + p.hand.length, 0) ?? 0;
+    .reduce((s, p) => s + (p.hand?.length ?? 0), 0) ?? 0;
   const oppTeamTiles = currentGame?.players.filter((p) => p.team !== myTeam)
-    .reduce((s, p) => s + p.hand.length, 0) ?? 0;
+    .reduce((s, p) => s + (p.hand?.length ?? 0), 0) ?? 0;
 
   // ── Timer ──────────────────────────────────────────────────────────────────
   const resetTurnTimer = useCallback(() => {
@@ -687,9 +819,11 @@ export function GameScreen({ navigation, route }: Props) {
       socket.emit('game:join', { gameId });
 
       const onGameState = (state: GameState) => {
-        setGame(state);
+        const normalized = normalizeGameState(state);
+        setGame(normalized);
         resetTurnTimer();
-        const newHand = state.players.find((p) => p.userId === user?.id)?.hand ?? [];
+        const me = normalized.players.find((p) => p.userId === myUserId) ?? normalized.players.find((p) => p.seat === 0);
+        const newHand = me?.hand ?? [];
         const cur = useGameStore.getState().selectedTile;
         if (cur) {
           const stillInHand = newHand.some((t) => t && t[0] === cur[0] && t[1] === cur[1]);
@@ -700,7 +834,7 @@ export function GameScreen({ navigation, route }: Props) {
       socket.on('game:state',   onGameState);
       socket.on('game:ended',   (result: any) => { if (timerRef.current) clearInterval(timerRef.current); setGameResult(result); setResultModal(true); });
       socket.on('game:error',   ({ message }: { message: string }) => showError(message));
-      socket.on('game:timeout', ({ userId }: { userId: string }) => { if (userId === user?.id) showError('Tempo esgotado — sua vez foi pulada'); });
+      socket.on('game:timeout', ({ userId }: { userId: string }) => { if (String(userId) === myUserId) showError('Tempo esgotado — sua vez foi pulada'); });
       socket.on('disconnect',   () => setDisconnected(true));
       socket.on('connect',      () => { setDisconnected(false); socket.emit('game:join', { gameId }); });
 
@@ -715,7 +849,7 @@ export function GameScreen({ navigation, route }: Props) {
       socketRef.current?.emit('game:leave', { gameId });
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [gameId]);
+  }, [gameId, myUserId]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const handleTileSelect = (tile: Tile) => {
@@ -819,10 +953,6 @@ export function GameScreen({ navigation, route }: Props) {
 
       {/* ── Middle: [left player] [table] [emoji] [right player] ── */}
       <View style={styles.middle}>
-        {is4Player && leftOpponent && (
-          <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} />
-        )}
-
         {/* Table */}
         <View style={styles.tableWrap}>
           {/* Score box — enlarged, anchored to the left edge of the table area */}
@@ -837,6 +967,16 @@ export function GameScreen({ navigation, route }: Props) {
             </View>
           )}
           <View style={styles.tableOuter}>
+            {is4Player && leftOpponent && (
+              <View style={styles.tableSideBadgeLeft}>
+                <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} />
+              </View>
+            )}
+            {is4Player && rightOpponent && (
+              <View style={styles.tableSideBadgeRight}>
+                <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} />
+              </View>
+            )}
             <View style={styles.tableFelt}>
               {/* Watermark */}
               {currentGame.board.length === 0 && (
@@ -939,10 +1079,6 @@ export function GameScreen({ navigation, route }: Props) {
         <View style={styles.rightColumn}>
           <EmojiPanel onEmoji={handleEmoji} />
         </View>
-
-        {is4Player && rightOpponent && (
-          <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} />
-        )}
       </View>
 
 
@@ -1121,6 +1257,20 @@ const styles = StyleSheet.create({
     zIndex: 10,
     transform: [{ translateY: -30 }],
   },
+  tableSideBadgeLeft: {
+    position: 'absolute',
+    left: -12,
+    top: '50%',
+    zIndex: 15,
+    transform: [{ translateY: -24 }],
+  },
+  tableSideBadgeRight: {
+    position: 'absolute',
+    right: -12,
+    top: '50%',
+    zIndex: 15,
+    transform: [{ translateY: -24 }],
+  },
   tableOuter: {
     width: '98%',
     maxWidth: 1180,
@@ -1168,9 +1318,10 @@ const styles = StyleSheet.create({
   boardTiles: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.lg },
   emojiWrap: { justifyContent: 'center' },
   rightColumn: {
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     alignItems: 'center',
     gap: spacing.sm,
+    paddingBottom: spacing.lg,
   },
 
   // ── In-table floating action controls ──
@@ -1285,7 +1436,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
   },
-  settingLabelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  settingLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, flex: 1 },
   settingLabel: {
     fontSize: fonts.sizes.xl,
     color: '#fff',
