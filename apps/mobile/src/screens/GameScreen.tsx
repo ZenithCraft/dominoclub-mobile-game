@@ -1,17 +1,18 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, Modal, Alert, Animated,
+  View, Text, StyleSheet, ScrollView, ImageBackground, Image,
+  TouchableOpacity, Modal, Alert, Animated, Pressable,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
-  IconSmile, IconHeart, IconFrown, IconAngry, IconTrophy, IconDices,
-  IconSettings, IconAlert, IconX
+  IconTrophy, IconDices, IconSettings, IconAlert, IconX, IconFrown,
+  IconVolumeUp, IconMusic,
 } from '../components/Icons';
-import { colors, spacing, fonts, radius, shadows } from '../theme';
-import { DominoTile } from '../components/DominoTile';
+import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
 import { connectSocket } from '../services/socket';
 import { useGameStore, Tile, GameState, PlacedTile } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
@@ -20,6 +21,9 @@ import { RootStackParamList } from '../navigation';
 type PlaySide = 'left' | 'right' | 'top' | 'bottom';
 type PlayOption = { side: PlaySide; flipped: boolean };
 type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
+
+const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
+const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
 
 // ─── Game logic (unchanged) ───────────────────────────────────────────────────
 
@@ -52,21 +56,273 @@ function getValidMovesForHand(hand: (Tile | null)[], game: GameState): Map<strin
 
 function tileKey(tile: Tile): string { return `${tile[0]}-${tile[1]}`; }
 
+// ─── Tile image map (portrait PNGs → landscape in hand) ──────────────────────
+// Keys use min-max order so [6,5] and [5,6] map to the same image.
+const TILE_IMAGE_MAP: Record<string, any> = {
+  '6-6': require('../../assets/Domino Tiles/Frame 14164.png'),
+  '5-6': require('../../assets/Domino Tiles/Frame 14165.png'),
+  '5-5': require('../../assets/Domino Tiles/Frame 14166.png'),
+  '4-6': require('../../assets/Domino Tiles/Frame 14167.png'),
+  '4-5': require('../../assets/Domino Tiles/Frame 14168.png'),
+  '4-4': require('../../assets/Domino Tiles/Frame 14169.png'),
+  '3-6': require('../../assets/Domino Tiles/Frame 14170.png'),
+  '3-5': require('../../assets/Domino Tiles/Frame 14171.png'),
+  '3-4': require('../../assets/Domino Tiles/Frame 14172.png'),
+  '3-3': require('../../assets/Domino Tiles/Frame 14173.png'),
+  '2-6': require('../../assets/Domino Tiles/Frame 14174.png'),
+  '2-5': require('../../assets/Domino Tiles/Frame 14175.png'),
+  '2-4': require('../../assets/Domino Tiles/Frame 14176.png'),
+  '2-3': require('../../assets/Domino Tiles/Frame 14177.png'),
+  '2-2': require('../../assets/Domino Tiles/Frame 14178.png'),
+  '1-6': require('../../assets/Domino Tiles/Frame 14179.png'),
+  '1-5': require('../../assets/Domino Tiles/Frame 14180.png'),
+  '1-4': require('../../assets/Domino Tiles/Frame 14181.png'),
+  '1-3': require('../../assets/Domino Tiles/Frame 14182.png'),
+  '1-2': require('../../assets/Domino Tiles/Frame 14183.png'),
+  '0-0': require('../../assets/Domino Tiles/Frame 14191.png'),
+};
+
+// Portrait tile dimensions for hand display
+const HAND_W = 30;
+const HAND_H = 50;
+
+function TileHandImage({
+  tile, selected, playable, onPress,
+}: {
+  tile: Tile; selected?: boolean; playable?: boolean; onPress?: () => void;
+}) {
+  const lo = Math.min(tile[0], tile[1]);
+  const hi = Math.max(tile[0], tile[1]);
+  const imgSrc = TILE_IMAGE_MAP[`${lo}-${hi}`];
+
+  const inner = imgSrc ? (
+    <View style={[
+      handImgStyles.container,
+      selected && handImgStyles.selected,
+      !playable && handImgStyles.unplayable,
+    ]}>
+      <Image source={imgSrc} style={handImgStyles.img} resizeMode="stretch" />
+    </View>
+  ) : (
+    <DominoTile tile={tile} size="sm" selected={selected}
+      style={!playable ? styles.tileUnplayable : undefined} />
+  );
+
+  return onPress ? (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>{inner}</TouchableOpacity>
+  ) : inner;
+}
+
+const handImgStyles = StyleSheet.create({
+  container: {
+    width: HAND_W,
+    height: HAND_H,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  img: { width: '100%', height: '100%' },
+  selected: {
+    borderColor: '#4ade80',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 0 10px rgba(74,222,128,0.55)' } as any)
+      : {
+          shadowColor: '#4ade80',
+          shadowOpacity: 0.8,
+          shadowRadius: 6,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 6,
+        }),
+  },
+  unplayable: { opacity: 0.38 },
+});
+
+const BOARD_SHORT = 30;
+const BOARD_LONG = 60;
+
+function TileBoardImage({ tile, horizontal, flipped }: { tile: Tile; horizontal?: boolean; flipped?: boolean }) {
+  const lo = Math.min(tile[0], tile[1]);
+  const hi = Math.max(tile[0], tile[1]);
+  const imgSrc = TILE_IMAGE_MAP[`${lo}-${hi}`];
+
+  if (!imgSrc) {
+    return <DominoTile tile={tile} size="sm" horizontal={horizontal} />;
+  }
+
+  const w = horizontal ? BOARD_LONG : BOARD_SHORT;
+  const h = horizontal ? BOARD_SHORT : BOARD_LONG;
+  const transforms = [
+    horizontal ? ({ rotate: '90deg' } as const) : null,
+    flipped ? ({ rotate: '180deg' } as const) : null,
+  ].filter(Boolean) as any[];
+
+  return (
+    <View style={[boardImgStyles.wrap, { width: w, height: h }]}>
+      <Image source={imgSrc} style={[boardImgStyles.img, { transform: transforms }]} resizeMode="contain" />
+    </View>
+  );
+}
+
+const boardImgStyles = StyleSheet.create({
+  wrap: {
+    backgroundColor: colors.tileBg,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.tileBorder,
+  },
+  img: { width: '100%', height: '100%' },
+});
+
+type DominoTileSize = 'sm' | 'md';
+type DominoTileProps = {
+  tile: Tile;
+  size?: DominoTileSize;
+  horizontal?: boolean;
+  selected?: boolean;
+  onPress?: () => void;
+  style?: any;
+};
+
+const PIP_POS: Record<number, Array<[number, number]>> = {
+  0: [],
+  1: [[1, 1]],
+  2: [[0, 0], [2, 2]],
+  3: [[0, 0], [1, 1], [2, 2]],
+  4: [[0, 0], [0, 2], [2, 0], [2, 2]],
+  5: [[0, 0], [0, 2], [1, 1], [2, 0], [2, 2]],
+  6: [[0, 0], [0, 1], [0, 2], [2, 0], [2, 1], [2, 2]],
+};
+
+function DominoTile({ tile, size = 'md', horizontal, selected, onPress, style }: DominoTileProps) {
+  const dims = size === 'sm'
+    ? { short: 30, long: 60, dot: 4, pad: 4 }
+    : { short: 42, long: 84, dot: 6, pad: 6 };
+
+  const w = horizontal ? dims.long : dims.short;
+  const h = horizontal ? dims.short : dims.long;
+
+  const borderColor = selected ? colors.primary : colors.tileBorder;
+  const borderWidth = selected ? 2 : 1;
+
+  const wrapStyle = [
+    tileStyles.wrap,
+    {
+      width: w,
+      height: h,
+      borderColor,
+      borderWidth,
+      flexDirection: horizontal ? 'row' : 'column',
+    },
+    style,
+  ];
+
+  const halfStyle = horizontal
+    ? [{ width: w / 2, height: h }]
+    : [{ width: w, height: h / 2 }];
+
+  const dividerStyle = horizontal ? tileStyles.dividerV : tileStyles.dividerH;
+
+  const content = (
+    <View style={wrapStyle}>
+      <View style={[tileStyles.half, ...halfStyle]}>
+        <Pips value={tile[0]} dot={dims.dot} pad={dims.pad} />
+      </View>
+      <View style={dividerStyle} />
+      <View style={[tileStyles.half, ...halfStyle]}>
+        <Pips value={tile[1]} dot={dims.dot} pad={dims.pad} />
+      </View>
+    </View>
+  );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={{ borderRadius: radius.md }}>
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return content;
+}
+
+function Pips({ value, dot, pad }: { value: number; dot: number; pad: number }) {
+  const spots = PIP_POS[value] ?? [];
+  return (
+    <View style={[tileStyles.pips, { padding: pad }]}>
+      {spots.map(([r, c], idx) => (
+        <View
+          key={idx}
+          style={[
+            tileStyles.pip,
+            {
+              width: dot,
+              height: dot,
+              borderRadius: dot / 2,
+              top: `${(r / 2) * 100}%`,
+              left: `${(c / 2) * 100}%`,
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+const tileStyles = StyleSheet.create({
+  wrap: {
+    backgroundColor: colors.tileBg,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  half: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dividerH: {
+    height: 1,
+    backgroundColor: colors.tileBorder,
+  },
+  dividerV: {
+    width: 1,
+    backgroundColor: colors.tileBorder,
+  },
+  pips: {
+    flex: 1,
+    alignSelf: 'stretch',
+    position: 'relative',
+  },
+  pip: {
+    position: 'absolute',
+    backgroundColor: colors.tilePip,
+    transform: [{ translateX: -0.5 }, { translateY: -0.5 }],
+  },
+});
+
 // ─── Emoji panel ──────────────────────────────────────────────────────────────
 
 const EMOJIS = [
-  { id: 'smile', Icon: IconSmile },
-  { id: 'heart', Icon: IconHeart },
-  { id: 'frown', Icon: IconFrown },
-  { id: 'angry', Icon: IconAngry }
+  { id: 'smile',   char: '😄' },
+  { id: 'laugh',   char: '😂' },
+  { id: 'love',    char: '😍' },
+  { id: 'wow',     char: '🤩' },
+  { id: 'sad',     char: '😢' },
+  { id: 'angry',   char: '😡' },
 ];
 
 function EmojiPanel({ onEmoji }: { onEmoji: (e: string) => void }) {
   return (
     <View style={emojiStyles.grid}>
       {EMOJIS.map((e) => (
-        <TouchableOpacity key={e.id} style={emojiStyles.btn} onPress={() => onEmoji(e.id)} accessibilityLabel={`Reação ${e.id}`}>
-          <e.Icon size={24} color={colors.textPrimary} />
+        <TouchableOpacity
+          key={e.id}
+          style={emojiStyles.btn}
+          onPress={() => onEmoji(e.id)}
+          accessibilityLabel={`Reação ${e.id}`}
+          activeOpacity={0.65}
+        >
+          <Text style={emojiStyles.emoji}>{e.char}</Text>
         </TouchableOpacity>
       ))}
     </View>
@@ -74,50 +330,58 @@ function EmojiPanel({ onEmoji }: { onEmoji: (e: string) => void }) {
 }
 const emojiStyles = StyleSheet.create({
   grid: {
-    width: 110,
     flexDirection: 'row',
     flexWrap: 'wrap',
+    width: 90,
     gap: 6,
     padding: 6,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.40)',
     borderRadius: radius.lg,
-    alignContent: 'flex-start',
   },
   btn: {
-    width: 46, height: 40,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: radius.sm,
+    width: 36, height: 36,
     alignItems: 'center', justifyContent: 'center',
   },
-  emoji: { fontSize: 22 },
+  emoji: { fontSize: 24 },
 });
 
 // ─── Score box ────────────────────────────────────────────────────────────────
 
 function ScoreBox({ is4Player, myScore, oppScore }: { is4Player: boolean; myScore: number; oppScore: number }) {
+  const leftLabel = is4Player ? 'Vocês:' : 'Você:';
+  const rightLabel = is4Player ? 'Eles:' : 'Ele:';
   return (
     <View style={scoreStyles.box}>
-      <Text style={scoreStyles.line}>
-        {is4Player ? 'Vocês' : 'Você'}:{' '}
-        <Text style={scoreStyles.num}>{myScore}</Text>
-      </Text>
-      <Text style={scoreStyles.line}>
-        {is4Player ? 'Eles' : 'Ele'}:{' '}
-        <Text style={scoreStyles.num}>{oppScore}</Text>
-      </Text>
+      <View style={scoreStyles.row}>
+        <Text style={scoreStyles.label}>{leftLabel}</Text>
+        <Text style={scoreStyles.scoreValue}>{myScore}</Text>
+      </View>
+      <View style={scoreStyles.row}>
+        <Text style={scoreStyles.label}>{rightLabel}</Text>
+        <Text style={scoreStyles.scoreValue}>{oppScore}</Text>
+      </View>
     </View>
   );
 }
 const scoreStyles = StyleSheet.create({
   box: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: radius.md,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    gap: 2,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    paddingLeft: 28,
+    paddingRight: 20,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(181,228,85,0.30)',
+    minWidth: 180,
+    ...(Platform.OS === 'web' ? ({
+      backdropFilter: 'blur(12px)',
+      backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.05))',
+    } as any) : null),
   },
-  line: { color: '#222', fontSize: fonts.sizes.sm, fontWeight: '600' },
-  num:  { fontWeight: '800' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
+  label: { color: '#fff', fontSize: fonts.sizes.md, fontWeight: '700' },
+  scoreValue: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md },
 });
 
 // ─── Opponent card (top centre) ───────────────────────────────────────────────
@@ -125,49 +389,115 @@ const scoreStyles = StyleSheet.create({
 function OpponentCard({ player, tileCount }: { player: any; tileCount: number }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
+  const avatarUri: string | undefined = player?.avatar;
   return (
-    <View style={oppStyles.card}>
-      <View style={oppStyles.row}>
-        <View style={oppStyles.countBadge}>
-          <Text style={oppStyles.countText}>{tileCount}</Text>
+    <LinearGradient
+      colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+      style={oppStyles.card}
+    >
+      <View style={oppStyles.sideSlot}>
+        <View style={oppStyles.stackWrap}>
+          <View style={[oppStyles.stackTile, oppStyles.stackTile3]} />
+          <View style={[oppStyles.stackTile, oppStyles.stackTile2]} />
+          <View style={oppStyles.stackTile} />
         </View>
-        <View>
-          <Text style={oppStyles.name}>{name}</Text>
-          <Text style={oppStyles.sub}>{tileCount}/7</Text>
-        </View>
+        <Text style={oppStyles.tileCount}>{tileCount}</Text>
+      </View>
+
+      <View style={oppStyles.nameWrap}>
+        <Text style={oppStyles.name} numberOfLines={1}>{name}</Text>
+        <Text style={oppStyles.sub}>{tileCount}/7</Text>
+      </View>
+
+      <View style={[oppStyles.sideSlot, oppStyles.sideSlotRight]}>
         <View style={oppStyles.avatar}>
-          <Text style={oppStyles.avatarText}>{name[0]}</Text>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={oppStyles.avatarImg} />
+          ) : (
+            <Text style={oppStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
+          )}
         </View>
       </View>
-    </View>
+    </LinearGradient>
   );
 }
 const oppStyles = StyleSheet.create({
   card: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: radius.lg,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: radius.full,
+    paddingVertical: 12,
+    paddingLeft: 14,
+    paddingRight: 14,
+    gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(0,0,0,0.55)',
+    minWidth: 240,
+    minHeight: 56,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  countBadge: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: radius.sm,
-    width: 28, height: 28,
-    alignItems: 'center', justifyContent: 'center',
+  sideSlot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    width: 72,
   },
-  countText: { color: '#111', fontWeight: '800', fontSize: fonts.sizes.sm },
-  name: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
-  sub:  { color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.xs },
+  sideSlotRight: { justifyContent: 'flex-end' },
+  stackWrap: {
+    width: 26,
+    height: 34,
+    position: 'relative',
+  },
+  stackTile: {
+    position: 'absolute',
+    width: 16,
+    height: 26,
+    backgroundColor: 'rgba(220,220,220,0.9)',
+    borderRadius: 3,
+    top: 0,
+    left: 0,
+    borderWidth: 0.5,
+    borderColor: 'rgba(0,0,0,0.15)',
+  },
+  stackTile2: {
+    transform: [{ rotate: '-5deg' }],
+    top: 4,
+    left: 4,
+    opacity: 0.65,
+  },
+  stackTile3: {
+    transform: [{ rotate: '-11deg' }],
+    top: 8,
+    left: 8,
+    opacity: 0.35,
+  },
+  tileCount: {
+    color: '#c8c8c8',
+    fontWeight: '800',
+    fontSize: 30,
+    lineHeight: 32,
+  },
+  nameWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md, textAlign: 'center' },
+  sub:  { color: 'rgba(255,255,255,0.55)', fontSize: fonts.sizes.sm, textAlign: 'center' },
   avatar: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: '#4a7c4a',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#4ade80',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  avatarText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+  avatarImg: { width: '100%', height: '100%' },
+  avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md },
 });
 
 // ─── Side player card (4p left/right) ────────────────────────────────────────
@@ -177,9 +507,6 @@ function SidePlayerCard({ player, tileCount }: { player: any; tileCount: number 
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   return (
     <View style={sideStyles.card}>
-      <View style={sideStyles.avatar}>
-        <Text style={sideStyles.avatarText}>{name[0]}</Text>
-      </View>
       <View style={sideStyles.countBadge}>
         <Text style={sideStyles.countText}>{tileCount}</Text>
       </View>
@@ -195,13 +522,6 @@ const sideStyles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: spacing.sm,
   },
-  avatar: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: '#4a7c4a',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#4ade80',
-  },
-  avatarText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
   countBadge: {
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: radius.sm,
@@ -212,25 +532,42 @@ const sideStyles = StyleSheet.create({
   sub:  { color: 'rgba(255,255,255,0.5)', fontSize: 10 },
 });
 
-// ─── Player badge (bottom right) ──────────────────────────────────────────────
+// ─── My player card (right side, below emoji) ────────────────────────────────
 
-function MyBadge({ name, hand }: { name: string; hand: number }) {
+function MyPlayerCard({ name, hand, isMyTurn }: {
+  name: string; hand: number; isMyTurn: boolean;
+}) {
   return (
-    <View style={myBadgeStyles.badge}>
-      <Text style={myBadgeStyles.text}>{name}  {hand}/7</Text>
-    </View>
+    <LinearGradient
+      colors={['rgba(32,100,22,0.93)', 'rgba(8,38,14,0.97)']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+      style={[myCardStyles.card, isMyTurn && myCardStyles.cardMyTurn]}
+    >
+      {/* Info */}
+      <View style={myCardStyles.nameWrap}>
+        <Text style={myCardStyles.name} numberOfLines={1}>{name}</Text>
+        <Text style={myCardStyles.sub}>{hand}/7</Text>
+      </View>
+    </LinearGradient>
   );
 }
-const myBadgeStyles = StyleSheet.create({
-  badge: {
-    backgroundColor: 'rgba(30,30,30,0.9)',
-    borderRadius: radius.sm,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
+const myCardStyles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: radius.full,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(0,0,0,0.55)',
+    minWidth: 240,
+    minHeight: 56,
   },
-  text: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+  cardMyTurn: { borderColor: 'rgba(74,222,128,0.65)' },
+  nameWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md, textAlign: 'center' },
+  sub:  { color: 'rgba(255,255,255,0.55)', fontSize: fonts.sizes.sm, textAlign: 'center' },
 });
 
 // ─── Result card ──────────────────────────────────────────────────────────────
@@ -267,6 +604,9 @@ export function GameScreen({ navigation, route }: Props) {
   const [gameError, setGameError]       = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [leaveConfirmVisible, setLeaveConfirmVisible] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+  const [musicOn, setMusicOn] = useState(true);
 
   const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef      = useRef<Socket | null>(null);
@@ -417,25 +757,42 @@ export function GameScreen({ navigation, route }: Props) {
     socket.emit('game:emoji', { gameId, emoji });
   }, [gameId]);
 
+  const doLeave = () => {
+    setLeaveConfirmVisible(false);
+    setSettingsVisible(false);
+    clearGame();
+    navigation.replace('Main');
+  };
+
   const handleLeaveGame = () => {
-    Alert.alert('Abandonar partida', 'Tem certeza? Você perderá a aposta.', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Sair', style: 'destructive', onPress: () => { clearGame(); navigation.replace('Main'); } },
-    ]);
+    setLeaveConfirmVisible(true);
   };
 
   // ── Loading state ──────────────────────────────────────────────────────────
   if (!currentGame) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]}>
-        <Text style={styles.loadingText}>Entrando na partida...</Text>
-      </SafeAreaView>
+      <ImageBackground
+        source={require('../../assets/background.png')}
+        style={[styles.bg, backgroundCoverFix]}
+        resizeMode="cover"
+      >
+        <View style={styles.bgOverlay} />
+        <SafeAreaView style={[styles.container, styles.centered]}>
+          <Text style={styles.loadingText}>Entrando na partida...</Text>
+        </SafeAreaView>
+      </ImageBackground>
     );
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.container}>
+    <ImageBackground
+      source={require('../../assets/background.png')}
+      style={[styles.bg, backgroundCoverFix]}
+      resizeMode="cover"
+    >
+      <View style={styles.bgOverlay} />
+      <SafeAreaView style={styles.container}>
 
       {/* Disconnect banner */}
       {disconnected && (
@@ -452,19 +809,9 @@ export function GameScreen({ navigation, route }: Props) {
         </Animated.View>
       )}
 
-      {/* ── Top bar: Score | Opponent | Gear ── */}
+      {/* ── Top bar: settings only (score moved near table) ── */}
       <View style={styles.topBar}>
-        <ScoreBox is4Player={is4Player} myScore={myTeamTiles} oppScore={oppTeamTiles} />
-
-        <View style={styles.topCenter}>
-          {topOpponent && (
-            <OpponentCard
-              player={topOpponent}
-              tileCount={topOpponent.hand.length}
-            />
-          )}
-        </View>
-
+        <View style={styles.topCenter} />
         <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)}>
           <IconSettings size={24} color={colors.textPrimary} accessibilityLabel="Configurações" />
         </TouchableOpacity>
@@ -478,14 +825,26 @@ export function GameScreen({ navigation, route }: Props) {
 
         {/* Table */}
         <View style={styles.tableWrap}>
+          {/* Score box — enlarged, anchored to the left edge of the table area */}
+          <View style={styles.scoreOverlay}>
+            <ScoreBox is4Player={is4Player} myScore={myTeamTiles} oppScore={oppTeamTiles} />
+          </View>
+
+          {/* Opponent card floats over the top-centre of the oval */}
+          {topOpponent && (
+            <View style={styles.oppCardOverlay}>
+              <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} />
+            </View>
+          )}
           <View style={styles.tableOuter}>
             <View style={styles.tableFelt}>
               {/* Watermark */}
               {currentGame.board.length === 0 && (
-                <View style={styles.watermark}>
-                  <Text style={styles.watermarkText1}>DOMINO</Text>
-                  <Text style={styles.watermarkText2}>CLUB</Text>
-                </View>
+                <Image
+                  source={require('../../assets/b9e1ca54722e75c0419489ace1bdc6e4b752369c.png')}
+                  style={styles.watermarkImage}
+                  resizeMode="contain"
+                />
               )}
 
               {/* Board tiles */}
@@ -496,31 +855,88 @@ export function GameScreen({ navigation, route }: Props) {
                   contentContainerStyle={styles.boardTiles}
                 >
                   {currentGame.board.map((pt: PlacedTile, i: number) => (
-                    <DominoTile
+                    <TileBoardImage
                       key={i}
                       tile={pt.tile}
                       horizontal={pt.side === 'left' || pt.side === 'right'}
-                      size="sm"
+                      flipped={pt.flipped}
                     />
                   ))}
                 </ScrollView>
               )}
 
-              {/* Turn timer */}
-              {isMyTurn && (
-                <View style={[
-                  styles.timerBadge,
-                  { backgroundColor: turnTimer <= 10 ? '#dc2626cc' : 'rgba(0,0,0,0.5)' },
-                ]}>
-                  <Text style={styles.timerText}>{turnTimer}s</Text>
-                </View>
-              )}
             </View>
+            <View style={styles.tableBottomCenter}>
+              <MyPlayerCard
+                name={user?.name?.split(' ')[0] || 'Você'}
+                hand={myHand.filter(Boolean).length}
+                isMyTurn={isMyTurn}
+              />
+            </View>
+          </View>
+
+          {/* Hand section below oval — outside overflow:hidden so tiles are always visible */}
+          <View style={styles.handSection}>
+            {isMyTurn && (
+              <View style={styles.handActions}>
+                {selectedTile && uniqueSides.length > 1 && uniqueSides.map((side) => (
+                  <TouchableOpacity key={side} style={styles.tablePlayBtn} onPress={() => handlePlayTile(side)}>
+                    <Text style={styles.tablePlayBtnText}>
+                      {side === 'left' ? '←' : side === 'right' ? '→' : side === 'top' ? '↑' : '↓'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {selectedTile && uniqueSides.length === 1 && (
+                  <TouchableOpacity style={styles.tablePlayBtnPrimary} onPress={handlePlayImmediate}>
+                    <Text style={styles.tablePlayBtnText}>Jogar</Text>
+                  </TouchableOpacity>
+                )}
+                {selectedTile && (
+                  <TouchableOpacity style={styles.tableCancelBtn} onPress={() => setSelectedTile(null)}>
+                    <Text style={styles.tableCancelText}>✕</Text>
+                  </TouchableOpacity>
+                )}
+                {!selectedTile && hasBoneyard && (
+                  <TouchableOpacity style={styles.tableDrawBtn} onPress={handleDraw}>
+                    <IconDices size={14} color="#fff" />
+                    <Text style={styles.tableDrawText}>+1</Text>
+                  </TouchableOpacity>
+                )}
+                {!selectedTile && !hasValidMoves && !hasBoneyard && (
+                  <TouchableOpacity style={styles.tablePassBtn} onPress={handlePass}>
+                    <Text style={styles.tablePassText}>Passar</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.handContent}
+            >
+              {myHand.map((tile, i) => {
+                if (!tile) return null;
+                const key = tileKey(tile);
+                const isPlayable = isMyTurn && validMovesMap.has(key);
+                const isSelected = selectedTile?.[0] === tile[0] && selectedTile?.[1] === tile[1];
+                return (
+                  <View key={`${key}-${i}`} style={{ alignItems: 'center' }}>
+                    <TileHandImage
+                      tile={tile}
+                      selected={isSelected}
+                      playable={!isMyTurn || isPlayable}
+                      onPress={() => handleTileSelect(tile)}
+                    />
+                    {isMyTurn && isPlayable && !isSelected && <View style={styles.playIndicator} />}
+                  </View>
+                );
+              })}
+            </ScrollView>
           </View>
         </View>
 
-        {/* Emoji panel */}
-        <View style={styles.emojiWrap}>
+        {/* Right column: emoji + my player card */}
+        <View style={styles.rightColumn}>
           <EmojiPanel onEmoji={handleEmoji} />
         </View>
 
@@ -529,116 +945,97 @@ export function GameScreen({ navigation, route }: Props) {
         )}
       </View>
 
-      {/* ── Bottom: hand tiles + player badge ── */}
-      <View style={styles.bottomBar}>
-        {/* Hand */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.handScroll}
-          contentContainerStyle={styles.handContent}
-        >
-          {myHand.map((tile, i) => {
-            if (!tile) return null;
-            const key = tileKey(tile);
-            const isPlayable = isMyTurn && validMovesMap.has(key);
-            const isSelected = selectedTile?.[0] === tile[0] && selectedTile?.[1] === tile[1];
-            return (
-              <View key={`${key}-${i}`}>
-                <DominoTile
-                  tile={tile}
-                  selected={isSelected}
-                  onPress={() => handleTileSelect(tile)}
-                  size="md"
-                  style={isMyTurn && !isPlayable ? styles.tileUnplayable : undefined}
-                />
-                {isMyTurn && isPlayable && !isSelected && <View style={styles.playIndicator} />}
-              </View>
-            );
-          })}
-        </ScrollView>
 
-        {/* Action buttons */}
-        <View style={styles.actions}>
-          {selectedTile && validPlaysForSelected.length > 0 && (
-            <View style={styles.playOptions}>
-              {uniqueSides.length === 1 ? (
-                <TouchableOpacity style={styles.playBtnPrimary} onPress={handlePlayImmediate}>
-                  <Text style={styles.playBtnText}>Jogar</Text>
-                </TouchableOpacity>
-              ) : (
-                uniqueSides.map((side) => (
-                  <TouchableOpacity key={side} style={styles.playBtn} onPress={() => handlePlayTile(side)}>
-                    <Text style={styles.playBtnText}>
-                      {side === 'left' ? '← Esq' : side === 'right' ? 'Dir →' : side === 'top' ? '↑ Cima' : '↓ Baixo'}
-                    </Text>
-                  </TouchableOpacity>
-                ))
-              )}
-              <TouchableOpacity onPress={() => setSelectedTile(null)}>
-                <Text style={styles.cancelText}>cancelar</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          {selectedTile && validPlaysForSelected.length === 0 && (
-            <Text style={styles.noPlaysText}>Sem jogadas</Text>
-          )}
-          {!selectedTile && isMyTurn && (
-            <View style={styles.passDrawRow}>
-              {hasBoneyard && (
-                <TouchableOpacity style={styles.drawBtn} onPress={handleDraw}>
-                  <IconDices size={16} color={colors.textPrimary} style={{ marginRight: 4 }} />
-                  <Text style={styles.drawBtnText}>Comprar</Text>
-                </TouchableOpacity>
-              )}
-              {!hasValidMoves && !hasBoneyard && (
-                <TouchableOpacity style={styles.passBtn} onPress={handlePass}>
-                  <Text style={styles.passBtnText}>Passar</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-          <Text style={styles.boneyardCount}>{currentGame.boneyard.length} no estoque</Text>
-        </View>
-
-        {/* Player badge */}
-        <MyBadge
-          name={user?.name?.split(' ')[0] || 'Você'}
-          hand={myHand.filter(Boolean).length}
-        />
-      </View>
-
-      {/* ── Settings modal ── */}
+      {/* ── Settings modal (HomeScreen-style card) ── */}
       <Modal visible={settingsVisible} transparent animationType="fade">
-        <TouchableOpacity
+        <Pressable
           style={styles.overlay}
-          activeOpacity={1}
           onPress={() => setSettingsVisible(false)}
+          testID="settings-overlay"
         >
-          <View style={styles.settingsCard} onStartShouldSetResponder={() => true}>
+          <Pressable
+            style={styles.settingsCard}
+            onPress={() => {}}
+            onStartShouldSetResponder={() => true}
+            testID="settings-card"
+          >
+            <View style={[styles.settingsTextureWrap, (Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : null)]}>
+              <Image
+                source={require('../../assets/e27c2e8e377e60057010a8431706b96b0152436f.png')}
+                style={styles.settingsTexture}
+                resizeMode="cover"
+              />
+            </View>
+
             <View style={styles.settingsHeader}>
+              <View style={{ width: 26 }} />
               <Text style={styles.settingsTitle}>Configurações</Text>
               <TouchableOpacity onPress={() => setSettingsVisible(false)}>
-                <IconX size={16} color={colors.textPrimary} accessibilityLabel="Fechar" />
+                <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
+            {/* Sound */}
             <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Som:</Text>
-              <View style={[styles.toggle, { backgroundColor: '#f97316' }]}>
-                <Text style={styles.toggleLabel}>Off</Text>
+              <View style={styles.settingLabelRow}>
+                <IconVolumeUp size={20} color="#fff" accessibilityLabel="Som" />
+                <Text style={styles.settingLabel}>Som</Text>
               </View>
+              <TouchableOpacity
+                style={[styles.togglePill, { backgroundColor: soundOn ? '#4ade80' : 'rgba(255,255,255,0.12)' }]}
+                onPress={() => setSoundOn(v => !v)}
+              >
+                <Text style={[styles.togglePillText, { color: soundOn ? '#000' : '#fff' }]}>
+                  {soundOn ? 'On' : 'Off'}
+                </Text>
+              </TouchableOpacity>
             </View>
+            {/* Music */}
             <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Música:</Text>
-              <View style={[styles.toggle, { backgroundColor: '#4ade80' }]}>
-                <Text style={[styles.toggleLabel, { color: '#000' }]}>On</Text>
+              <View style={styles.settingLabelRow}>
+                <IconMusic size={20} color="#fff" accessibilityLabel="Música" />
+                <Text style={styles.settingLabel}>Música</Text>
               </View>
+              <TouchableOpacity
+                style={[styles.togglePill, { backgroundColor: musicOn ? '#4ade80' : 'rgba(255,255,255,0.12)' }]}
+                onPress={() => setMusicOn(v => !v)}
+              >
+                <Text style={[styles.togglePillText, { color: musicOn ? '#000' : '#fff' }]}>
+                  {musicOn ? 'On' : 'Off'}
+                </Text>
+              </TouchableOpacity>
             </View>
+            {/* Leave */}
             <TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveGame}>
               <Text style={styles.leaveBtnText}>Abandonar partida</Text>
             </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={leaveConfirmVisible} transparent animationType="fade">
+        <Pressable
+          style={styles.overlay}
+          onPress={() => setLeaveConfirmVisible(false)}
+          testID="leave-confirm-overlay"
+        >
+          <Pressable
+            style={styles.confirmCard}
+            onPress={() => {}}
+            onStartShouldSetResponder={() => true}
+            testID="leave-confirm-card"
+          >
+            <Text style={styles.confirmTitle}>Abandonar partida</Text>
+            <Text style={styles.confirmText}>Tem certeza? Você perderá a aposta.</Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => setLeaveConfirmVisible(false)}>
+                <Text style={styles.confirmCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmLeaveBtn} onPress={doLeave}>
+                <Text style={styles.confirmLeaveText}>Sair</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* ── Result modal ── */}
@@ -651,14 +1048,18 @@ export function GameScreen({ navigation, route }: Props) {
           />
         </View>
       </Modal>
-    </SafeAreaView>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080e08' },
+  bg: { flex: 1 },
+  bgOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+
+  container: { flex: 1, backgroundColor: 'transparent' },
   centered:  { alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: colors.textMuted, fontSize: fonts.sizes.lg },
 
@@ -678,18 +1079,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xs,
+    gap: spacing.sm,
+    zIndex: 50,
   },
-  topCenter: { flex: 1, alignItems: 'center' },
+  topCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
   gearBtn: {
     width: 36, height: 36, borderRadius: radius.sm,
     backgroundColor: 'rgba(0,100,0,0.6)',
     borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)',
     alignItems: 'center', justifyContent: 'center',
   },
-  gearText: { color: '#4ade80', fontSize: 18 },
 
   // ── Middle ──
   middle: {
@@ -700,48 +1104,138 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
-  tableWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  tableWrap: { flex: 1, justifyContent: 'center' },
+  scoreOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: spacing.sm,
+    zIndex: 20,
+    transform: [{ translateY: -8 }],
+  },
+  oppCardOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+    transform: [{ translateY: -30 }],
+  },
   tableOuter: {
-    width: '100%', aspectRatio: 2.4,
-    backgroundColor: '#0d3d0d',
+    width: '98%',
+    maxWidth: 1180,
+    alignSelf: 'center',
+    aspectRatio: 2.4,
+    backgroundColor: '#060e06',
     borderRadius: 999,
     padding: 6,
-    ...shadows.card,
+    borderWidth: 12,
+    borderColor: '#0d1a0d',
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 0 18px 4px rgba(57,255,106,0.22), 0 0 48px 12px rgba(57,255,106,0.10)',
+        } as any)
+      : {
+          shadowColor: '#39ff6a',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.35,
+          shadowRadius: 24,
+          elevation: 24,
+        }),
   },
   tableFelt: {
     flex: 1,
-    backgroundColor: '#1e6b1e',
+    backgroundColor: '#2C760F',
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  watermark: { alignItems: 'center', opacity: 0.18 },
-  watermarkText1: { color: '#fff', fontWeight: '800', fontSize: 22, letterSpacing: 4 },
-  watermarkText2: { color: '#4ade80', fontWeight: '800', fontSize: 22, letterSpacing: 4 },
-  boardTiles: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.lg },
-  timerBadge: {
-    position: 'absolute', top: 8,
-    borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: 4,
-  },
-  timerText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
-
-  emojiWrap: { justifyContent: 'center' },
-
-  // ── Bottom bar ──
-  bottomBar: {
-    flexDirection: 'row',
+  tableBottomCenter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingBottom: spacing.lg,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    zIndex: 5,
+    transform: [{ translateY: 30 }],
+  },
+  watermarkImage: {
+    width: 130,
+    height: 80,
+    opacity: 0.1,
+  },
+  boardTiles: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.lg },
+  emojiWrap: { justifyContent: 'center' },
+  rightColumn: {
+    justifyContent: 'center',
+    alignItems: 'center',
     gap: spacing.sm,
   },
-  handScroll: { flex: 1 },
-  handContent: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
+
+  // ── In-table floating action controls ──
+  tableActions: {
+    position: 'absolute',
+    top: 6,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    zIndex: 5,
+  },
+  tablePlayBtnPrimary: {
+    backgroundColor: '#4ade80',
+    borderRadius: radius.sm,
+    paddingVertical: 5, paddingHorizontal: 12,
+  },
+  tablePlayBtn: {
+    backgroundColor: '#16a34a',
+    borderRadius: radius.sm,
+    paddingVertical: 5, paddingHorizontal: 10,
+  },
+  tablePlayBtnText: { color: '#000', fontWeight: '800', fontSize: fonts.sizes.xs },
+  tableCancelBtn: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: radius.full,
+    width: 24, height: 24, alignItems: 'center', justifyContent: 'center',
+  },
+  tableCancelText: { color: '#fff', fontSize: 12 },
+  tableDrawBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: radius.sm,
+    paddingVertical: 5, paddingHorizontal: 8,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  tableDrawText: { color: '#fff', fontSize: fonts.sizes.xs },
+  tablePassBtn: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: radius.sm,
+    paddingVertical: 5, paddingHorizontal: 8,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+  },
+  tablePassText: { color: colors.textMuted, fontSize: fonts.sizes.xs },
+
+  // ── Hand section (below oval) ──
+  handSection: {
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    gap: 4,
+  },
+  handActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: 2,
+  },
+  handContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+  },
   tileUnplayable: { opacity: 0.38 },
   playIndicator: {
     width: 6, height: 6, borderRadius: 3,
@@ -749,59 +1243,102 @@ const styles = StyleSheet.create({
     alignSelf: 'center', marginTop: 2,
   },
 
-  // Action buttons
-  actions: { alignItems: 'center', gap: 4, minWidth: 100 },
-  playOptions: { alignItems: 'center', gap: 4 },
-  playBtnPrimary: {
-    backgroundColor: '#4ade80', borderRadius: radius.sm,
-    paddingVertical: 8, paddingHorizontal: 20,
-  },
-  playBtn: {
-    backgroundColor: '#16a34a', borderRadius: radius.sm,
-    paddingVertical: 6, paddingHorizontal: 12,
-  },
-  playBtnText: { color: '#000', fontWeight: '800', fontSize: fonts.sizes.xs },
-  cancelText:  { color: colors.textMuted, fontSize: 10, marginTop: 2 },
-  noPlaysText: { color: colors.textMuted, fontSize: fonts.sizes.xs },
-  passDrawRow: { gap: 4, alignItems: 'center' },
-  drawBtn: {
-    backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: radius.sm,
-    paddingVertical: 6, paddingHorizontal: 10,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-  },
-  drawBtnText: { color: '#fff', fontSize: fonts.sizes.xs },
-  passBtn: {
-    backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.sm,
-    paddingVertical: 6, paddingHorizontal: 10,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-  },
-  passBtnText:  { color: colors.textMuted, fontSize: fonts.sizes.xs },
-  boneyardCount: { color: colors.textMuted, fontSize: 9 },
-
   // Settings modal
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
   settingsCard: {
-    width: 320,
-    backgroundColor: 'rgba(8,30,8,0.98)',
-    borderWidth: 2, borderColor: '#4ade80',
+    width: Platform.OS === 'web' ? 640 : 520,
+    backgroundColor: colors.bgCard,
+    borderWidth: 3, borderColor: '#BBFF00',
+    borderRadius: radius.xl,
+    padding: SETTINGS_CARD_PAD,
+    gap: SETTINGS_ITEM_GAP,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.45)' } as any) : shadows.card),
+  },
+  settingsTextureWrap: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  settingsTexture: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.12,
+    width: '140%',
+    height: '140%',
+    top: '-20%',
+    left: '-20%',
+    ...(Platform.OS === 'web' ? ({ objectFit: 'cover', objectPosition: 'center' } as any) : null),
+  } as any,
+  settingsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  settingsTitle: {
+    fontSize: fonts.sizes.xxxl,
+    fontWeight: '900',
+    color: '#fff',
+    textAlign: 'center',
+    flex: 1,
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SETTINGS_CARD_PAD,
+    paddingVertical: SETTINGS_ITEM_GAP,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
+  settingLabelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  settingLabel: {
+    fontSize: fonts.sizes.xl,
+    color: '#fff',
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
+  },
+  togglePill: {
+    borderRadius: radius.full, paddingVertical: 6, paddingHorizontal: 20,
+    minWidth: 64, alignItems: 'center',
+  },
+  togglePillText: { fontWeight: '800', fontSize: fonts.sizes.sm },
+  leaveBtn: {
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    backgroundColor: '#7f1d1d',
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  leaveBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md },
+  confirmCard: {
+    width: Platform.OS === 'web' ? 480 : 340,
+    backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
     padding: spacing.xl,
-    gap: spacing.lg,
+    borderWidth: 2,
+    borderColor: 'rgba(239, 68, 68, 0.55)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.55)' } as any) : shadows.card),
   },
-  settingsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  settingsTitle: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.lg },
-  settingsClose: { color: colors.textMuted, fontSize: fonts.sizes.lg, fontWeight: '700' },
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  settingLabel: { color: '#fff', fontSize: fonts.sizes.md },
-  toggle: {
-    borderRadius: radius.full, paddingVertical: 4, paddingHorizontal: 12,
+  confirmTitle: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.xxl, textAlign: 'center' },
+  confirmText: { color: 'rgba(255,255,255,0.75)', fontWeight: '600', fontSize: fonts.sizes.md, textAlign: 'center', marginTop: spacing.sm },
+  confirmActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  confirmCancelBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: radius.lg,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
-  toggleLabel: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.xs },
-  leaveBtn: {
-    marginTop: spacing.sm, borderWidth: 1, borderColor: colors.error,
-    borderRadius: radius.md, paddingVertical: 10, alignItems: 'center',
+  confirmCancelText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md },
+  confirmLeaveBtn: {
+    flex: 1,
+    backgroundColor: '#7f1d1d',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    borderRadius: radius.lg,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
-  leaveBtnText: { color: colors.error, fontWeight: '600' },
+  confirmLeaveText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md },
 
   // Result modal
   resultCard: {

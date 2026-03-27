@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ImageBackground, ScrollView,
+  View, Text, StyleSheet, ImageBackground, ScrollView, useWindowDimensions,
   TouchableOpacity, Modal, ActivityIndicator, RefreshControl,
   Platform,
 } from 'react-native';
@@ -69,7 +69,7 @@ const fmtBrl = (n: number) =>
 
 // ── Room Card ───────────────────────────────────────────────────────────────
 
-function RoomCard({ room, section, onJoin }: { room: RoomOption; section: '1v1' | '2v2'; onJoin: () => void }) {
+function RoomCard({ room, section, onJoin, width }: { room: RoomOption; section: '1v1' | '2v2'; onJoin: () => void; width: number }) {
   const isFree = room.buyIn === null;
   const textColor = '#ffffff';
   const paidColors = section === '2v2'
@@ -79,6 +79,7 @@ function RoomCard({ room, section, onJoin }: { room: RoomOption; section: '1v1' 
     <TouchableOpacity
       style={[
         styles.roomCard,
+        { width },
         isFree && styles.roomCardFree,
         !isFree && (section === '2v2' ? styles.roomCardPaidGreen : styles.roomCardPaidBlue),
       ]}
@@ -213,6 +214,7 @@ function TournamentCard({ t, onJoin }: { t: Tournament; onJoin: () => void }) {
 export function ModeSelectScreen({ navigation, route }: Props) {
   const mode = route.params?.mode ?? 'LIVRE';
   const isTorneio = IS_TORNEIO(mode);
+  const { width: screenWidth } = useWindowDimensions();
 
   const { user, refreshUser } = useAuthStore();
   const { setQueueStatus } = useGameStore();
@@ -272,6 +274,12 @@ export function ModeSelectScreen({ navigation, route }: Props) {
     }
   };
 
+  const rowGap = spacing.lg;
+  const contentPad = spacing.xl;
+  const sectionPad = spacing.xl;
+  const sectionInnerWidth = Math.max(1, screenWidth - contentPad * 2 - sectionPad * 2);
+  const roomCardWidth = Math.max(1, Math.floor((sectionInnerWidth - rowGap * 3) / 4));
+
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
@@ -317,18 +325,18 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           <>
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
                 {LIVRE_1V1.map((r) => (
-                  <RoomCard key={r.id} room={r} section="1v1" onJoin={() => setConfirmRoom(r)} />
+                  <RoomCard key={r.id} room={r} section="1v1" width={roomCardWidth} onJoin={() => setConfirmRoom(r)} />
                 ))}
               </ScrollView>
             </View>
 
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
                 {LIVRE_2V2.map((r) => (
-                  <RoomCard key={r.id} room={r} section="2v2" onJoin={() => setConfirmRoom(r)} />
+                  <RoomCard key={r.id} room={r} section="2v2" width={roomCardWidth} onJoin={() => setConfirmRoom(r)} />
                 ))}
               </ScrollView>
             </View>
@@ -528,6 +536,8 @@ const styles = StyleSheet.create({
     fontSize: fonts.sizes.xl,
   },
   cardsRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
     gap: spacing.lg,
     paddingBottom: spacing.sm,
     alignItems: 'center',
@@ -538,10 +548,11 @@ const styles = StyleSheet.create({
 
   // Room card
   roomCard: {
-    width: 200,
     borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   roomCardFree: {
     backgroundColor: 'transparent',
@@ -550,20 +561,28 @@ const styles = StyleSheet.create({
   roomCardPaidBlue: {
     backgroundColor: 'transparent',
     borderColor: 'rgba(34, 211, 238, 0.30)',
-    shadowColor: '#22d3ee',
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0px 6px 12px rgba(34, 211, 238, 0.22)' } as any)
+      : {
+          shadowColor: '#22d3ee',
+          shadowOpacity: 0.22,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
+        }),
   },
   roomCardPaidGreen: {
     backgroundColor: 'transparent',
     borderColor: 'rgba(14, 127, 0, 0.38)',
-    shadowColor: '#0E7F00',
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0px 6px 12px rgba(14, 127, 0, 0.22)' } as any)
+      : {
+          shadowColor: '#0E7F00',
+          shadowOpacity: 0.22,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
+        }),
   },
   roomCardInner: { padding: spacing.lg, gap: spacing.md, minHeight: 220 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: spacing.sm },
@@ -630,11 +649,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(14, 127, 0, 0.40)',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0px 8px 10px rgba(0,0,0,0.22)' } as any)
+      : {
+          shadowColor: '#000',
+          shadowOpacity: 0.22,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 6,
+        }),
   },
   tourCardInner: { padding: spacing.md, gap: spacing.sm },
   tourTimerText: { textAlign: 'center', fontWeight: '900', fontSize: fonts.sizes.xs },

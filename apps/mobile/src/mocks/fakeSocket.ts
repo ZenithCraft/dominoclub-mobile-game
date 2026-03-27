@@ -1,3 +1,5 @@
+import { useAuthStore } from '../store/auth.store';
+
 type Listener = (...args: any[]) => void;
 
 class FakeSocket {
@@ -31,10 +33,35 @@ class FakeSocket {
 
   emit(event: string, ...args: any[]) {
     if (event === 'queue:join') {
-      // Simulate "no match found" in demo mode after 2 s
       setTimeout(() => {
-        this._trigger('queue:error', { message: '[DEMO] Partidas indisponíveis no modo demonstração' });
-      }, 2000);
+        this._trigger('game:found', { gameId: 'demo-1' });
+      }, 800);
+    }
+    if (event === 'game:join') {
+      const gameId = args[0]?.gameId ?? 'demo-1';
+      // Use the actual logged-in user's ID so myHand resolves correctly
+      const myId = useAuthStore.getState().user?.id ?? 'p1';
+      const state = {
+        id: gameId,
+        mode: 'ARENA_1V1',
+        variant: 'CARROCA',
+        players: [
+          { userId: myId, name: useAuthStore.getState().user?.name ?? 'Você', team: 1, seat: 0, hand: [[6,6],[6,5],[5,3],[2,1],[0,0],[4,2],[1,1]], isBot: false, connected: true },
+          { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: [[2,2],[3,4],[5,0],[6,1],[4,0],[3,0],[2,0]], isBot: false, connected: true },
+        ],
+        board: [],
+        leftOpen: -1,
+        rightOpen: -1,
+        currentPlayerIndex: 0,
+        turnCount: 1,
+        status: 'playing',
+        boneyard: Array.from({ length: 14 }).fill(null),
+        firstPlayMade: false,
+      };
+      setTimeout(() => this._trigger('game:state', state), 200);
+    }
+    if (event === 'game:move') {
+      // no-op for demo
     }
     return this;
   }

@@ -84,11 +84,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
     gap: spacing.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 10,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0px 4px 8px rgba(0,0,0,0.40)' } as any)
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.4,
+          shadowRadius: 8,
+          elevation: 10,
+        }),
   },
   iconBadge: {
     width: 24,
