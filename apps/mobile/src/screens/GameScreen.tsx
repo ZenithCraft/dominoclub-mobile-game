@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ImageBackground, Image,
   TouchableOpacity, Modal, Alert, Animated, Pressable,
-  Platform,
+  Platform, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
@@ -138,7 +138,9 @@ function TileHandImage({
   const hi = Math.max(tile[0], tile[1]);
   const imgSrc = TILE_IMAGE_MAP[`${lo}-${hi}`];
 
-  const inner = imgSrc ? (
+  if (!imgSrc) return null;
+
+  const inner = (
     <View style={[
       handImgStyles.container,
       selected && handImgStyles.selected,
@@ -146,9 +148,6 @@ function TileHandImage({
     ]}>
       <Image source={imgSrc} style={handImgStyles.img} resizeMode="stretch" />
     </View>
-  ) : (
-    <DominoTile tile={tile} size="sm" selected={selected}
-      style={!playable ? styles.tileUnplayable : undefined} />
   );
 
   return onPress ? (
@@ -441,11 +440,11 @@ function OpponentCard({ player, tileCount }: { player: any; tileCount: number })
       style={oppStyles.card}
     >
       <View style={oppStyles.sideSlot}>
-        <View style={oppStyles.stackWrap}>
-          <View style={[oppStyles.stackTile, oppStyles.stackTile3]} />
-          <View style={[oppStyles.stackTile, oppStyles.stackTile2]} />
-          <View style={oppStyles.stackTile} />
-        </View>
+        <Image
+          source={require('../../assets/Domino Tiles/Frame 14183.png')}
+          style={oppStyles.tileIcon}
+          resizeMode="contain"
+        />
         <Text style={oppStyles.tileCount}>{tileCount}</Text>
       </View>
 
@@ -471,67 +470,40 @@ const oppStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: radius.full,
-    paddingVertical: 12,
-    paddingLeft: 14,
-    paddingRight: 14,
-    gap: 10,
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 12,
+    gap: 8,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: 240,
-    minHeight: 56,
+    minWidth: 200,
+    minHeight: 48,
   },
   sideSlot: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    width: 72,
+    width: 62,
   },
   sideSlotRight: { justifyContent: 'flex-end' },
-  stackWrap: {
-    width: 26,
-    height: 34,
-    position: 'relative',
-  },
-  stackTile: {
-    position: 'absolute',
-    width: 16,
-    height: 26,
-    backgroundColor: 'rgba(220,220,220,0.9)',
-    borderRadius: 3,
-    top: 0,
-    left: 0,
-    borderWidth: 0.5,
-    borderColor: 'rgba(0,0,0,0.15)',
-  },
-  stackTile2: {
-    transform: [{ rotate: '-5deg' }],
-    top: 4,
-    left: 4,
-    opacity: 0.65,
-  },
-  stackTile3: {
-    transform: [{ rotate: '-11deg' }],
-    top: 8,
-    left: 8,
-    opacity: 0.35,
-  },
+  tileIcon: { width: 16, height: 22 },
   tileCount: {
     color: '#c8c8c8',
     fontWeight: '800',
-    fontSize: 30,
-    lineHeight: 32,
+    fontSize: 24,
+    lineHeight: 26,
   },
   nameWrap: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md, textAlign: 'center' },
-  sub:  { color: 'rgba(255,255,255,0.55)', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  sub:  { color: '#fff', fontSize: fonts.sizes.sm, textAlign: 'center' },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -540,7 +512,7 @@ const oppStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md },
+  avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
 });
 
 // ─── Side player card (4p left/right) ────────────────────────────────────────
@@ -557,11 +529,11 @@ function SidePlayerCard({ player, tileCount }: { player: any; tileCount: number 
       style={sideStyles.card}
     >
       <View style={sideStyles.sideSlot}>
-        <View style={sideStyles.stackWrap}>
-          <View style={[sideStyles.stackTile, sideStyles.stackTile3]} />
-          <View style={[sideStyles.stackTile, sideStyles.stackTile2]} />
-          <View style={sideStyles.stackTile} />
-        </View>
+        <Image
+          source={require('../../assets/Domino Tiles/Frame 14183.png')}
+          style={sideStyles.tileIcon}
+          resizeMode="contain"
+        />
         <Text style={sideStyles.tileCount}>{tileCount}</Text>
       </View>
 
@@ -584,52 +556,26 @@ function SidePlayerCard({ player, tileCount }: { player: any; tileCount: number 
 }
 const sideStyles = StyleSheet.create({
   card: {
-    borderColor: 'rgba(255,255,255,0.18)',
-    borderRadius: radius.lg,
+    borderColor: 'rgba(0,0,0,0.55)',
+    borderRadius: radius.full,
     borderWidth: 1,
     flexDirection: 'row',
-    paddingVertical: 8,
-    paddingLeft: 10,
-    paddingRight: 10,
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 12,
     gap: 8,
-    minWidth: 168,
+    width: 180,
+    minWidth: 180,
     minHeight: 48,
   },
   sideSlot: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    width: 58,
+    width: 62,
   },
   sideSlotRight: { justifyContent: 'flex-end' },
-  stackWrap: {
-    width: 22,
-    height: 28,
-    position: 'relative',
-  },
-  stackTile: {
-    position: 'absolute',
-    width: 14,
-    height: 22,
-    backgroundColor: 'rgba(220,220,220,0.9)',
-    borderRadius: 3,
-    top: 0,
-    left: 0,
-    borderWidth: 0.5,
-    borderColor: 'rgba(0,0,0,0.15)',
-  },
-  stackTile2: {
-    transform: [{ rotate: '-5deg' }],
-    top: 3,
-    left: 3,
-    opacity: 0.65,
-  },
-  stackTile3: {
-    transform: [{ rotate: '-11deg' }],
-    top: 6,
-    left: 6,
-    opacity: 0.35,
-  },
+  tileIcon: { width: 16, height: 22 },
   tileCount: {
     color: '#c8c8c8',
     fontWeight: '800',
@@ -638,11 +584,11 @@ const sideStyles = StyleSheet.create({
   },
   nameWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
-  sub:  { color: 'rgba(255,255,255,0.55)', fontSize: 12, textAlign: 'center' },
+  sub:  { color: '#fff', fontSize: fonts.sizes.sm, textAlign: 'center' },
   avatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -656,8 +602,8 @@ const sideStyles = StyleSheet.create({
 
 // ─── My player card (right side, below emoji) ────────────────────────────────
 
-function MyPlayerCard({ name, hand, isMyTurn }: {
-  name: string; hand: number; isMyTurn: boolean;
+function MyPlayerCard({ name, hand, isMyTurn, avatarUri }: {
+  name: string; hand: number; isMyTurn: boolean; avatarUri?: string;
 }) {
   return (
     <LinearGradient
@@ -666,10 +612,28 @@ function MyPlayerCard({ name, hand, isMyTurn }: {
       end={{ x: 1, y: 0 }}
       style={[myCardStyles.card, isMyTurn && myCardStyles.cardMyTurn]}
     >
-      {/* Info */}
+      <View style={myCardStyles.sideSlot}>
+        <Image
+          source={require('../../assets/Domino Tiles/Frame 14183.png')}
+          style={myCardStyles.tileIcon}
+          resizeMode="contain"
+        />
+        <Text style={myCardStyles.tileCount}>{hand}</Text>
+      </View>
+
       <View style={myCardStyles.nameWrap}>
         <Text style={myCardStyles.name} numberOfLines={1}>{name}</Text>
         <Text style={myCardStyles.sub}>{hand}/7</Text>
+      </View>
+
+      <View style={[myCardStyles.sideSlot, myCardStyles.sideSlotRight]}>
+        <View style={myCardStyles.avatar}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={myCardStyles.avatarImg} />
+          ) : (
+            <Text style={myCardStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
+          )}
+        </View>
       </View>
     </LinearGradient>
   );
@@ -679,17 +643,46 @@ const myCardStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: radius.full,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 12,
+    gap: 8,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: 240,
-    minHeight: 56,
+    minWidth: 200,
+    minHeight: 48,
   },
   cardMyTurn: { borderColor: 'rgba(74,222,128,0.65)' },
+  sideSlot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    width: 62,
+  },
+  sideSlotRight: { justifyContent: 'flex-end' },
+  tileIcon: { width: 16, height: 22 },
+  tileCount: {
+    color: '#c8c8c8',
+    fontWeight: '800',
+    fontSize: 24,
+    lineHeight: 26,
+  },
   nameWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md, textAlign: 'center' },
-  sub:  { color: 'rgba(255,255,255,0.55)', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  sub:  { color: '#fff', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: { width: '100%', height: '100%' },
+  avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
 });
 
 // ─── Result card ──────────────────────────────────────────────────────────────
@@ -721,6 +714,8 @@ export function GameScreen({ navigation, route }: Props) {
   const { user } = useAuthStore();
   const { currentGame, selectedTile, setGame, setSelectedTile, setGameResult, clearGame } = useGameStore();
 
+  const { width: viewportWidth } = useWindowDimensions();
+
   const [turnTimer, setTurnTimer]       = useState(30);
   const [resultModal, setResultModal]   = useState(false);
   const [gameError, setGameError]       = useState<string | null>(null);
@@ -735,6 +730,7 @@ export function GameScreen({ navigation, route }: Props) {
   const errorFadeAnim  = useRef(new Animated.Value(0)).current;
 
   // ── Derived ────────────────────────────────────────────────────────────────
+  const tableHeight = Math.round(Math.min(viewportWidth * 0.82, 880) / 2.4);
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
   const myPlayerIndex = (() => {
     const players = currentGame?.players ?? [];
@@ -955,107 +951,77 @@ export function GameScreen({ navigation, route }: Props) {
       <View style={styles.middle}>
         {/* Table */}
         <View style={styles.tableWrap}>
-          {/* Score box — enlarged, anchored to the left edge of the table area */}
-          <View style={styles.scoreOverlay}>
-            <ScoreBox is4Player={is4Player} myScore={myTeamTiles} oppScore={oppTeamTiles} />
-          </View>
-
-          {/* Opponent card floats over the top-centre of the oval */}
-          {topOpponent && (
-            <View style={styles.oppCardOverlay}>
-              <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} />
+          <View style={styles.tableArea}>
+            {/* Score box — enlarged, anchored to the left edge of the table area */}
+            <View style={styles.scoreOverlay}>
+              <ScoreBox is4Player={is4Player} myScore={myTeamTiles} oppScore={oppTeamTiles} />
             </View>
-          )}
-          <View style={styles.tableOuter}>
-            {is4Player && leftOpponent && (
-              <View style={styles.tableSideBadgeLeft}>
-                <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} />
-              </View>
-            )}
-            {is4Player && rightOpponent && (
-              <View style={styles.tableSideBadgeRight}>
-                <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} />
-              </View>
-            )}
-            <View style={styles.tableFelt}>
-              {/* Watermark */}
-              {currentGame.board.length === 0 && (
-                <Image
-                  source={require('../../assets/b9e1ca54722e75c0419489ace1bdc6e4b752369c.png')}
-                  style={styles.watermarkImage}
-                  resizeMode="contain"
-                />
+
+            <View style={[styles.tableOuter, { height: tableHeight }]}>
+              {/* Top opponent card — centred on the oval's top rim */}
+              {topOpponent && (
+                <View style={styles.oppCardOverlay}>
+                  <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} />
+                </View>
               )}
 
-              {/* Board tiles */}
-              {currentGame.board.length > 0 && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.boardTiles}
-                >
-                  {currentGame.board.map((pt: PlacedTile, i: number) => (
-                    <TileBoardImage
-                      key={i}
-                      tile={pt.tile}
-                      horizontal={pt.side === 'left' || pt.side === 'right'}
-                      flipped={pt.flipped}
-                    />
-                  ))}
-                </ScrollView>
+              {/* Side player cards — centred on the oval's left/right rims */}
+              {is4Player && leftOpponent && (
+                <View style={styles.tableSideBadgeLeft}>
+                  <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} />
+                </View>
+              )}
+              {is4Player && rightOpponent && (
+                <View style={styles.tableSideBadgeRight}>
+                  <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} />
+                </View>
               )}
 
-            </View>
-            <View style={styles.tableBottomCenter}>
-              <MyPlayerCard
-                name={user?.name?.split(' ')[0] || 'Você'}
-                hand={myHand.filter(Boolean).length}
-                isMyTurn={isMyTurn}
-              />
+              <View style={styles.tableFelt}>
+                {/* Watermark */}
+                {currentGame.board.length === 0 && (
+                  <Image
+                    source={require('../../assets/b9e1ca54722e75c0419489ace1bdc6e4b752369c.png')}
+                    style={styles.watermarkImage}
+                    resizeMode="contain"
+                  />
+                )}
+
+                {/* Board tiles */}
+                {currentGame.board.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.boardTiles}
+                  >
+                    {currentGame.board.map((pt: PlacedTile, i: number) => (
+                      <TileBoardImage
+                        key={i}
+                        tile={pt.tile}
+                        horizontal={pt.side === 'left' || pt.side === 'right'}
+                        flipped={pt.flipped}
+                      />
+                    ))}
+                  </ScrollView>
+                )}
+
+              </View>
             </View>
           </View>
 
           {/* Hand section below oval — outside overflow:hidden so tiles are always visible */}
           <View style={styles.handSection}>
-            {isMyTurn && (
-              <View style={styles.handActions}>
-                {selectedTile && uniqueSides.length > 1 && uniqueSides.map((side) => (
-                  <TouchableOpacity key={side} style={styles.tablePlayBtn} onPress={() => handlePlayTile(side)}>
-                    <Text style={styles.tablePlayBtnText}>
-                      {side === 'left' ? '←' : side === 'right' ? '→' : side === 'top' ? '↑' : '↓'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                {selectedTile && uniqueSides.length === 1 && (
-                  <TouchableOpacity style={styles.tablePlayBtnPrimary} onPress={handlePlayImmediate}>
-                    <Text style={styles.tablePlayBtnText}>Jogar</Text>
-                  </TouchableOpacity>
-                )}
-                {selectedTile && (
-                  <TouchableOpacity style={styles.tableCancelBtn} onPress={() => setSelectedTile(null)}>
-                    <Text style={styles.tableCancelText}>✕</Text>
-                  </TouchableOpacity>
-                )}
-                {!selectedTile && hasBoneyard && (
-                  <TouchableOpacity style={styles.tableDrawBtn} onPress={handleDraw}>
-                    <IconDices size={14} color="#fff" />
-                    <Text style={styles.tableDrawText}>+1</Text>
-                  </TouchableOpacity>
-                )}
-                {!selectedTile && !hasValidMoves && !hasBoneyard && (
-                  <TouchableOpacity style={styles.tablePassBtn} onPress={handlePass}>
-                    <Text style={styles.tablePassText}>Passar</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              style={styles.handScroll}
               contentContainerStyle={styles.handContent}
             >
               {myHand.map((tile, i) => {
                 if (!tile) return null;
+                const lo = Math.min(tile[0], tile[1]);
+                const hi = Math.max(tile[0], tile[1]);
+                if (!TILE_IMAGE_MAP[`${lo}-${hi}`]) return null;
                 const key = tileKey(tile);
                 const isPlayable = isMyTurn && validMovesMap.has(key);
                 const isSelected = selectedTile?.[0] === tile[0] && selectedTile?.[1] === tile[1];
@@ -1071,12 +1037,61 @@ export function GameScreen({ navigation, route }: Props) {
                   </View>
                 );
               })}
+              {/* Draw button inline with tiles — identical structure to hand tiles */}
+              {isMyTurn && !selectedTile && hasBoneyard && (
+                <View style={{ alignItems: 'center' }}>
+                  <TouchableOpacity onPress={handleDraw} activeOpacity={0.85}>
+                    <View style={handImgStyles.container}>
+                      <Image
+                        source={require('../../assets/Domino Tiles/Frame 14183.png')}
+                        style={handImgStyles.img}
+                        resizeMode="stretch"
+                      />
+                    </View>
+                  </TouchableOpacity>
+                  <View style={styles.playIndicator} />
+                </View>
+              )}
             </ScrollView>
+            <View style={styles.myBottomArea}>
+              {isMyTurn && (
+                <>
+                  {selectedTile && uniqueSides.length > 1 && uniqueSides.map((side) => (
+                    <TouchableOpacity key={side} style={styles.tablePlayBtn} onPress={() => handlePlayTile(side)}>
+                      <Text style={styles.tablePlayBtnText}>
+                        {side === 'left' ? '←' : side === 'right' ? '→' : side === 'top' ? '↑' : '↓'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {selectedTile && uniqueSides.length === 1 && (
+                    <TouchableOpacity style={styles.tablePlayBtnPrimary} onPress={handlePlayImmediate}>
+                      <Text style={styles.tablePlayBtnText}>Jogar</Text>
+                    </TouchableOpacity>
+                  )}
+                  {!selectedTile && !hasValidMoves && !hasBoneyard && (
+                    <TouchableOpacity style={styles.tablePassBtn} onPress={handlePass}>
+                      <Text style={styles.tablePassText}>Passar</Text>
+                    </TouchableOpacity>
+                  )}
+                  {selectedTile && (
+                    <TouchableOpacity style={styles.tableCancelBtn} onPress={() => setSelectedTile(null)}>
+                      <Text style={styles.tableCancelText}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+              <MyPlayerCard
+                name={user?.name?.split(' ')[0] || 'Você'}
+                hand={myHand.filter(Boolean).length}
+                isMyTurn={isMyTurn}
+                avatarUri={(user as any)?.avatarUrl ?? (user as any)?.avatar}
+              />
+            </View>
           </View>
         </View>
 
         {/* Right column: emoji + my player card */}
-        <View style={styles.rightColumn}>
+        <View style={[styles.rightColumn, Platform.OS !== 'web' && styles.rightColumnMobile]}>
           <EmojiPanel onEmoji={handleEmoji} />
         </View>
       </View>
@@ -1192,7 +1207,11 @@ export function GameScreen({ navigation, route }: Props) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  bg: { flex: 1 },
+  bg: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    ...(Platform.OS === 'web' ? ({ minHeight: '100vh' } as any) : null),
+  },
   bgOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
 
   container: { flex: 1, backgroundColor: 'transparent' },
@@ -1235,12 +1254,13 @@ const styles = StyleSheet.create({
   middle: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
-  tableWrap: { flex: 1, justifyContent: 'center' },
+  tableWrap: { flex: 1, position: 'relative' },
+  tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative' },
   scoreOverlay: {
     position: 'absolute',
     top: 0,
@@ -1255,31 +1275,30 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 10,
-    transform: [{ translateY: -30 }],
+    transform: [{ translateY: -24 }],
   },
   tableSideBadgeLeft: {
     position: 'absolute',
-    left: -12,
+    left: 0,
     top: '50%',
     zIndex: 15,
-    transform: [{ translateY: -24 }],
+    transform: [{ translateY: -24 }, { translateX: -90 }],
   },
   tableSideBadgeRight: {
     position: 'absolute',
-    right: -12,
+    right: 0,
     top: '50%',
     zIndex: 15,
-    transform: [{ translateY: -24 }],
+    transform: [{ translateY: -24 }, { translateX: 90 }],
   },
   tableOuter: {
-    width: '98%',
-    maxWidth: 1180,
+    width: '78%',
+    maxWidth: 820,
     alignSelf: 'center',
-    aspectRatio: 2.4,
     backgroundColor: '#060e06',
     borderRadius: 999,
-    padding: 6,
-    borderWidth: 12,
+    padding: 4,
+    borderWidth: 8,
     borderColor: '#0d1a0d',
     ...(Platform.OS === 'web'
       ? ({
@@ -1318,10 +1337,19 @@ const styles = StyleSheet.create({
   boardTiles: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.lg },
   emojiWrap: { justifyContent: 'center' },
   rightColumn: {
-    justifyContent: 'flex-end',
+    position: 'absolute',
+    right: spacing.sm,
+    bottom: 12,
+    zIndex: 15,
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: spacing.sm,
-    paddingBottom: spacing.lg,
+  },
+  rightColumnMobile: {
+    position: 'absolute',
+    right: spacing.sm,
+    bottom: 12,
+    zIndex: 15,
   },
 
   // ── In-table floating action controls ──
@@ -1351,14 +1379,6 @@ const styles = StyleSheet.create({
     width: 24, height: 24, alignItems: 'center', justifyContent: 'center',
   },
   tableCancelText: { color: '#fff', fontSize: 12 },
-  tableDrawBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: radius.sm,
-    paddingVertical: 5, paddingHorizontal: 8,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-  },
-  tableDrawText: { color: '#fff', fontSize: fonts.sizes.xs },
   tablePassBtn: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: radius.sm,
@@ -1369,9 +1389,30 @@ const styles = StyleSheet.create({
 
   // ── Hand section (below oval) ──
   handSection: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.sm,
-    gap: 4,
+    gap: 2,
+    zIndex: 30,
+  },
+  handScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+    zIndex: 10,
+    ...(Platform.OS === 'web' ? ({ minWidth: 0, maxWidth: '62%' } as any) : ({ maxWidth: '58%' } as any)),
+  },
+  myBottomArea: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingTop: 2,
+    zIndex: 40,
+    ...(Platform.OS !== 'web' ? { elevation: 8 } : null),
   },
   handActions: {
     flexDirection: 'row',
@@ -1383,8 +1424,9 @@ const styles = StyleSheet.create({
   handContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: spacing.md,
+    justifyContent: 'flex-start',
+    gap: 3,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
   tileUnplayable: { opacity: 0.38 },

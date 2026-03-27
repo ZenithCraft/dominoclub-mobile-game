@@ -110,7 +110,7 @@ export const backgroundCoverFix =
   Platform.OS === 'web'
     ? ({
         minHeight: '100vh',
-        height: '100vh',
+        height: '100%',
         width: '100%',
         backgroundAttachment: 'fixed',
         backgroundSize: 'cover',
