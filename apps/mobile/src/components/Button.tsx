@@ -4,6 +4,8 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  View,
+  Platform,
   ViewStyle,
   TextStyle,
 } from 'react-native';
@@ -103,6 +105,51 @@ export function Button({
   );
 }
 
+export function WalletBalanceButton({
+  balance,
+  onPress,
+  style,
+}: {
+  balance: number;
+  onPress?: () => void;
+  style?: ViewStyle;
+}) {
+  const content = (
+    <>
+      <Text style={walletStyles.balanceText}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</Text>
+      <View style={walletStyles.balancePlus}>
+        <Text style={walletStyles.balancePlusText}>+</Text>
+      </View>
+    </>
+  );
+
+  return (
+    <TouchableOpacity style={[walletStyles.wrap, style]} onPress={onPress} activeOpacity={0.85}>
+      {Platform.OS === 'web' ? (
+        <View
+          style={[
+            walletStyles.pill,
+            {
+              backgroundImage: 'linear-gradient(114.864deg, rgb(190, 243, 17), rgb(28, 187, 61))',
+            } as any,
+          ]}
+        >
+          {content}
+        </View>
+      ) : (
+        <LinearGradient
+          colors={['#BEF311', '#1CBB3D']}
+          start={{ x: 0, y: 0.268 }}
+          end={{ x: 1, y: 0.732 }}
+          style={walletStyles.pill}
+        >
+          {content}
+        </LinearGradient>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
   touchable: {
     borderRadius: radius.md,
@@ -159,4 +206,29 @@ const styles = StyleSheet.create({
   dangerText: {
     color: '#fff',
   },
+});
+
+const walletStyles = StyleSheet.create({
+  wrap: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 14,
+    paddingRight: 10,
+    paddingVertical: 8,
+  },
+  balanceText: { color: '#0a1f0a', fontWeight: '900', fontSize: fonts.sizes.sm },
+  balancePlus: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: '#dc2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.sm,
+  },
+  balancePlusText: { color: '#fff', fontWeight: '900', fontSize: 14, lineHeight: 16 },
 });

@@ -12,6 +12,7 @@ import { useAuthStore } from '../store/auth.store';
 import { toast } from '../store/toast.store';
 import { connectSocket } from '../services/socket';
 import { ConsentModal } from '../components/ConsentModal';
+import { WalletBalanceButton } from '../components/Button';
 import { IconSettings, IconStar, IconLogOut, IconX, IconVolumeUp, IconMusic } from '../components/Icons';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
@@ -153,19 +154,7 @@ export function GameTopBar({
 
       {/* Right: balance + add + settings + exit */}
       <View style={topBar.right}>
-        <TouchableOpacity style={topBar.balanceWrap} onPress={onWallet} activeOpacity={0.85}>
-          <LinearGradient
-            colors={['#BEF311', '#1CBB3D']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={topBar.balancePill}
-          >
-            <Text style={topBar.balanceText}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</Text>
-            <View style={topBar.balancePlus}>
-              <Text style={topBar.balancePlusText}>+</Text>
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
+        <WalletBalanceButton balance={balance} onPress={onWallet} />
 
         <TouchableOpacity style={topBar.iconBtn} onPress={onSettings} testID="topbar-settings" accessibilityLabel="Abrir configurações">
           <IconSettings size={20} color="#fff" accessibilityLabel="Configurações" />
