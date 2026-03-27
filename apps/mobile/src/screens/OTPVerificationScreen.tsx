@@ -2,14 +2,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ImageBackground,
   TextInput, TouchableOpacity, KeyboardAvoidingView, Platform,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '../components/Button';
-import { colors, spacing, fonts, radius } from '../theme';
+import { IconSmartphone } from '../components/Icons';
+import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { RootStackParamList } from '../navigation';
+import { LinearGradient } from 'expo-linear-gradient';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OTPVerification'>;
 
@@ -72,7 +75,7 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
-      style={styles.root}
+      style={[styles.root, backgroundCoverFix]}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
@@ -80,67 +83,89 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.kav}
         >
-          {/* ONE frosted-glass panel */}
-          <View style={styles.panel}>
-            {/* Left column */}
-            <View style={styles.left}>
-              <Text style={styles.welcome}>Bem-vindo</Text>
-              <Text style={styles.subtitle}>A reserva da mesa, agora no seu celular</Text>
-            </View>
-
-            {/* Vertical divider */}
-            <View style={styles.vertDivider} />
-
-            {/* Right column — form */}
-            <View style={styles.right}>
-              <View style={styles.iconCircle}>
-                <Text style={styles.iconText}>📱</Text>
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[styles.panel, styles.panelWeb]}>
+              <View style={styles.left}>
+                <Text style={[styles.welcome, styles.welcomeGradientWeb]}>Bem-vindo</Text>
+                <Text style={styles.subtitle}>A resenha da mesa, agora no seu celular</Text>
               </View>
 
-              <Text style={styles.cardTitle}>Verificar SMS</Text>
+              <View style={styles.vertDivider}>
+                <LinearGradient
+                  colors={[
+                    'rgba(44,99,35,0)',
+                    '#2C6323',
+                    '#BBFF00',
+                    '#1E5518',
+                    'rgba(30,85,24,0)',
+                  ]}
+                  locations={[0, 0.14, 0.5, 0.86, 1]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={styles.vertGrad}
+                />
+              </View>
 
-              <View style={styles.otpRow}>
-                {otp.map((digit, i) => (
-                  <TextInput
-                    key={i}
-                    ref={(r) => { if (r) inputs.current[i] = r; }}
-                    style={[
-                      styles.otpBox,
-                      digit ? styles.otpBoxFilled : null,
-                      error ? styles.otpBoxError : null,
-                    ]}
-                    value={digit}
-                    onChangeText={(t) => handleChange(t, i)}
-                    keyboardType="number-pad"
-                    maxLength={1}
-                    selectTextOnFocus
+              <View style={styles.right}>
+                <View style={styles.rightInner}>
+                  <View style={styles.formInner}>
+                  <View style={styles.iconCircle}>
+                    <IconSmartphone size={32} color={colors.textPrimary} accessibilityLabel="Smartphone" />
+                  </View>
+
+                  <Text style={styles.cardTitle}>Verificar SMS</Text>
+
+                  <View style={styles.otpRow}>
+                    {otp.map((digit, i) => (
+                      <TextInput
+                        key={i}
+                        ref={(r) => { if (r) inputs.current[i] = r; }}
+                        style={[
+                          styles.otpBox,
+                          Platform.OS === 'web' ? styles.otpBoxWeb : null,
+                          digit ? styles.otpBoxFilled : null,
+                          error ? styles.otpBoxError : null,
+                        ]}
+                        value={digit}
+                        onChangeText={(t) => handleChange(t, i)}
+                        keyboardType="number-pad"
+                        maxLength={1}
+                        selectTextOnFocus
+                      />
+                    ))}
+                  </View>
+
+                  {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+                  <Button
+                    title="Verificar"
+                    onPress={handleVerify}
+                    loading={loading}
+                    disabled={otp.join('').length !== 6}
+                    size="sm"
+                    style={styles.btn}
                   />
-                ))}
+
+                  <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                    <Text style={styles.linkText}>Criar uma conta</Text>
+                  </TouchableOpacity>
+
+                  {resendTimer > 0 ? (
+                    <Text style={styles.timerText}>Reenviar em {resendTimer}s</Text>
+                  ) : (
+                    <TouchableOpacity onPress={handleResend}>
+                      <Text style={styles.resendLink}>Reenviar código</Text>
+                    </TouchableOpacity>
+                  )}
+                  </View>
+                </View>
               </View>
-
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-              <Button
-                title="Verificar"
-                onPress={handleVerify}
-                loading={loading}
-                disabled={otp.join('').length !== 6}
-                style={styles.btn}
-              />
-
-              <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-                <Text style={styles.linkText}>Criar uma conta</Text>
-              </TouchableOpacity>
-
-              {resendTimer > 0 ? (
-                <Text style={styles.timerText}>Reenviar em {resendTimer}s</Text>
-              ) : (
-                <TouchableOpacity onPress={handleResend}>
-                  <Text style={styles.resendLink}>Reenviar código</Text>
-                </TouchableOpacity>
-              )}
             </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ImageBackground>
@@ -150,67 +175,113 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
   safe: { flex: 1 },
-  kav: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xxl },
+  kav: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  scroll: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xl,
+    paddingLeft: spacing.xxl + 16,
+  },
 
   panel: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(8, 20, 8, 0.88)',
+    backgroundColor: 'rgba(34, 92, 52, 0.45)',
     borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.28)',
+    borderColor: 'rgba(187, 255, 0, 0.16)',
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
+  panelWeb: Platform.OS === 'web' ? ({ width: 1160, minHeight: 560 } as any) : {},
 
   left: {
     flex: 1,
-    padding: spacing.xl,
     justifyContent: 'center',
+    alignItems: 'center',
     gap: spacing.md,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xl,
+    paddingLeft: spacing.xxl,
+    paddingRight: spacing.xl,
   },
-  welcome: { fontSize: 38, fontWeight: '800', color: '#ffffff', letterSpacing: 0.5 },
-  subtitle: { fontSize: fonts.sizes.sm, color: colors.textMuted, lineHeight: 20 },
+  welcome: {
+    fontSize: 52,
+    fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
+  },
+  welcomeGradientWeb: Platform.OS === 'web'
+    ? ({
+        backgroundImage: 'linear-gradient(180deg, #FFFFFF 0%, #FDD835 100%)',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+      } as any)
+    : {},
+  subtitle: {
+    fontSize: fonts.sizes.sm,
+    color: '#ffffff',
+    lineHeight: 20,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
+  },
 
   vertDivider: {
-    width: 1,
-    backgroundColor: 'rgba(74, 222, 128, 0.25)',
-    marginVertical: spacing.xl,
+    width: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  vertGrad: { width: 3, height: 230, borderRadius: 2 },
 
   right: {
-    width: 360,
-    padding: spacing.xl,
-    alignItems: 'center',
-    gap: spacing.lg,
+    width: 480,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xl,
+    paddingLeft: spacing.xl,
+    paddingRight: spacing.xxxl + 24,
+    justifyContent: 'center',
   },
+  rightInner: {
+    width: 380,
+    alignSelf: 'center',
+  },
+  formInner: { alignItems: 'center', gap: spacing.xl },
 
   iconCircle: {
     width: 52, height: 52, borderRadius: 26,
-    backgroundColor: LIME,
+    backgroundColor: '#1CBB3D',
     alignItems: 'center', justifyContent: 'center',
   },
   iconText: { fontSize: 24 },
 
   cardTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#ffffff' },
 
-  otpRow: { flexDirection: 'row', gap: spacing.md, justifyContent: 'center' },
+  otpRow: { flexDirection: 'row', width: 360, justifyContent: 'space-between', alignSelf: 'center' },
   otpBox: {
-    width: 46, height: 54, borderRadius: radius.md,
-    borderWidth: 1.5, borderColor: 'rgba(74,222,128,0.35)',
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    width: 54, height: 62, borderRadius: radius.md,
+    borderWidth: 1.5, borderColor: 'rgba(187,255,0,0.22)',
+    backgroundColor: '#184912',
     textAlign: 'center', fontSize: fonts.sizes.xxl,
-    color: '#ffffff', fontWeight: '700',
+    color: '#ffffff', fontWeight: '800',
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
   },
-  otpBoxFilled: { borderColor: LIME, backgroundColor: 'rgba(74,222,128,0.08)' },
+  otpBoxWeb: ({
+    outlineStyle: 'none',
+    outlineWidth: 0,
+  } as any),
+  otpBoxFilled: { borderColor: '#BBFF00' },
   otpBoxError:  { borderColor: colors.error },
 
   errorText: { color: colors.error, fontSize: fonts.sizes.sm, textAlign: 'center' },
 
-  btn: { width: '100%' },
+  btn: { width: 150, alignSelf: 'center' },
 
   linkText: {
-    color: colors.textMuted,
+    color: '#ffffff',
     fontSize: fonts.sizes.sm,
   },
-  timerText: { color: colors.textMuted, fontSize: fonts.sizes.sm },
-  resendLink: { color: LIME, fontSize: fonts.sizes.sm, fontWeight: '600' },
+  timerText: { color: '#ffffff', fontSize: fonts.sizes.sm },
+  resendLink: { color: '#BBFF00', fontSize: fonts.sizes.sm, fontWeight: '700' },
 });

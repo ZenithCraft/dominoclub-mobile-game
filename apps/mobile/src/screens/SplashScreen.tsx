@@ -1,11 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ImageBackground,
-  ActivityIndicator, Animated, Image,
+  ActivityIndicator, Animated, Image, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, fonts, radius, spacing } from '../theme';
+import { colors, fonts, radius, spacing, backgroundCoverFix } from '../theme';
 import { useAuthStore } from '../store/auth.store';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
@@ -17,8 +17,8 @@ export function SplashScreen({ navigation }: Props) {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-      Animated.spring(scale,   { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: (Platform as any).OS !== 'web' }),
+      Animated.spring(scale,   { toValue: 1, friction: 6, tension: 80, useNativeDriver: (Platform as any).OS !== 'web' }),
     ]).start();
 
     loadFromStorage().then(() => {
@@ -31,7 +31,7 @@ export function SplashScreen({ navigation }: Props) {
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
-      style={styles.root}
+      style={[styles.root, backgroundCoverFix]}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>

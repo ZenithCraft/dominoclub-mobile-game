@@ -8,9 +8,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
+import { IconSettings, IconLogOut, IconX, IconHourglass, IconClipboard, IconParty, IconChevronLeft, IconQrCode, IconCheck } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
+import { useMemo } from 'react';
+import { useNavigation } from '@react-navigation/native';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,7 +68,7 @@ function BalanceRow({ label, value }: { label: string; value: number }) {
   return (
     <View style={balRowStyles.row}>
       <Text style={balRowStyles.label}>{label}</Text>
-      <View style={balRowStyles.right}>
+      <View style={balRowStyles.pill}>
         <CoinIcon />
         <Text style={balRowStyles.value}>{value.toLocaleString('pt-BR')}</Text>
       </View>
@@ -74,16 +77,27 @@ function BalanceRow({ label, value }: { label: string; value: number }) {
 }
 const balRowStyles = StyleSheet.create({
   row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(74,222,128,0.1)',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    paddingVertical: spacing.md,
+    gap: spacing.xs,
   },
   label: { color: '#fff', fontSize: fonts.sizes.sm, flex: 1 },
-  right: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  value: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: 'rgba(34, 197, 94, 0.18)',
+    borderRadius: radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.25)',
+    width: '100%',
+    alignSelf: 'stretch',
+    flexGrow: 1,
+  },
+  value: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
 });
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -117,6 +131,7 @@ const badgeStyles = StyleSheet.create({
 
 export function WalletScreen() {
   const { user, refreshUser } = useAuthStore();
+  const navigation = useNavigation<any>();
 
   const [transactions, setTransactions]   = useState<Transaction[]>([]);
   const [refreshing, setRefreshing]       = useState(false);
@@ -145,6 +160,56 @@ export function WalletScreen() {
   const bonusBalance   = user?.wallet?.bonus_balance ?? 0;
   const rolloverRemaining = user?.wallet?.rollover_remaining ?? 0;
   const canWithdraw    = rolloverRemaining === 0 && realBalance >= 20;
+
+  const [selectedDate, setSelectedDate] = useState<string | null>(null); // yyyy-mm-dd
+
+  const formatDateBR = (iso?: string | null) => {
+    if (!iso) return new Date().toLocaleDateString('pt-BR');
+    const d = new Date(iso);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  };
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  const filteredTransactions = useMemo(() => {
+    if (!selectedDate) return transactions;
+    return transactions.filter((t) => {
+      const d = new Date(t.created_at).toISOString().slice(0, 10);
+      return d === selectedDate;
+    });
+  }, [transactions, selectedDate]);
+
+  const openDatePicker = () => {
+    const isWeb = typeof document !== 'undefined';
+    if (isWeb) {
+      const input = document.createElement('input');
+      input.type = 'date';
+      input.value = selectedDate || todayISO;
+      input.onchange = () => {
+        const val = (input as HTMLInputElement).value;
+        setSelectedDate(val || null);
+      };
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      input.style.pointerEvents = 'none';
+      document.body.appendChild(input);
+      input.click();
+      setTimeout(() => document.body.removeChild(input), 0);
+      return;
+    }
+    Alert.alert(
+      'Selecionar data',
+      '',
+      [
+        { text: 'Hoje', onPress: () => setSelectedDate(todayISO) },
+        { text: 'Limpar filtro', onPress: () => setSelectedDate(null) },
+        { text: 'Cancelar', style: 'cancel' },
+      ],
+    );
+  };
 
   // ── Data ────────────────────────────────────────────────────────────────────
 
@@ -237,7 +302,7 @@ export function WalletScreen() {
     setWithdrawLoading(true);
     try {
       await api.post('/wallet/withdraw', { amount, pixKey: pixKey.trim() });
-      Alert.alert('Saque solicitado! ✅', 'Você receberá o valor na sua chave PIX em instantes.');
+      Alert.alert('Saque solicitado!', 'Você receberá o valor na sua chave PIX em instantes.');
       setWithdrawModal(false);
       setWithdrawAmount(''); setPixKey('');
       await loadWallet(true);
@@ -255,7 +320,7 @@ export function WalletScreen() {
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
-      style={styles.root}
+      style={[styles.root, backgroundCoverFix]}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
@@ -263,11 +328,14 @@ export function WalletScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Carteira</Text>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.iconBtn}>
-            <Text style={styles.iconText}>⚙</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn}>
-            <Text style={styles.iconText}>⊣</Text>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => navigation.navigate('Main')}
+            accessibilityLabel="Voltar para início"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.8}
+          >
+            <IconChevronLeft size={18} color="#fff" accessibilityLabel="Voltar" />
           </TouchableOpacity>
         </View>
       </View>
@@ -289,6 +357,7 @@ export function WalletScreen() {
           <View style={styles.actionsCol}>
             <TouchableOpacity
               style={styles.withdrawBtn}
+              activeOpacity={0.85}
               onPress={() => {
                 if (!canWithdraw) {
                   Alert.alert('Saque bloqueado',
@@ -300,12 +369,18 @@ export function WalletScreen() {
                 }
               }}
             >
-              <Text style={styles.withdrawBtnText}>Sacar</Text>
+              <LinearGradient
+                colors={['#34d399', '#059669']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={styles.withdrawBtnGrad}
+              >
+                <Text style={styles.withdrawBtnText}>Sacar</Text>
+              </LinearGradient>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.depositBtn} onPress={() => setDepositModal(true)}>
               <LinearGradient
-                colors={['#4ade80', '#16a34a']}
+                colors={['#FFE259', '#FFD000']}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={styles.depositBtnGrad}
               >
@@ -318,10 +393,12 @@ export function WalletScreen() {
         {/* ── Right panel: transaction table ── */}
         <View style={styles.rightPanel}>
           <View style={styles.tableTopRow}>
-            <Text style={styles.tableTitle}>Histórico de transações</Text>
-            <View style={styles.datePill}>
-              <Text style={styles.datePillText}>{today} ▾</Text>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={styles.tableTitle}>Histórico de transações</Text>
             </View>
+            <TouchableOpacity style={styles.datePill} onPress={openDatePicker} activeOpacity={0.85}>
+              <Text style={styles.datePillText}>{formatDateBR(selectedDate ?? todayISO)} ▾</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Table header */}
@@ -338,12 +415,12 @@ export function WalletScreen() {
             <TouchableOpacity style={styles.errorRow} onPress={() => loadWallet()}>
               <Text style={styles.errorText}>Erro ao carregar. Toque para tentar novamente.</Text>
             </TouchableOpacity>
-          ) : transactions.length === 0 ? (
+          ) : filteredTransactions.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Nenhuma transação ainda</Text>
             </View>
           ) : (
-            transactions.map((tx, idx) => (
+            filteredTransactions.map((tx, idx) => (
               <View key={tx.id} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
                 <Text style={[styles.tdCell, { width: 32 }]}>{String(idx + 1).padStart(2, '0')}</Text>
                 <Text style={[styles.tdCell, { width: 80 }]}>
@@ -404,14 +481,26 @@ export function WalletScreen() {
 
                 {/* Yellow PIX button */}
                 <TouchableOpacity
-                  style={[styles.pixBtn, depositLoading && styles.pixBtnLoading]}
+                  style={[styles.pixBtn, (depositLoading || effectiveAmount < 10) && styles.pixBtnLoading]}
                   onPress={handleDeposit}
-                  disabled={depositLoading}
+                  disabled={depositLoading || effectiveAmount < 10}
+                  accessibilityLabel="Gerar código PIX"
+                  testID="deposit-generate-pix"
                 >
-                  <Text style={styles.pixBtnText}>
-                    {depositLoading ? '⏳ Gerando...' : '⬛ Gerar Código PIX'}
-                  </Text>
+                  {depositLoading ? (
+                    <Text style={styles.pixBtnText}>Gerando...</Text>
+                  ) : (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <IconQrCode size={16} color="#000" accessibilityLabel="QR Code" />
+                      <Text style={styles.pixBtnText}>Gerar Código PIX</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
+                {useCustom && effectiveAmount < 10 ? (
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.xs, textAlign: 'center' }}>
+                    Depósito mínimo: R$ 10,00
+                  </Text>
+                ) : null}
               </>
             )}
 
@@ -419,7 +508,8 @@ export function WalletScreen() {
               <View style={styles.qrSection}>
                 <Text style={styles.modalTitle}>Depositar</Text>
                 <View style={styles.pollingBadge}>
-                  <Text style={styles.pollingText}>⏳ Aguardando pagamento...</Text>
+                  <IconHourglass size={14} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.pollingText}>Aguardando pagamento...</Text>
                 </View>
                 <View style={styles.qrWrap}>
                   <QRCode value={qrCode} size={160} color="#000" backgroundColor="#fff" />
@@ -427,12 +517,22 @@ export function WalletScreen() {
                 <Text style={styles.qrAmount}>R$ {effectiveAmount.toFixed(2)}</Text>
                 <TouchableOpacity
                   style={styles.copyBtn}
+                  activeOpacity={0.9}
                   onPress={async () => {
                     await Clipboard.setStringAsync(qrCode);
                     Alert.alert('Copiado!', 'Cole no seu app de banco para pagar');
                   }}
                 >
-                  <Text style={styles.copyBtnText}>📋 Copiar código PIX (Copia e Cola)</Text>
+                  <LinearGradient
+                    colors={['#34d399', '#059669']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.copyBtnGrad}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <IconClipboard size={16} color="#000" />
+                      <Text style={styles.copyBtnText}>Copiar código PIX (Copia e Cola)</Text>
+                    </View>
+                  </LinearGradient>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={closeDepositModal} style={styles.cancelLink}>
                   <Text style={styles.cancelLinkText}>Cancelar</Text>
@@ -442,11 +542,19 @@ export function WalletScreen() {
 
             {depositStep === 'confirmed' && (
               <Animated.View style={[styles.confirmedSection, { opacity: successAnim }]}>
-                <Text style={{ fontSize: 56 }}>🎉</Text>
-                <Text style={styles.confirmedTitle}>Depósito confirmado!</Text>
+                <View style={styles.confirmedHeaderRow}>
+                  <IconCheck size={24} color="#fff" accessibilityLabel="Sucesso" />
+                  <Text style={styles.confirmedTitle}>Depósito confirmado!</Text>
+                </View>
                 <Text style={styles.confirmedAmount}>+ R$ {effectiveAmount.toFixed(2)}</Text>
-                <TouchableOpacity style={styles.closeConfirmBtn} onPress={closeDepositModal}>
-                  <Text style={styles.closeConfirmText}>Fechar</Text>
+                <TouchableOpacity style={styles.closeConfirmBtn} onPress={closeDepositModal} activeOpacity={0.9}>
+                  <LinearGradient
+                    colors={['#34d399', '#059669']}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.closeConfirmGrad}
+                  >
+                    <Text style={styles.closeConfirmText}>Fechar</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               </Animated.View>
             )}
@@ -454,7 +562,7 @@ export function WalletScreen() {
             {/* Close X */}
             {depositStep !== 'confirmed' && (
               <TouchableOpacity style={styles.closeX} onPress={closeDepositModal}>
-                <Text style={styles.closeXText}>✕</Text>
+                <IconX size={16} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             )}
           </View>
@@ -469,7 +577,7 @@ export function WalletScreen() {
               style={styles.closeX}
               onPress={() => { setWithdrawModal(false); setWithdrawAmount(''); setPixKey(''); }}
             >
-              <Text style={styles.closeXText}>✕</Text>
+              <IconX size={16} color="#fff" accessibilityLabel="Fechar" />
             </TouchableOpacity>
 
             <Text style={styles.modalTitle}>Sacar</Text>
@@ -544,19 +652,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(24, 73, 18, 0.92)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(74,222,128,0.15)',
+    borderBottomColor: 'rgba(187, 255, 0, 0.18)',
   },
   headerTitle: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: '#fff' },
   headerRight: { flexDirection: 'row', gap: spacing.sm },
   iconBtn: {
     width: 34, height: 34, borderRadius: radius.sm,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1, borderColor: 'rgba(187, 255, 0, 0.22)',
     alignItems: 'center', justifyContent: 'center',
   },
-  iconText: { color: '#fff', fontSize: 16 },
+  iconText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 18 },
 
   // Body
   body: {
@@ -579,13 +687,11 @@ const styles = StyleSheet.create({
   },
   actionsCol: { gap: spacing.sm, marginTop: spacing.lg },
   withdrawBtn: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
     borderRadius: radius.md,
-    paddingVertical: 12,
-    alignItems: 'center',
+    overflow: 'hidden',
   },
-  withdrawBtnText: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.sm },
+  withdrawBtnGrad: { paddingVertical: 12, alignItems: 'center' },
+  withdrawBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
   depositBtn: { borderRadius: radius.md, overflow: 'hidden' },
   depositBtnGrad: { paddingVertical: 12, alignItems: 'center' },
   depositBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
@@ -609,31 +715,37 @@ const styles = StyleSheet.create({
   datePill: {
     backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: radius.full,
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  datePillText: { color: '#fff', fontSize: fonts.sizes.xs },
+  datePillText: { color: '#fff', fontSize: fonts.sizes.xs, textAlign: 'center', fontWeight: '600' },
 
   // Table
   tableHead: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.1)',
     paddingBottom: spacing.sm,
     marginBottom: spacing.xs,
   },
-  thCell: { color: 'rgba(255,255,255,0.5)', fontSize: fonts.sizes.xs, fontWeight: '600' },
+  thCell: { color: 'rgba(255,255,255,0.5)', fontSize: fonts.sizes.xs, fontWeight: '600', textAlign: 'center' },
 
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   tableRowAlt: { backgroundColor: 'rgba(255,255,255,0.03)' },
-  tdCell: { color: '#fff', fontSize: fonts.sizes.xs },
+  tdCell: { color: '#fff', fontSize: fonts.sizes.xs, textAlign: 'center' },
 
   errorRow: { padding: spacing.md, alignItems: 'center' },
   errorText: { color: colors.error, fontSize: fonts.sizes.sm },
@@ -723,31 +835,34 @@ const styles = StyleSheet.create({
   pollingBadge: {
     backgroundColor: '#ca8a0433',
     borderRadius: radius.full,
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   pollingText: { color: '#fbbf24', fontWeight: '600', fontSize: fonts.sizes.sm },
   qrWrap: { backgroundColor: '#fff', padding: spacing.md, borderRadius: radius.lg, ...shadows.card },
   qrAmount: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: LIME },
   copyBtn: {
     width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: radius.md,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.35)',
   },
-  copyBtnText: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.sm },
+  copyBtnGrad: { paddingVertical: 12, alignItems: 'center' },
+  copyBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
   cancelLink: { marginTop: -spacing.xs },
   cancelLinkText: { color: 'rgba(255,255,255,0.4)', fontSize: fonts.sizes.sm },
 
   // Confirmed
   confirmedSection: { alignItems: 'center', gap: spacing.md },
+  confirmedHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   confirmedTitle: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.xl },
   confirmedAmount: { color: LIME, fontWeight: '800', fontSize: fonts.sizes.xxxl },
-  closeConfirmBtn: {
-    backgroundColor: LIME, borderRadius: radius.md,
-    paddingVertical: 12, paddingHorizontal: 48, marginTop: spacing.sm,
-  },
+  closeConfirmBtn: { borderRadius: radius.md, overflow: 'hidden', width: '100%', marginTop: spacing.sm },
+  closeConfirmGrad: { paddingVertical: 12, alignItems: 'center' },
   closeConfirmText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.md },
 
   // Withdraw

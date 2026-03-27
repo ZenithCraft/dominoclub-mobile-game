@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius } from '../theme';
+import { IconPhone, IconBrain, IconMessage, IconGlobe, IconTarget, IconAlert, IconPause, IconBan, IconChevronLeft } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { toast } from '../store/toast.store';
@@ -15,28 +16,28 @@ type Props = {
 
 const HELP_RESOURCES = [
   {
-    icon: '📞',
+    icon: IconPhone,
     name: 'CVV — Centro de Valorização da Vida',
     desc: 'Apoio emocional e prevenção ao suicídio',
     action: 'Ligar: 188',
     onPress: () => Linking.openURL('tel:188'),
   },
   {
-    icon: '🧠',
+    icon: IconBrain,
     name: 'Jogo Patológico — ABP',
     desc: 'Associação Brasileira de Psiquiatria — tratamento especializado',
     action: 'Visitar site',
     onPress: () => Linking.openURL('https://www.abp.org.br'),
   },
   {
-    icon: '💬',
+    icon: IconMessage,
     name: 'Alcoólicos Anônimos',
     desc: 'Grupos de apoio para dependência comportamental',
     action: 'Ligar: 0800 888 0699',
     onPress: () => Linking.openURL('tel:08008880699'),
   },
   {
-    icon: '🌐',
+    icon: IconGlobe,
     name: 'CGAP — Clínica de Jogos Patológicos',
     desc: 'IPq-FMUSP — referência nacional em tratamento',
     action: 'Visitar site',
@@ -94,7 +95,7 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={styles.back}>←</Text>
+          <IconChevronLeft size={18} color={colors.textMuted} accessibilityLabel="Voltar" />
         </TouchableOpacity>
         <Text style={styles.title}>Jogo Responsável</Text>
         <View style={{ width: 24 }} />
@@ -104,7 +105,7 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
 
         {/* Hero Banner */}
         <View style={styles.heroBanner}>
-          <Text style={styles.heroIcon}>🎯</Text>
+          <IconTarget size={32} color={colors.primary} accessibilityLabel="Alvo" />
           <Text style={styles.heroTitle}>Jogue com responsabilidade</Text>
           <Text style={styles.heroDesc}>
             O DominoClub é uma plataforma de entretenimento. Jogue pelo prazer — nunca como fonte de renda
@@ -127,7 +128,7 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
           <Text style={styles.sectionSubtitle}>Se você se identifica com algum destes comportamentos, procure ajuda:</Text>
           {WARNING_SIGNS.map((sign, i) => (
             <View key={i} style={styles.warningRow}>
-              <Text style={styles.warningDot}>⚠️</Text>
+              <IconAlert size={20} color={colors.warning} style={{ marginRight: 8 }} />
               <Text style={styles.warningText}>{sign}</Text>
             </View>
           ))}
@@ -145,7 +146,9 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
             onPress={() => handleSelfExclusion('temporary')}
             disabled={requesting}
           >
-            <Text style={styles.exclusionIcon}>⏸️</Text>
+            <View style={styles.exclusionIconContainer}>
+              <IconPause size={24} color={colors.primary} accessibilityLabel="Pausa" />
+            </View>
             <View style={styles.exclusionContent}>
               <Text style={styles.exclusionLabel}>Pausa de 30 dias</Text>
               <Text style={styles.exclusionDesc}>Bloqueio temporário de jogos e depósitos</Text>
@@ -157,7 +160,9 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
             onPress={() => handleSelfExclusion('permanent')}
             disabled={requesting}
           >
-            <Text style={styles.exclusionIcon}>🚫</Text>
+            <View style={styles.exclusionIconContainer}>
+              <IconBan size={24} color={colors.error} accessibilityLabel="Proibido" />
+            </View>
             <View style={styles.exclusionContent}>
               <Text style={[styles.exclusionLabel, { color: colors.error }]}>Auto-exclusão permanente</Text>
               <Text style={styles.exclusionDesc}>Bloqueio definitivo — não pode ser revertido</Text>
@@ -169,16 +174,21 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Precisa de ajuda?</Text>
           <Text style={styles.sectionSubtitle}>Recursos gratuitos de apoio no Brasil:</Text>
-          {HELP_RESOURCES.map((r, i) => (
-            <TouchableOpacity key={i} style={styles.resourceCard} onPress={r.onPress} activeOpacity={0.7}>
-              <Text style={styles.resourceIcon}>{r.icon}</Text>
-              <View style={styles.resourceContent}>
-                <Text style={styles.resourceName}>{r.name}</Text>
-                <Text style={styles.resourceDesc}>{r.desc}</Text>
-                <Text style={styles.resourceAction}>{r.action}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+          {HELP_RESOURCES.map((r, i) => {
+            const IconComponent = r.icon;
+            return (
+              <TouchableOpacity key={i} style={styles.resourceCard} onPress={r.onPress} activeOpacity={0.7}>
+                <View style={styles.resourceIconContainer}>
+                  <IconComponent size={24} color={colors.primary} accessibilityLabel={r.name} />
+                </View>
+                <View style={styles.resourceContent}>
+                  <Text style={styles.resourceName}>{r.name}</Text>
+                  <Text style={styles.resourceDesc}>{r.desc}</Text>
+                  <Text style={styles.resourceAction}>{r.action}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <Text style={styles.footer}>
@@ -247,7 +257,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   exclusionBtnDanger: { borderColor: colors.error + '44' },
-  exclusionIcon: { fontSize: 24 },
+  exclusionIconContainer: { marginRight: spacing.md, justifyContent: 'center', alignItems: 'center' },
   exclusionContent: { flex: 1, gap: 2 },
   exclusionLabel: { fontSize: fonts.sizes.md, fontWeight: '600', color: colors.textPrimary },
   exclusionDesc: { fontSize: fonts.sizes.xs, color: colors.textMuted },
@@ -261,7 +271,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: spacing.md,
   },
-  resourceIcon: { fontSize: 28, marginTop: 2 },
+  resourceIconContainer: { marginTop: 2, marginRight: spacing.md, justifyContent: 'center', alignItems: 'center' },
   resourceContent: { flex: 1, gap: 2 },
   resourceName: { fontSize: fonts.sizes.md, fontWeight: '600', color: colors.textPrimary },
   resourceDesc: { fontSize: fonts.sizes.xs, color: colors.textMuted, lineHeight: 18 },

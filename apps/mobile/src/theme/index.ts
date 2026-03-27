@@ -1,6 +1,8 @@
 // DominoClub Design System
 // Dark forest green theme matching Figma mockups
 
+import { Platform } from 'react-native';
+
 export const colors = {
   // Backgrounds
   bg: '#0a1f0a',           // Deep forest green background
@@ -99,3 +101,16 @@ export const shadows = {
     elevation: 5,
   },
 };
+
+export const backgroundCoverFix =
+  Platform.OS === 'web'
+    ? ({
+        minHeight: '100vh',
+        height: '100vh',
+        width: '100%',
+        backgroundAttachment: 'fixed',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      } as any)
+    : null;

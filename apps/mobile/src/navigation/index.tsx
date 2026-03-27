@@ -15,6 +15,8 @@ import { WalletScreen } from '../screens/WalletScreen';
 import { TermsScreen } from '../screens/TermsScreen';
 import { PrivacyPolicyScreen } from '../screens/PrivacyPolicyScreen';
 import { ResponsibleGamblingScreen } from '../screens/ResponsibleGamblingScreen';
+import { HistoryScreen } from '../screens/HistoryScreen';
+import { AchievementsScreen } from '../screens/AchievementsScreen';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -27,6 +29,8 @@ export type RootStackParamList = {
   Wallet: undefined;
   ModeSelect: { mode?: string } | undefined;
   Game: { gameId: string };
+  History: undefined;
+  Achievements: undefined;
   Terms: { showAccept?: boolean } | undefined;
   PrivacyPolicy: undefined;
   ResponsibleGambling: undefined;
@@ -48,6 +52,8 @@ export function AppNavigator() {
         <Stack.Screen name="Wallet"               component={WalletScreen} />
         <Stack.Screen name="ModeSelect"           component={ModeSelectScreen} />
         <Stack.Screen name="Game"                 component={GameScreen} options={{ gestureEnabled: false }} />
+        <Stack.Screen name="History"              component={HistoryScreen} />
+        <Stack.Screen name="Achievements"         component={AchievementsScreen} />
         <Stack.Screen name="Terms"                component={TermsScreen} />
         <Stack.Screen name="PrivacyPolicy"        component={PrivacyPolicyScreen} />
         <Stack.Screen name="ResponsibleGambling"  component={ResponsibleGamblingScreen} />

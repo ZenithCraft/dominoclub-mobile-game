@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
-import { colors, spacing, fonts, radius } from '../theme';
+import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { IconLock } from '../components/Icons';
 import { api } from '../services/api';
 
 type Props = {
@@ -40,7 +41,7 @@ export function SetNewPasswordScreen({ navigation, route }: Props) {
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
-      style={styles.root}
+      style={[styles.root, backgroundCoverFix]}
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
@@ -62,7 +63,7 @@ export function SetNewPasswordScreen({ navigation, route }: Props) {
             {/* Right column — form */}
             <View style={styles.right}>
               <View style={styles.iconCircle}>
-                <Text style={styles.iconText}>🔒</Text>
+                <IconLock size={24} color={colors.textOnPrimary} accessibilityLabel="Senha" />
               </View>
 
               <Text style={styles.cardTitle}>Resetar a senha</Text>
@@ -139,7 +140,7 @@ const styles = StyleSheet.create({
 
   iconCircle: {
     width: 52, height: 52, borderRadius: 26,
-    backgroundColor: LIME,
+    backgroundColor: '#1CBB3D',
     alignItems: 'center', justifyContent: 'center',
   },
   iconText: { fontSize: 24 },

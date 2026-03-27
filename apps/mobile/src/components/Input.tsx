@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, TextInput, Text, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
+import { View, TextInput, Text, StyleSheet, ViewStyle, Pressable, Platform } from 'react-native';
 import { colors, radius, spacing, fonts } from '../theme';
+import { IconEye, IconEyeOff } from './Icons';
 
 interface Props {
   label?: string;
@@ -31,13 +32,23 @@ export function Input({
 }: Props) {
   const [focused, setFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   return (
     <View style={[styles.container, style]}>
       {label && <Text style={styles.label}>{label}</Text>}
-      <View style={[styles.inputWrapper, focused && styles.focused, error ? styles.errorBorder : null]}>
+      <Pressable
+        style={[
+          styles.inputWrapper,
+          hovered && !focused && !error ? styles.hovered : null,
+          focused && styles.focused,
+          error ? styles.errorBorder : null,
+        ]}
+        onHoverIn={() => setHovered(true)}
+        onHoverOut={() => setHovered(false)}
+      >
         <TextInput
-          style={styles.input}
+          style={[styles.input, styles.inputWeb]}
           placeholder={placeholder}
           placeholderTextColor={colors.textMuted}
           value={value}
@@ -51,11 +62,21 @@ export function Input({
           onBlur={() => setFocused(false)}
         />
         {secureTextEntry && (
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
-            <Text style={styles.eyeIcon}>{showPassword ? '👁' : '🙈'}</Text>
-          </TouchableOpacity>
+          <Pressable
+            onPress={() => setShowPassword(!showPassword)} 
+            style={styles.eyeButton}
+            accessibilityLabel={showPassword ? "Ocultar senha" : "Mostrar senha"}
+            onHoverIn={() => setHovered(true)}
+            onHoverOut={() => setHovered(false)}
+          >
+            {showPassword ? (
+              <IconEyeOff size={20} color={colors.textSecondary} />
+            ) : (
+              <IconEye size={20} color={colors.textSecondary} />
+            )}
+          </Pressable>
         )}
-      </View>
+      </Pressable>
       {error && <Text style={styles.errorText}>{error}</Text>}
     </View>
   );
@@ -74,7 +95,7 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: '#184912',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
@@ -84,15 +105,25 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: 'rgba(74,222,128,0.05)',
   },
+  hovered: {
+    borderColor: 'rgba(190,243,17,0.55)',
+    backgroundColor: 'rgba(190,243,17,0.06)',
+  },
   errorBorder: {
     borderColor: colors.error,
   },
   input: {
     flex: 1,
     paddingVertical: 14,
-    color: colors.textPrimary,
+    color: '#FFFFFF',
     fontSize: fonts.sizes.md,
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
   },
+  inputWeb: ({
+    backgroundColor: 'transparent',
+    outlineStyle: 'none',
+    outlineWidth: 0,
+  } as any),
   eyeButton: {
     padding: spacing.xs,
   },

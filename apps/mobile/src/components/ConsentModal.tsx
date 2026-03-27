@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, radius } from '../theme';
+import { IconShieldAlert } from './Icons';
 
 const CONSENT_KEY = '@dominoclub_consent_v1';
 
@@ -72,7 +73,9 @@ export function ConsentModal({ onAccepted }: Props) {
           {/* Age verification step */}
           {step === 'age' && (
             <>
-              <Text style={styles.cardIcon}>🔞</Text>
+              <View style={styles.iconContainer}>
+                <IconShieldAlert size={48} color={colors.primary} accessibilityLabel="Aviso de idade" />
+              </View>
               <Text style={styles.cardTitle}>Verificação de Idade</Text>
               <Text style={styles.cardBody}>
                 O DominoClub é uma plataforma de jogos com apostas em dinheiro real.{'\n\n'}
@@ -194,7 +197,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: spacing.lg,
   },
-  cardIcon: { fontSize: 48, textAlign: 'center' },
+  iconContainer: {
+    marginBottom: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   cardTitle: { fontSize: fonts.sizes.xl, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   cardBody: { fontSize: fonts.sizes.sm, color: colors.textSecondary, lineHeight: 22, textAlign: 'center' },
   bold: { fontWeight: '700', color: colors.textPrimary },

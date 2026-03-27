@@ -2,7 +2,9 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { toast } from '../store/toast.store';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+const BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  (typeof location !== 'undefined' ? `${location.origin}/api/v1` : 'http://localhost:3001/api/v1');
 const IS_MOCK  = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
 
 // Errors from these URLs are surfaced directly to the caller — don't double-toast
