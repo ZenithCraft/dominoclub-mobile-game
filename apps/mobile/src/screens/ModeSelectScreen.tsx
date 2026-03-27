@@ -72,6 +72,7 @@ const fmtBrl = (n: number) =>
 function RoomCard({ room, section, onJoin, width }: { room: RoomOption; section: '1v1' | '2v2'; onJoin: () => void; width: number }) {
   const isFree = room.buyIn === null;
   const textColor = '#ffffff';
+  const PlayersIcon = section === '2v2' ? IconUsers : IconUser;
   const paidColors = section === '2v2'
     ? ['#041802', '#041802', '#0E7F00']
     : ['#001A27', '#001A27', '#00A2C6'];
@@ -95,7 +96,7 @@ function RoomCard({ room, section, onJoin, width }: { room: RoomOption; section:
         >
           <View style={styles.cardTop}>
             <View style={styles.playersIconWrap}>
-              <IconUser size={18} color={textColor} />
+              <PlayersIcon size={18} color={textColor} />
             </View>
             <View style={styles.playersMeta}>
               <Text style={[styles.playersLabel, { color: textColor }]}>Jogadores</Text>
@@ -128,7 +129,7 @@ function RoomCard({ room, section, onJoin, width }: { room: RoomOption; section:
         >
           <View style={styles.cardTop}>
             <View style={styles.playersIconWrap}>
-              <IconUser size={18} color={textColor} />
+              <PlayersIcon size={18} color={textColor} />
             </View>
             <View style={styles.playersMeta}>
               <Text style={[styles.playersLabel, { color: textColor }]}>Jogadores</Text>
@@ -223,7 +224,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const [tourLoading, setTourLoading]   = useState(false);
   const [tourRefreshing, setTourRefreshing] = useState(false);
   const [confirmTour, setConfirmTour]   = useState<Tournament | null>(null);
-  const [confirmRoom, setConfirmRoom]   = useState<RoomOption | null>(null);
+  const [confirmRoom, setConfirmRoom]   = useState<{ room: RoomOption; section: '1v1' | '2v2' } | null>(null);
   const [joining, setJoining]           = useState(false);
   const [searching, setSearching]       = useState(false);
 
@@ -244,10 +245,10 @@ export function ModeSelectScreen({ navigation, route }: Props) {
     }
   }, []);
 
-  const handleJoinRoom = async (room: RoomOption) => {
+  const handleJoinRoom = async (room: RoomOption, section: '1v1' | '2v2') => {
     setSearching(true);
     setQueueStatus('queuing');
-    const gameMode = room.id.startsWith('d') ? 'RECREATIONAL_2V2' : 'ARENA_1V1';
+    const gameMode = section === '2v2' ? 'RECREATIONAL_2V2' : 'ARENA_1V1';
     const socket = await connectSocket();
     socket.emit('queue:join', { mode: gameMode, betAmount: room.buyIn ?? 0 });
     socket.once('game:found', ({ gameId }: { gameId: string }) => {
@@ -327,7 +328,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
               <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
                 {LIVRE_1V1.map((r) => (
-                  <RoomCard key={r.id} room={r} section="1v1" width={roomCardWidth} onJoin={() => setConfirmRoom(r)} />
+                  <RoomCard key={r.id} room={r} section="1v1" width={roomCardWidth} onJoin={() => setConfirmRoom({ room: r, section: '1v1' })} />
                 ))}
               </ScrollView>
             </View>
@@ -336,7 +337,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
               <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
                 {LIVRE_2V2.map((r) => (
-                  <RoomCard key={r.id} room={r} section="2v2" width={roomCardWidth} onJoin={() => setConfirmRoom(r)} />
+                  <RoomCard key={r.id} room={r} section="2v2" width={roomCardWidth} onJoin={() => setConfirmRoom({ room: r, section: '2v2' })} />
                 ))}
               </ScrollView>
             </View>
@@ -429,20 +430,20 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       <Modal visible={!!confirmRoom} transparent animationType="fade">
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => !searching && setConfirmRoom(null)}>
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>Confirmar partida</Text>
+            <Text style={styles.modalTitle}>Confirmar partida {confirmRoom?.section === '2v2' ? '(2x2)' : '(1x1)'}</Text>
             {confirmRoom && (
               <>
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Buy in</Text>
-                  <Text style={styles.modalValue}>{confirmRoom.buyIn === null ? 'Grátis' : `R$ ${confirmRoom.buyIn}`}</Text>
+                  <Text style={styles.modalValue}>{confirmRoom.room.buyIn === null ? 'Grátis' : `R$ ${confirmRoom.room.buyIn}`}</Text>
                 </View>
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Prêmio</Text>
-                  <Text style={[styles.modalValue, { color: '#fbbf24' }]}>{fmtBrl(confirmRoom.prize)}</Text>
+                  <Text style={[styles.modalValue, { color: '#fbbf24' }]}>{fmtBrl(confirmRoom.room.prize)}</Text>
                 </View>
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Jogadores</Text>
-                  <Text style={styles.modalValue}>{confirmRoom.players}/{confirmRoom.max}</Text>
+                  <Text style={styles.modalValue}>{confirmRoom.room.players}/{confirmRoom.room.max}</Text>
                 </View>
                 <View style={styles.modalActions}>
                   <TouchableOpacity
@@ -459,7 +460,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                       const r = confirmRoom;
                       setConfirmRoom(null);
                       if (!r) return;
-                      await handleJoinRoom(r);
+                      await handleJoinRoom(r.room, r.section);
                     }}
                     disabled={searching}
                     activeOpacity={0.85}
@@ -585,11 +586,11 @@ const styles = StyleSheet.create({
         }),
   },
   roomCardInner: { padding: spacing.lg, gap: spacing.md, minHeight: 220 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: spacing.sm },
+  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, width: '100%' },
   playersIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.18)', alignItems: 'center', justifyContent: 'center' },
-  playersMeta: { flexDirection: 'column', gap: 2 },
-  playersLabel: { fontSize: fonts.sizes.sm, fontWeight: '800', fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System' },
-  playersCount: { fontSize: fonts.sizes.sm, fontWeight: '900', fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System' },
+  playersMeta: { flexDirection: 'column', gap: 2, alignItems: 'center' },
+  playersLabel: { fontSize: fonts.sizes.sm, fontWeight: '800', textAlign: 'center', fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System' },
+  playersCount: { fontSize: fonts.sizes.sm, fontWeight: '900', textAlign: 'center', fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System' },
   cardDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.18)' },
   cardDividerDark: { backgroundColor: 'rgba(17,24,39,0.14)' },
   fullBar: {

@@ -5,6 +5,7 @@ type Listener = (...args: any[]) => void;
 class FakeSocket {
   private listeners  = new Map<string, Listener[]>();
   private onceMap    = new Map<string, Listener[]>();
+  private lastQueueMode: string | null = null;
   readonly connected = true;
   readonly id        = 'demo-socket';
 
@@ -33,31 +34,54 @@ class FakeSocket {
 
   emit(event: string, ...args: any[]) {
     if (event === 'queue:join') {
+      this.lastQueueMode = args[0]?.mode ?? null;
       setTimeout(() => {
-        this._trigger('game:found', { gameId: 'demo-1' });
+        const gameId = this.lastQueueMode?.includes('2V2') ? 'demo-2v2' : 'demo-1';
+        this._trigger('game:found', { gameId });
       }, 800);
     }
     if (event === 'game:join') {
       const gameId = args[0]?.gameId ?? 'demo-1';
       // Use the actual logged-in user's ID so myHand resolves correctly
       const myId = useAuthStore.getState().user?.id ?? 'p1';
-      const state = {
-        id: gameId,
-        mode: 'ARENA_1V1',
-        variant: 'CARROCA',
-        players: [
-          { userId: myId, name: useAuthStore.getState().user?.name ?? 'Você', team: 1, seat: 0, hand: [[6,6],[6,5],[5,3],[2,1],[0,0],[4,2],[1,1]], isBot: false, connected: true },
-          { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: [[2,2],[3,4],[5,0],[6,1],[4,0],[3,0],[2,0]], isBot: false, connected: true },
-        ],
-        board: [],
-        leftOpen: -1,
-        rightOpen: -1,
-        currentPlayerIndex: 0,
-        turnCount: 1,
-        status: 'playing',
-        boneyard: Array.from({ length: 14 }).fill(null),
-        firstPlayMade: false,
-      };
+      const is2v2 = String(gameId).includes('2v2') || this.lastQueueMode?.includes('2V2');
+      const state = is2v2
+        ? {
+            id: gameId,
+            mode: 'RECREATIONAL_2V2',
+            variant: 'CARROCA',
+            players: [
+              { userId: myId, name: useAuthStore.getState().user?.name ?? 'Você', team: 1, seat: 0, hand: [[6,6],[6,5],[5,3],[2,1],[0,0],[4,2],[1,1]], isBot: false, connected: true },
+              { userId: 'p2', name: 'Adversário 1', team: 2, seat: 1, hand: [[2,2],[3,4],[5,0],[6,1],[4,0],[3,0],[2,0]], isBot: false, connected: true },
+              { userId: 'p3', name: 'Parceiro', team: 1, seat: 2, hand: [[1,2],[2,6],[0,1],[4,4],[5,5],[3,3],[0,6]], isBot: false, connected: true },
+              { userId: 'p4', name: 'Adversário 2', team: 2, seat: 3, hand: [[1,1],[1,6],[2,5],[3,6],[4,6],[0,5],[0,3]], isBot: false, connected: true },
+            ],
+            board: [],
+            leftOpen: -1,
+            rightOpen: -1,
+            currentPlayerIndex: 0,
+            turnCount: 1,
+            status: 'playing',
+            boneyard: Array.from({ length: 14 }).fill(null),
+            firstPlayMade: false,
+          }
+        : {
+            id: gameId,
+            mode: 'ARENA_1V1',
+            variant: 'CARROCA',
+            players: [
+              { userId: myId, name: useAuthStore.getState().user?.name ?? 'Você', team: 1, seat: 0, hand: [[6,6],[6,5],[5,3],[2,1],[0,0],[4,2],[1,1]], isBot: false, connected: true },
+              { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: [[2,2],[3,4],[5,0],[6,1],[4,0],[3,0],[2,0]], isBot: false, connected: true },
+            ],
+            board: [],
+            leftOpen: -1,
+            rightOpen: -1,
+            currentPlayerIndex: 0,
+            turnCount: 1,
+            status: 'playing',
+            boneyard: Array.from({ length: 14 }).fill(null),
+            firstPlayMade: false,
+          };
       setTimeout(() => this._trigger('game:state', state), 200);
     }
     if (event === 'game:move') {
