@@ -86,20 +86,24 @@ export const radius = {
 };
 
 export const shadows = {
-  card: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  tile: {
-    shadowColor: '#000',
-    shadowOffset: { width: 2, height: 3 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    elevation: 5,
-  },
+  card: Platform.OS === 'web'
+    ? ({ boxShadow: '0px 4px 8px rgba(0,0,0,0.40)' } as any)
+    : {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+        elevation: 8,
+      },
+  tile: Platform.OS === 'web'
+    ? ({ boxShadow: '2px 3px 4px rgba(0,0,0,0.50)' } as any)
+    : {
+        shadowColor: '#000',
+        shadowOffset: { width: 2, height: 3 },
+        shadowOpacity: 0.5,
+        shadowRadius: 4,
+        elevation: 5,
+      },
 };
 
 export const backgroundCoverFix =
