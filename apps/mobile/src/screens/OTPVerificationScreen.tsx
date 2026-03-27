@@ -126,7 +126,7 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
                         ref={(r) => { if (r) inputs.current[i] = r; }}
                         style={[
                           styles.otpBox,
-                          styles.otpBoxWeb,
+                          Platform.OS === 'web' ? styles.otpBoxWeb : null,
                           digit ? styles.otpBoxFilled : null,
                           error ? styles.otpBoxError : null,
                         ]}
