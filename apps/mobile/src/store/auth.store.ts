@@ -30,6 +30,11 @@ interface AuthState {
   refreshUser: () => Promise<void>;
 }
 
+let loadFromStorageInFlight: Promise<void> | null = null;
+let refreshUserInFlight: Promise<void> | null = null;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   accessToken: null,
@@ -70,6 +75,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   loadFromStorage: async () => {
+    if (loadFromStorageInFlight) return loadFromStorageInFlight;
+
+    loadFromStorageInFlight = (async () => {
     try {
       const [accessToken, refreshToken] = await AsyncStorage.multiGet(['access_token', 'refresh_token']);
       const accessFromStorage = accessToken[1];
@@ -95,9 +103,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         try {
-          const { data } = await api.get('/auth/me');
-          const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
-          set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
+          try {
+            const { data } = await api.get('/auth/me');
+            const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
+            set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
+          } catch (err2: any) {
+            if (err2?.response?.status === 429) {
+              await sleep(900);
+              const { data } = await api.get('/auth/me');
+              const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
+              set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
+            } else {
+              throw err2;
+            }
+          }
         } catch (err: any) {
           if (err?.response?.status === 401) {
             const forceDevLogin = process.env.EXPO_PUBLIC_FORCE_DEV_LOGIN === 'true';
@@ -138,17 +157,41 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } finally {
       set({ isLoading: false });
     }
+    })().finally(() => {
+      loadFromStorageInFlight = null;
+    });
+
+    return loadFromStorageInFlight;
   },
 
   refreshUser: async () => {
+    if (refreshUserInFlight) return refreshUserInFlight;
+
+    refreshUserInFlight = (async () => {
     try {
-      const { data } = await api.get('/auth/me');
-      const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
-      set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
+      try {
+        const { data } = await api.get('/auth/me');
+        const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
+        set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
+      } catch (err2: any) {
+        if (err2?.response?.status === 429) {
+          await sleep(900);
+          const { data } = await api.get('/auth/me');
+          const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
+          set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
+        } else {
+          throw err2;
+        }
+      }
     } catch (err: any) {
       if (err?.response?.status === 401) {
         await get().logout();
       }
     }
+    })().finally(() => {
+      refreshUserInFlight = null;
+    });
+
+    return refreshUserInFlight;
   },
 }));

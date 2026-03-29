@@ -13,7 +13,7 @@ import { toast } from '../store/toast.store';
 import { connectSocket } from '../services/socket';
 import { ConsentModal } from '../components/ConsentModal';
 import { WalletBalanceButton } from '../components/Button';
-import { IconSettings, IconStar, IconLogOut, IconX, IconVolumeUp, IconMusic } from '../components/Icons';
+import { IconSettings, IconStar, IconLogOut, IconX, IconVolumeUp, IconMusic, IconChevronLeft } from '../components/Icons';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -125,12 +125,14 @@ export function GameTopBar({
   onExit,
   onWallet,
   onProfile,
+  exitVariant = 'logout',
 }: {
   user: any;
   onSettings?: () => void;
   onExit?: () => void;
   onWallet?: () => void;
   onProfile?: () => void;
+  exitVariant?: 'logout' | 'back';
 }) {
   const balance = user?.wallet?.real_balance ?? 0;
   const level   = 2; // TODO: pull from user profile
@@ -160,8 +162,17 @@ export function GameTopBar({
           <IconSettings size={20} color="#fff" accessibilityLabel="Configurações" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={topBar.iconBtn} onPress={onExit} testID="topbar-logout" accessibilityLabel="Sair">
-          <IconLogOut size={20} color="#fff" accessibilityLabel="Sair" />
+        <TouchableOpacity
+          style={topBar.iconBtn}
+          onPress={onExit}
+          testID={exitVariant === 'back' ? 'topbar-back' : 'topbar-logout'}
+          accessibilityLabel={exitVariant === 'back' ? 'Voltar' : 'Sair'}
+        >
+          {exitVariant === 'back' ? (
+            <IconChevronLeft size={20} color="#fff" accessibilityLabel="Voltar" />
+          ) : (
+            <IconLogOut size={20} color="#fff" accessibilityLabel="Sair" />
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -721,11 +732,12 @@ const styles = StyleSheet.create({
     width: Platform.OS === 'web' ? 640 : 520,
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
-    padding: SETTINGS_CARD_PAD,
+    paddingHorizontal: SETTINGS_CARD_PAD,
+    paddingVertical: Math.max(10, SETTINGS_CARD_PAD - 6),
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#BBFF00',
-    gap: SETTINGS_ITEM_GAP,
+    gap: Math.max(10, SETTINGS_ITEM_GAP - 6),
     ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.45)' } as any) : shadows.card),
   },
   profileBody: {

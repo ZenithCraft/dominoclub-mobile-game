@@ -38,6 +38,7 @@ const authLimiter = rateLimit({
   message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path === '/me',
 });
 
 // PIX webhook: very loose — called by Banco Inter servers
