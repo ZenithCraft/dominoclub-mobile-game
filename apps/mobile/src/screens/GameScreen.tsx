@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ImageBackground, Image,
-  TouchableOpacity, Modal, Alert, Animated, Pressable,
+  TouchableOpacity, Modal, Alert, Animated, Pressable, ActivityIndicator,
   Platform, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,6 +24,64 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 
 const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
 const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
+
+function MiniPips({ value }: { value: number }) {
+  const pos = [
+    { x: 0.22, y: 0.22 },
+    { x: 0.5, y: 0.22 },
+    { x: 0.78, y: 0.22 },
+    { x: 0.22, y: 0.5 },
+    { x: 0.5, y: 0.5 },
+    { x: 0.78, y: 0.5 },
+    { x: 0.22, y: 0.78 },
+    { x: 0.5, y: 0.78 },
+    { x: 0.78, y: 0.78 },
+  ];
+
+  const map: Record<number, number[]> = {
+    0: [],
+    1: [4],
+    2: [0, 8],
+    3: [0, 4, 8],
+    4: [0, 2, 6, 8],
+    5: [0, 2, 4, 6, 8],
+    6: [0, 2, 3, 5, 6, 8],
+  };
+
+  const ids = map[Math.max(0, Math.min(6, value))] ?? [];
+
+  return (
+    <View style={styles.miniPips}>
+      {ids.map((i) => (
+        <View
+          key={i}
+          style={[
+            styles.miniPip,
+            {
+              left: `${pos[i].x * 100}%`,
+              top: `${pos[i].y * 100}%`,
+              transform: [{ translateX: -3 }, { translateY: -3 }],
+            } as any,
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+function MiniDomino({ left, right, style }: { left: number; right: number; style?: any }) {
+  return (
+    <View style={[styles.miniDomino, style]}>
+      <View style={styles.miniHalf}>
+        <MiniPips value={left} />
+      </View>
+      <View style={styles.miniDivider} />
+      <View style={styles.miniHalf}>
+        <MiniPips value={right} />
+      </View>
+    </View>
+  );
+}
 
 function GradientToggle({
   value,
@@ -813,9 +871,28 @@ export function GameScreen({ navigation, route }: Props) {
   const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef      = useRef<Socket | null>(null);
   const errorFadeAnim  = useRef(new Animated.Value(0)).current;
+  const joinPulseAnim  = useRef(new Animated.Value(0)).current;
   const prevStateRef   = useRef<GameState | null>(null);
   const emojiAnimRef   = useRef<Map<string, Animated.Value>>(new Map());
   const drawAnimRef    = useRef<Map<string, Animated.Value>>(new Map());
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'test') return;
+    if (currentGame) {
+      joinPulseAnim.stopAnimation();
+      joinPulseAnim.setValue(0);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(joinPulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(joinPulseAnim, { toValue: 0, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [currentGame, joinPulseAnim]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const tableHeight = Math.round(Math.min(viewportWidth * 0.82, 880) / 2.4);
@@ -1163,6 +1240,9 @@ export function GameScreen({ navigation, route }: Props) {
 
   // ── Loading state ──────────────────────────────────────────────────────────
   if (!currentGame) {
+    const glowOpacity = joinPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.12, 0.32] });
+    const glowScale = joinPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.06] });
+    const tileLift = joinPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -6] });
     return (
       <ImageBackground
         source={require('../../assets/background.png')}
@@ -1171,7 +1251,32 @@ export function GameScreen({ navigation, route }: Props) {
       >
         <View style={styles.bgOverlay} />
         <SafeAreaView style={[styles.container, styles.centered]}>
-          <Text style={styles.loadingText}>Entrando na partida...</Text>
+          <View style={styles.joinWrap}>
+            <Animated.View style={[styles.joinGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]} />
+            <LinearGradient
+              colors={['rgba(187,255,0,0.20)', 'rgba(0,0,0,0.55)', 'rgba(74,222,128,0.18)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.joinCard}
+            >
+              <View style={styles.joinSpinnerRow}>
+                <ActivityIndicator color="#4ade80" size="large" />
+              </View>
+              <Text style={styles.joinTitle}>Entrando na partida...</Text>
+              <Text style={styles.joinSubtitle}>Conectando e preparando a mesa</Text>
+              <View style={styles.joinMiniRow}>
+                <Animated.View style={{ transform: [{ translateY: tileLift }, { rotate: '-10deg' }] }}>
+                  <MiniDomino left={6} right={6} />
+                </Animated.View>
+                <Animated.View style={{ transform: [{ translateY: tileLift }, { rotate: '0deg' }] }}>
+                  <MiniDomino left={5} right={3} />
+                </Animated.View>
+                <Animated.View style={{ transform: [{ translateY: tileLift }, { rotate: '10deg' }] }}>
+                  <MiniDomino left={2} right={1} />
+                </Animated.View>
+              </View>
+            </LinearGradient>
+          </View>
           {(disconnected || gameError) && (
             <View style={styles.loadingCard}>
               <Text style={styles.loadingHint}>{gameError || 'Sem conexão com o servidor.'}</Text>
@@ -1561,6 +1666,48 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   centered:  { alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: colors.textMuted, fontSize: fonts.sizes.lg },
+  joinWrap: { width: '100%', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
+  joinGlow: {
+    position: 'absolute',
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+    backgroundColor: '#BBFF00',
+  },
+  joinCard: {
+    width: 360,
+    maxWidth: '94%',
+    borderRadius: radius.xl,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 14px 28px rgba(0,0,0,0.50)' } as any) : shadows.card),
+  },
+  joinSpinnerRow: { alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  joinTitle: { color: '#fff', fontSize: fonts.sizes.xl, fontWeight: '900', textAlign: 'center' },
+  joinSubtitle: { color: 'rgba(255,255,255,0.72)', fontSize: fonts.sizes.sm, fontWeight: '700', textAlign: 'center', marginTop: 6 },
+  joinMiniRow: { flexDirection: 'row', gap: 10, justifyContent: 'center', marginTop: 16 },
+  miniDomino: {
+    width: 44,
+    height: 64,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.15)',
+    overflow: 'hidden',
+  },
+  miniHalf: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  miniDivider: { height: 1, backgroundColor: 'rgba(0,0,0,0.12)' },
+  miniPips: { width: '100%', height: '100%' },
+  miniPip: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#111827',
+  },
   loadingCard: {
     marginTop: 16,
     width: 320,

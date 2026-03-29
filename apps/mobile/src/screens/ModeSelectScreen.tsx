@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ImageBackground, ScrollView, useWindowDimensions,
   TouchableOpacity, Modal, ActivityIndicator, RefreshControl,
-  Platform,
+  Platform, Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
-import { IconUser, IconUsers, IconChevronLeft } from '../components/Icons';
-import { WalletBalanceButton } from '../components/Button';
+import { IconUser, IconUsers, IconTrophy } from '../components/Icons';
 import { useGameStore } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
 import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
 import { toast } from '../store/toast.store';
+import { GameTopBar } from './HomeScreen';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -217,7 +217,6 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
   const { user, refreshUser, setTokens, setUser } = useAuthStore();
   const { setQueueStatus, setLastQueue } = useGameStore();
-  const [onlineCount, setOnlineCount]   = useState(6654);
   const [queueStats, setQueueStats] = useState<Record<string, { total: number; byBet: Record<string, number> }>>({});
   const [serverBotWaitSeconds, setServerBotWaitSeconds] = useState<number | null>(null);
   const [tournaments, setTournaments]   = useState<Tournament[]>([]);
@@ -227,12 +226,31 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const [confirmRoom, setConfirmRoom]   = useState<{ room: RoomOption; section: '1v1' | '2v2' } | null>(null);
   const [joining, setJoining]           = useState(false);
   const [searching, setSearching]       = useState(false);
+  const searchPulseAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'test') return;
+
+    if (!searching) {
+      searchPulseAnim.stopAnimation();
+      searchPulseAnim.setValue(0);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(searchPulseAnim, { toValue: 1, duration: 750, useNativeDriver: true }),
+        Animated.timing(searchPulseAnim, { toValue: 0, duration: 750, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [searchPulseAnim, searching]);
 
   useEffect(() => {
     (async () => {
       try {
         const s = await connectSocket();
-        s.on('online:count', ({ count }: { count: number }) => setOnlineCount(count));
         s.on('queue:stats', (stats: any) => setQueueStats(stats || {}));
       } catch {}
     })();
@@ -365,27 +383,14 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
-      {/* Top bar */}
-      <View style={styles.topBar}>
-        <View style={styles.onlineRow}>
-          <IconUsers size={24} color="#fff" />
-          <Text style={styles.onlineText}>Jogadores online</Text>
-          <Text style={styles.onlineCount}>{onlineCount.toLocaleString('pt-BR')}</Text>
-        </View>
-
-        <View style={styles.topRight}>
-          <WalletBalanceButton balance={user?.wallet?.real_balance ?? 0} onPress={() => navigation.navigate('Wallet')} />
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => (navigation.canGoBack?.() ? navigation.goBack() : navigation.replace('Main'))}
-            accessibilityLabel="Voltar"
-            activeOpacity={0.85}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <IconChevronLeft size={18} color="#fff" accessibilityLabel="Voltar" />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <GameTopBar
+        user={user}
+        onWallet={() => navigation.navigate('Wallet')}
+        onSettings={() => navigation.replace('Main')}
+        onProfile={() => navigation.replace('Main')}
+        exitVariant="back"
+        onExit={() => (navigation.canGoBack?.() ? navigation.goBack() : navigation.replace('Main'))}
+      />
 
       {/* Content */}
       <ScrollView
@@ -450,14 +455,35 @@ export function ModeSelectScreen({ navigation, route }: Props) {
         {/* ── Torneio mode ── */}
         {isTorneio && (
           <View style={styles.tourWrap}>
-            <View style={styles.tourPanel}>
-              <Text style={styles.tourTitle}>Torneios individuais (1x1)</Text>
+            <View style={styles.tourPanelWrap}>
+              <View style={styles.tourGlow} />
+              <LinearGradient
+                colors={['rgba(187,255,0,0.18)', 'rgba(0,0,0,0.28)', 'rgba(74,222,128,0.12)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.tourPanel}
+              >
+              <View style={styles.tourHeaderRow}>
+                <Text style={styles.tourTitle}>Torneios individuais (1x1)</Text>
+                <View style={styles.tourCountPill}>
+                  <Text style={styles.tourCountText}>{String(tournaments.length)}</Text>
+                </View>
+              </View>
               {tourLoading ? (
                 <View style={styles.tourLoading}>
                   <ActivityIndicator color="#4ade80" />
                 </View>
               ) : tournaments.length === 0 ? (
-                <Text style={styles.tourEmptyText}>Nenhum torneio disponível agora</Text>
+                <View style={styles.tourEmptyBox}>
+                  <View style={styles.tourEmptyIcon}>
+                    <IconTrophy size={22} color="#BBFF00" accessibilityLabel="Torneios" />
+                  </View>
+                  <Text style={styles.tourEmptyTitle}>Nenhum torneio disponível agora</Text>
+                  <Text style={styles.tourEmptyHint}>Volte em instantes — novos torneios aparecem aqui</Text>
+                  <TouchableOpacity style={styles.tourRefreshBtn} onPress={() => fetchTournaments(true)} activeOpacity={0.85}>
+                    <Text style={styles.tourRefreshText}>Atualizar</Text>
+                  </TouchableOpacity>
+                </View>
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tourCardsRow}>
                   {tournaments.map((t) => (
@@ -465,6 +491,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                   ))}
                 </ScrollView>
               )}
+              </LinearGradient>
             </View>
           </View>
         )}
@@ -473,21 +500,43 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       {/* Searching overlay */}
       {searching && (
         <View style={styles.searchingOverlay}>
-          <ActivityIndicator color="#4ade80" size="large" />
-          <Text style={styles.searchingText}>Procurando partida...</Text>
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={async () => {
-              try {
-                const s = await connectSocket();
-                s.emit('queue:leave');
-              } catch {}
-              setSearching(false);
-              setQueueStatus('idle');
-            }}
-          >
-            <Text style={styles.cancelBtnText}>Cancelar</Text>
-          </TouchableOpacity>
+          <View style={styles.searchWrap}>
+            <Animated.View
+              style={[
+                styles.searchGlow,
+                {
+                  opacity: searchPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.12, 0.30] }),
+                  transform: [{ scale: searchPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.06] }) }],
+                },
+              ]}
+            />
+            <LinearGradient
+              colors={['rgba(34,211,238,0.14)', 'rgba(0,0,0,0.58)', 'rgba(74,222,128,0.16)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.searchCard}
+            >
+              <View style={styles.searchSpinnerRow}>
+                <ActivityIndicator color="#4ade80" size="large" />
+              </View>
+              <Text style={styles.searchTitle}>Procurando partida...</Text>
+              <Text style={styles.searchSubtitle}>Aguardando jogadores e criando a sala</Text>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={async () => {
+                  try {
+                    const s = await connectSocket();
+                    s.emit('queue:leave');
+                  } catch {}
+                  setSearching(false);
+                  setQueueStatus('idle');
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+          </View>
         </View>
       )}
 
@@ -595,42 +644,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
   safe: { flex: 1 },
 
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(74,222,128,0.15)',
-  },
-  onlineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  onlineIcon: { fontSize: 16 },
-  onlineText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: fonts.sizes.lg,
-    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
-  },
-  onlineCount: {
-    color: '#c7ff3d',
-    fontWeight: '900',
-    fontSize: fonts.sizes.lg,
-    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
-  },
-  topRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.sm,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(187, 255, 0, 0.22)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  iconText: { color: '#fff', fontSize: 16 },
-
   content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxl },
 
   section: { gap: spacing.md },
@@ -733,19 +746,83 @@ const styles = StyleSheet.create({
   pillTextGold: { color: '#111827' },
 
   tourWrap: { alignItems: 'center' },
-  tourPanel: {
+  tourPanelWrap: {
     width: '100%',
     maxWidth: 980,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tourGlow: {
+    position: 'absolute',
+    width: 520,
+    height: 240,
+    borderRadius: 140,
+    backgroundColor: '#BBFF00',
+    opacity: 0.10,
+    transform: [{ rotate: '-12deg' }],
+  },
+  tourPanel: {
+    width: '100%',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.14)',
     borderRadius: 22,
     padding: spacing.xl,
     gap: spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 14px 28px rgba(0,0,0,0.42)' } as any) : { elevation: 8, shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 18, shadowOffset: { width: 0, height: 10 } }),
   },
+  tourHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
   tourTitle: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.lg },
+  tourCountPill: {
+    minWidth: 44,
+    height: 30,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(187, 255, 0, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(187, 255, 0, 0.20)',
+  },
+  tourCountText: { color: '#BBFF00', fontWeight: '900', fontSize: fonts.sizes.sm },
   tourLoading: { paddingVertical: spacing.xl, alignItems: 'center', justifyContent: 'center' },
-  tourEmptyText: { color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.xl },
+  tourEmptyBox: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    gap: 8,
+  },
+  tourEmptyIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(187, 255, 0, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(187, 255, 0, 0.18)',
+    marginBottom: 2,
+  },
+  tourEmptyTitle: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.lg, textAlign: 'center' },
+  tourEmptyHint: { color: 'rgba(255,255,255,0.70)', fontWeight: '700', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  tourRefreshBtn: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  tourRefreshText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
   tourCardsRow: {
     gap: spacing.lg,
     paddingBottom: spacing.sm,
@@ -797,12 +874,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.lg,
   },
-  searchingText: { color: '#fff', fontSize: fonts.sizes.lg, fontWeight: '600' },
-  cancelBtn: {
-    borderWidth: 1, borderColor: LIME, borderRadius: radius.md,
-    paddingVertical: 10, paddingHorizontal: 32,
+  searchWrap: { width: '100%', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
+  searchGlow: {
+    position: 'absolute',
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+    backgroundColor: '#22d3ee',
   },
-  cancelBtnText: { color: LIME, fontWeight: '700' },
+  searchCard: {
+    width: 360,
+    maxWidth: '94%',
+    borderRadius: radius.xl,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 14px 28px rgba(0,0,0,0.50)' } as any) : { elevation: 8, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 18, shadowOffset: { width: 0, height: 10 } }),
+  },
+  searchSpinnerRow: { alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  searchTitle: { color: '#fff', fontSize: fonts.sizes.xl, fontWeight: '900', textAlign: 'center' },
+  searchSubtitle: { color: 'rgba(255,255,255,0.72)', fontSize: fonts.sizes.sm, fontWeight: '700', textAlign: 'center', marginTop: 6, marginBottom: 14 },
+  cancelBtn: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: radius.full,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+  },
+  cancelBtnText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
 
   // Modal
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center' },

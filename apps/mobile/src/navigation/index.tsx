@@ -45,9 +45,6 @@ if (process.env.NODE_ENV !== 'production' && typeof console !== 'undefined') {
     const first = args[0];
     if (typeof first === 'string' && first.startsWith('Unexpected text node:')) {
       originalError(...args);
-      try {
-        originalError(new Error('Unexpected text node stack').stack);
-      } catch {}
       return;
     }
     originalError(...args);

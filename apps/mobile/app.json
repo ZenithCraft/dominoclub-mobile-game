@@ -10,8 +10,8 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
+      "image": "./assets/background.png",
+      "resizeMode": "cover",
       "backgroundColor": "#0a1f0a"
     },
     "assetBundlePatterns": ["**/*"],
