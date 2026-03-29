@@ -423,6 +423,8 @@ async function handleGameEnd(
 
   io.to(`game:${gameId}`).emit('game:ended', {
     status: opts?.status ?? 'FINISHED',
+    mode: game.mode,
+    betAmount: game.bet_amount,
     winnerId: state.winnerId,
     winnerTeam: state.winnerTeam,
     prizePool,
