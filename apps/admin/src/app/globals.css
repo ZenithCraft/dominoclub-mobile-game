@@ -3,14 +3,19 @@
 @tailwind utilities;
 
 :root {
-  --bg: #0a1f0a;
-  --bg-card: #0f2e0f;
+  --bg: #040804;
+  --bg-card: #071a07;
+  --bg-card-2: #0a230a;
   --primary: #4ade80;
   --gold: #facc15;
 }
 
 body {
-  background-color: var(--bg);
+  background:
+    radial-gradient(1200px 700px at 20% -10%, rgba(74, 222, 128, 0.18), transparent 60%),
+    radial-gradient(900px 600px at 90% 10%, rgba(250, 204, 21, 0.12), transparent 55%),
+    radial-gradient(900px 600px at 40% 110%, rgba(34, 197, 94, 0.10), transparent 55%),
+    var(--bg);
   color: white;
   font-family: system-ui, -apple-system, sans-serif;
 }

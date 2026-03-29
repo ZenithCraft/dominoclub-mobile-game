@@ -1,7 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { adminApi } from '../../lib/api';
+import background from '../../../../mobile/assets/background.png';
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -10,7 +11,7 @@ export default function AdminLogin() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -26,7 +27,15 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a1f0a] flex items-center justify-center">
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{
+        backgroundImage: `linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url(${background.src})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }}
+    >
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex items-center gap-3 justify-center mb-8">
@@ -41,7 +50,7 @@ export default function AdminLogin() {
 
         <form
           onSubmit={handleLogin}
-          className="bg-[#0f2e0f] border border-green-900/30 rounded-2xl p-8 space-y-5"
+          className="bg-[var(--bg-card)] backdrop-blur border border-white/10 rounded-2xl p-8 space-y-5 shadow-[0_18px_50px_rgba(0,0,0,0.55)]"
         >
           <div>
             <p className="text-white font-black text-xl mb-1">Admin Dashboard</p>
@@ -54,7 +63,7 @@ export default function AdminLogin() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-[#071507] border border-green-900/30 rounded-lg px-4 py-3 text-white placeholder:text-green-900 focus:outline-none focus:border-[#4ade80]/50"
+              className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-green-800 focus:outline-none focus:border-white/20"
               placeholder="admin"
               autoComplete="username"
               required
@@ -67,7 +76,7 @@ export default function AdminLogin() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-[#071507] border border-green-900/30 rounded-lg px-4 py-3 text-white placeholder:text-green-900 focus:outline-none focus:border-[#4ade80]/50"
+              className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-green-800 focus:outline-none focus:border-white/20"
               placeholder="••••••••"
               autoComplete="current-password"
               required
