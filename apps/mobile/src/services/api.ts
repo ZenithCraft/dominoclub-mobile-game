@@ -2,9 +2,14 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { toast } from '../store/toast.store';
 
+const envBaseUrl = process.env.EXPO_PUBLIC_API_URL;
+const isLocalhostWeb =
+  typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
 const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  (typeof location !== 'undefined' ? `${location.origin}/api/v1` : 'http://localhost:3001/api/v1');
+  envBaseUrl ||
+  (typeof location !== 'undefined'
+    ? (isLocalhostWeb ? 'http://localhost:3002/api/v1' : `${location.origin}/api/v1`)
+    : 'http://localhost:3002/api/v1');
 const IS_MOCK  = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
 
 // Errors from these URLs are surfaced directly to the caller — don't double-toast
@@ -25,10 +30,19 @@ if (IS_MOCK) {
 
 // Attach auth token
 api.interceptors.request.use(async (config) => {
-  const token = await AsyncStorage.getItem('access_token');
+  const storageToken = await AsyncStorage.getItem('access_token');
+  const webToken =
+    typeof window !== 'undefined' && window.localStorage
+      ? window.localStorage.getItem('access_token')
+      : null;
+  const token = webToken || storageToken;
+  if (typeof window !== 'undefined' && window.localStorage) {
+    if (!webToken && storageToken) window.localStorage.setItem('access_token', storageToken);
+  }
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
 
 // Auto-refresh on 401 + global error toast
 api.interceptors.response.use(
@@ -40,14 +54,27 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !original?._retry) {
       original._retry = true;
       try {
-        const refreshToken = await AsyncStorage.getItem('refresh_token');
+        const storageRefresh = await AsyncStorage.getItem('refresh_token');
+        const webRefresh =
+          typeof window !== 'undefined' && window.localStorage
+            ? window.localStorage.getItem('refresh_token')
+            : null;
+        const refreshToken = webRefresh || storageRefresh;
         const { data } = await axios.post(`${BASE_URL}/auth/token/refresh`, { refreshToken });
         await AsyncStorage.setItem('access_token', data.accessToken);
         await AsyncStorage.setItem('refresh_token', data.refreshToken);
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem('access_token', data.accessToken);
+          window.localStorage.setItem('refresh_token', data.refreshToken);
+        }
         original.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(original);
       } catch {
         await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.removeItem('access_token');
+          window.localStorage.removeItem('refresh_token');
+        }
         return Promise.reject(error);
       }
     }

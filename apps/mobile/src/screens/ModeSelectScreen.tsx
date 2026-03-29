@@ -29,24 +29,22 @@ interface RoomOption {
   id: string;
   buyIn: number | null; // null = Grátis
   prize: number;
-  players: number;
-  max: number;
 }
 
 const LIVRE_1V1: RoomOption[] = [
-  { id: 'l1', buyIn: null, prize: 0,    players: 10, max: 21 },
-  { id: 'l2', buyIn: 2,    prize: 3.8,  players: 10, max: 21 },
-  { id: 'l3', buyIn: 10,   prize: 19,   players: 10, max: 21 },
-  { id: 'l4', buyIn: 25,   prize: 47.5, players: 10, max: 21 },
-  { id: 'l5', buyIn: 50,   prize: 95,   players: 10, max: 21 },
+  { id: 'l1', buyIn: null, prize: 0 },
+  { id: 'l2', buyIn: 2,    prize: 3.8 },
+  { id: 'l3', buyIn: 10,   prize: 19 },
+  { id: 'l4', buyIn: 25,   prize: 47.5 },
+  { id: 'l5', buyIn: 50,   prize: 95 },
 ];
 
 const LIVRE_2V2: RoomOption[] = [
-  { id: 'd1', buyIn: null, prize: 0,    players: 10, max: 21 },
-  { id: 'd2', buyIn: 2,    prize: 3.8,  players: 10, max: 21 },
-  { id: 'd3', buyIn: 10,   prize: 19,   players: 10, max: 21 },
-  { id: 'd4', buyIn: 25,   prize: 47.5, players: 10, max: 21 },
-  { id: 'd5', buyIn: 50,   prize: 95,   players: 10, max: 21 },
+  { id: 'd1', buyIn: null, prize: 0 },
+  { id: 'd2', buyIn: 2,    prize: 3.8 },
+  { id: 'd3', buyIn: 10,   prize: 19 },
+  { id: 'd4', buyIn: 25,   prize: 47.5 },
+  { id: 'd5', buyIn: 50,   prize: 95 },
 ];
 
 // ── Tournament data type ────────────────────────────────────────────────────
@@ -69,7 +67,7 @@ const fmtBrl = (n: number) =>
 
 // ── Room Card ───────────────────────────────────────────────────────────────
 
-function RoomCard({ room, section, onJoin, width }: { room: RoomOption; section: '1v1' | '2v2'; onJoin: () => void; width: number }) {
+function RoomCard({ room, section, onJoin, width, queuedCount, modeTotal }: { room: RoomOption; section: '1v1' | '2v2'; onJoin: () => void; width: number; queuedCount: number; modeTotal: number }) {
   const isFree = room.buyIn === null;
   const textColor = '#ffffff';
   const PlayersIcon = section === '2v2' ? IconUsers : IconUser;
@@ -100,7 +98,7 @@ function RoomCard({ room, section, onJoin, width }: { room: RoomOption; section:
             </View>
             <View style={styles.playersMeta}>
               <Text style={[styles.playersLabel, { color: textColor }]}>Jogadores</Text>
-              <Text style={[styles.playersCount, { color: textColor }]}>{room.players}/{room.max}</Text>
+              <Text style={[styles.playersCount, { color: textColor }]}>{queuedCount}/{modeTotal}</Text>
             </View>
           </View>
           <View style={[styles.cardDivider, styles.cardDividerDark]} />
@@ -133,7 +131,7 @@ function RoomCard({ room, section, onJoin, width }: { room: RoomOption; section:
             </View>
             <View style={styles.playersMeta}>
               <Text style={[styles.playersLabel, { color: textColor }]}>Jogadores</Text>
-              <Text style={[styles.playersCount, { color: textColor }]}>{room.players}/{room.max}</Text>
+              <Text style={[styles.playersCount, { color: textColor }]}>{queuedCount}/{modeTotal}</Text>
             </View>
           </View>
           <View style={styles.cardDivider} />
@@ -217,9 +215,11 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const isTorneio = IS_TORNEIO(mode);
   const { width: screenWidth } = useWindowDimensions();
 
-  const { user, refreshUser } = useAuthStore();
+  const { user, refreshUser, setTokens, setUser } = useAuthStore();
   const { setQueueStatus } = useGameStore();
   const [onlineCount, setOnlineCount]   = useState(6654);
+  const [queueStats, setQueueStats] = useState<Record<string, { total: number; byBet: Record<string, number> }>>({});
+  const [serverBotWaitSeconds, setServerBotWaitSeconds] = useState<number | null>(null);
   const [tournaments, setTournaments]   = useState<Tournament[]>([]);
   const [tourLoading, setTourLoading]   = useState(false);
   const [tourRefreshing, setTourRefreshing] = useState(false);
@@ -229,9 +229,13 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const [searching, setSearching]       = useState(false);
 
   useEffect(() => {
-    connectSocket().then((s) => {
-      s.on('online:count', ({ count }: { count: number }) => setOnlineCount(count));
-    });
+    (async () => {
+      try {
+        const s = await connectSocket();
+        s.on('online:count', ({ count }: { count: number }) => setOnlineCount(count));
+        s.on('queue:stats', (stats: any) => setQueueStats(stats || {}));
+      } catch {}
+    })();
     if (isTorneio) fetchTournaments();
   }, []);
 
@@ -249,15 +253,61 @@ export function ModeSelectScreen({ navigation, route }: Props) {
     setSearching(true);
     setQueueStatus('queuing');
     const gameMode = section === '2v2' ? 'RECREATIONAL_2V2' : 'ARENA_1V1';
-    const socket = await connectSocket();
-    socket.emit('queue:join', { mode: gameMode, betAmount: room.buyIn ?? 0 });
-    socket.once('game:found', ({ gameId }: { gameId: string }) => {
-      setQueueStatus('found');
-      navigation.replace('Game', { gameId });
-    });
-    socket.once('queue:error', ({ message }: { message: string }) => {
-      setSearching(false); setQueueStatus('idle'); toast.error(message);
-    });
+    try {
+      const isLocalhost =
+        typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+      if (isLocalhost && !user) {
+        const { data } = await api.post('/auth/dev/login', {});
+        setTokens(data.accessToken, data.refreshToken);
+        setUser(data.user);
+      }
+      const socket = await connectSocket();
+      const betAmount = room.buyIn ?? 0;
+      const cleanup = () => {
+        socket.off('game:found');
+        socket.off('queue:error');
+        socket.off('queue:joined');
+      };
+
+      const defaultWaitMs = 20000;
+      const serverWaitMs = serverBotWaitSeconds ? (serverBotWaitSeconds + 5) * 1000 : defaultWaitMs;
+      const waitMs = Math.max(defaultWaitMs, Math.min(60000, serverWaitMs));
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        socket.emit('queue:leave');
+        setSearching(false);
+        setQueueStatus('idle');
+        toast.warning('Ainda não encontramos uma partida. Tente novamente.');
+      }, waitMs);
+
+      socket.once('game:found', ({ gameId }: { gameId: string }) => {
+        clearTimeout(timeout);
+        cleanup();
+        setQueueStatus('found');
+        navigation.replace('Game', { gameId });
+      });
+
+      socket.once('queue:error', ({ message }: { message: string }) => {
+        clearTimeout(timeout);
+        cleanup();
+        setSearching(false);
+        setQueueStatus('idle');
+        toast.error(message);
+      });
+
+      socket.once('queue:joined', ({ botWaitSeconds }: { botWaitSeconds?: number }) => {
+        if (typeof botWaitSeconds === 'number' && Number.isFinite(botWaitSeconds)) {
+          setServerBotWaitSeconds(botWaitSeconds);
+        }
+      });
+
+      socket.emit('queue:join', { mode: gameMode, betAmount });
+    } catch (err: any) {
+      setSearching(false);
+      setQueueStatus('idle');
+      toast.error(err?.message || 'Falha ao conectar no servidor');
+    }
   };
 
   const handleJoinTournament = async () => {
@@ -327,18 +377,44 @@ export function ModeSelectScreen({ navigation, route }: Props) {
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
-                {LIVRE_1V1.map((r) => (
-                  <RoomCard key={r.id} room={r} section="1v1" width={roomCardWidth} onJoin={() => setConfirmRoom({ room: r, section: '1v1' })} />
-                ))}
+                {LIVRE_1V1.map((r) => {
+                  const betAmount = r.buyIn ?? 0;
+                  const queuedCount = queueStats['ARENA_1V1']?.byBet?.[String(betAmount)] ?? 0;
+                  const modeTotal = queueStats['ARENA_1V1']?.total ?? 0;
+                  return (
+                    <RoomCard
+                      key={r.id}
+                      room={r}
+                      section="1v1"
+                      width={roomCardWidth}
+                      queuedCount={queuedCount}
+                      modeTotal={modeTotal}
+                      onJoin={() => setConfirmRoom({ room: r, section: '1v1' })}
+                    />
+                  );
+                })}
               </ScrollView>
             </View>
 
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
-                {LIVRE_2V2.map((r) => (
-                  <RoomCard key={r.id} room={r} section="2v2" width={roomCardWidth} onJoin={() => setConfirmRoom({ room: r, section: '2v2' })} />
-                ))}
+                {LIVRE_2V2.map((r) => {
+                  const betAmount = r.buyIn ?? 0;
+                  const queuedCount = queueStats['RECREATIONAL_2V2']?.byBet?.[String(betAmount)] ?? 0;
+                  const modeTotal = queueStats['RECREATIONAL_2V2']?.total ?? 0;
+                  return (
+                    <RoomCard
+                      key={r.id}
+                      room={r}
+                      section="2v2"
+                      width={roomCardWidth}
+                      queuedCount={queuedCount}
+                      modeTotal={modeTotal}
+                      onJoin={() => setConfirmRoom({ room: r, section: '2v2' })}
+                    />
+                  );
+                })}
               </ScrollView>
             </View>
           </>
@@ -375,8 +451,10 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           <TouchableOpacity
             style={styles.cancelBtn}
             onPress={async () => {
-              const s = await connectSocket();
-              s.emit('queue:leave');
+              try {
+                const s = await connectSocket();
+                s.emit('queue:leave');
+              } catch {}
               setSearching(false);
               setQueueStatus('idle');
             }}
@@ -443,7 +521,13 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                 </View>
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Jogadores</Text>
-                  <Text style={styles.modalValue}>{confirmRoom.room.players}/{confirmRoom.room.max}</Text>
+                  <Text style={styles.modalValue}>
+                    {(confirmRoom.section === '2v2'
+                      ? queueStats['RECREATIONAL_2V2']?.byBet?.[String(confirmRoom.room.buyIn ?? 0)] ?? 0
+                      : queueStats['ARENA_1V1']?.byBet?.[String(confirmRoom.room.buyIn ?? 0)] ?? 0)}
+                    /
+                    {(confirmRoom.section === '2v2' ? queueStats['RECREATIONAL_2V2']?.total ?? 0 : queueStats['ARENA_1V1']?.total ?? 0)}
+                  </Text>
                 </View>
                 <View style={styles.modalActions}>
                   <TouchableOpacity

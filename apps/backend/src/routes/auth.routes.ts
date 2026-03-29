@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.middleware';
 import {
   sendOtpHandler,
   verifyOtpHandler,
+  devLoginHandler,
   refreshHandler,
   logoutHandler,
   updateProfileHandler,
@@ -17,6 +18,7 @@ const router = Router();
 
 router.post('/otp/send', sendOtpHandler);
 router.post('/otp/verify', verifyOtpHandler);
+router.post('/dev/login', devLoginHandler);
 router.post('/token/refresh', refreshHandler);
 router.post('/logout', authMiddleware, logoutHandler);
 router.get('/me', authMiddleware, getMeHandler);

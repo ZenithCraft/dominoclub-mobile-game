@@ -9,6 +9,7 @@ import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
 import { api } from '../services/api';
+import { useAuthStore } from '../store/auth.store';
 import { LinearGradient } from 'expo-linear-gradient';
 import { IconUser, IconGoogle, IconAppleLogo } from '../components/Icons';
 
@@ -23,8 +24,12 @@ export function LoginScreen({ navigation }: Props) {
   const [error, setError]     = useState('');
   const [hoverApple, setHoverApple] = useState(false);
   const [hoverGoogle, setHoverGoogle] = useState(false);
+  const { setTokens, setUser } = useAuthStore();
 
   const isEmail = /[a-zA-Z@]/.test(identifier);
+  const DEV_AUTH_BYPASS =
+    process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS === 'true' ||
+    (typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1'));
 
   const formatPhone = (text: string) => {
     const d = text.replace(/\D/g, '').slice(0, 11);
@@ -40,12 +45,22 @@ export function LoginScreen({ navigation }: Props) {
   };
 
   const handleSendOtp = async () => {
-    if (identifier.includes('@')) { setError('Use seu número de telefone para entrar'); return; }
-    const clean = identifier.replace(/\D/g, '');
-    if (clean.length < 11) { setError('Digite um número de celular válido'); return; }
     setLoading(true);
     setError('');
     try {
+      if (DEV_AUTH_BYPASS) {
+        const clean = identifier.replace(/\D/g, '');
+        const phone = clean.length >= 11 ? `+55${clean}` : undefined;
+        const { data } = await api.post('/auth/dev/login', { phone, name: 'Dev User' });
+        setTokens(data.accessToken, data.refreshToken);
+        setUser(data.user);
+        navigation.replace('Main');
+        return;
+      }
+
+      if (identifier.includes('@')) { setError('Use seu número de telefone para entrar'); return; }
+      const clean = identifier.replace(/\D/g, '');
+      if (clean.length < 11) { setError('Digite um número de celular válido'); return; }
       const formattedPhone = `+55${clean}`;
       await api.post('/auth/otp/send', { phone: formattedPhone });
       navigation.navigate('OTPVerification', { phone: formattedPhone });

@@ -5,6 +5,8 @@ export const config = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3001', 10),
   apiPrefix: process.env.API_PREFIX || '/api/v1',
+  devAuthBypass: process.env.NODE_ENV !== 'production' && process.env.DEV_AUTH_BYPASS === 'true',
+  devAuthDefaultPhone: process.env.DEV_AUTH_DEFAULT_PHONE || '+5511999990001',
 
   db: {
     url: process.env.DATABASE_URL!,
@@ -58,7 +60,7 @@ export const config = {
 
   game: {
     turnTimeoutSeconds: parseInt(process.env.TURN_TIMEOUT_SECONDS || '30', 10),
-    botInjectWaitSeconds: parseInt(process.env.BOT_INJECT_WAIT_SECONDS || '30', 10),
+    botInjectWaitSeconds: parseInt(process.env.BOT_INJECT_WAIT_SECONDS || '5', 10),
     matchmakingBetTolerance: parseFloat(process.env.MATCHMAKING_BET_TOLERANCE || '0.10'),
     houseEdgePercent: parseFloat(process.env.HOUSE_EDGE_PERCENT || '10'),
   },
@@ -70,7 +72,7 @@ export const config = {
   },
 
   cors: {
-    origins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:19006').split(','),
+    origins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:19006,http://localhost:8081,http://localhost:8082,http://localhost:8083').split(','),
   },
 
   redis: {

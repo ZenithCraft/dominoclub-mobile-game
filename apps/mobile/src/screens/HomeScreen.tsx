@@ -247,9 +247,12 @@ export function HomeScreen({ navigation }: Props) {
   });
 
   useEffect(() => {
-    connectSocket().then((socket) => {
-      socket.on('online:count', ({ count }: { count: number }) => setOnlineCount(count));
-    });
+    (async () => {
+      try {
+        const socket = await connectSocket();
+        socket.on('online:count', ({ count }: { count: number }) => setOnlineCount(count));
+      } catch {}
+    })();
   }, []);
 
   useEffect(() => {

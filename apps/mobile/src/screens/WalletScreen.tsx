@@ -219,10 +219,15 @@ export function WalletScreen() {
       const { data } = await api.get('/wallet');
       setTransactions(data.transactions || []);
       await refreshUser();
-    } catch {
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        await useAuthStore.getState().logout();
+        navigation.replace('Login');
+        return;
+      }
       if (!silent) setLoadError(true);
     }
-  }, [refreshUser]);
+  }, [navigation, refreshUser]);
 
   useEffect(() => { loadWallet(); }, []);
 

@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
-import { requestOtp, loginWithOtp, refreshTokens, logout } from '../services/auth.service';
+import { requestOtp, loginWithOtp, refreshTokens, logout, devLogin } from '../services/auth.service';
 import { verifyAndSaveCpf } from '../services/cpf.service';
 import { loginSchema, verifyOtpSchema, cpfSchema } from '../utils/validators';
 import { checkMultiAccount } from '../middleware/antifraud.middleware';
 import { prisma } from '../services/prisma.service';
+import { config } from '../config';
 
 export async function sendOtpHandler(req: Request, res: Response) {
   try {
@@ -26,6 +27,28 @@ export async function verifyOtpHandler(req: Request, res: Response) {
     // Anti-fraud check async (don't block login)
     checkMultiAccount(result.user.id, ip, deviceId).catch(() => {});
 
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function devLoginHandler(req: Request, res: Response) {
+  try {
+    const ip = (req as any).clientIp;
+    const deviceId = (req as any).deviceId;
+    const isLocalIp =
+      ip === '::1' ||
+      ip === '127.0.0.1' ||
+      ip === '::ffff:127.0.0.1' ||
+      (typeof ip === 'string' && ip.startsWith('127.')) ||
+      (typeof ip === 'string' && ip.startsWith('::ffff:127.'));
+    if (!config.devAuthBypass && !(config.env !== 'production' && isLocalIp)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const phone = String(req.body?.phone || config.devAuthDefaultPhone);
+    const name = String(req.body?.name || 'Dev User');
+    const result = await devLogin(phone, name, deviceId, ip);
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
