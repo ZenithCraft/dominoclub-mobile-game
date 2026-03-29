@@ -30,4 +30,7 @@ Thumbs.db
 # Expo
 .expo/
 
+# Trae / sandbox artifacts
+**/.sandbox-localappdata/
+
 package.zip
