@@ -40,8 +40,12 @@ export interface GameState {
 interface GameStoreState {
   currentGame: GameState | null;
   queueStatus: 'idle' | 'queuing' | 'found';
-  selectedTile: Tile | null;
+  lastQueue: { mode: 'ARENA_1V1' | 'CUP_1V1' | 'TOURNAMENT_2V2' | 'RECREATIONAL_2V2'; betAmount: number } | null;
+  selectedTile: { tile: Tile; handIndex: number } | null;
   gameResult: {
+    status?: 'FINISHED' | 'ABANDONED';
+    mode?: string;
+    betAmount?: number;
     winnerId?: string;
     winnerTeam?: number;
     prizePool: number;
@@ -50,7 +54,8 @@ interface GameStoreState {
 
   setGame: (game: GameState) => void;
   setQueueStatus: (status: 'idle' | 'queuing' | 'found') => void;
-  setSelectedTile: (tile: Tile | null) => void;
+  setLastQueue: (q: GameStoreState['lastQueue']) => void;
+  setSelectedTile: (tile: GameStoreState['selectedTile']) => void;
   setGameResult: (result: GameStoreState['gameResult']) => void;
   clearGame: () => void;
 }
@@ -58,11 +63,13 @@ interface GameStoreState {
 export const useGameStore = create<GameStoreState>((set) => ({
   currentGame: null,
   queueStatus: 'idle',
+  lastQueue: null,
   selectedTile: null,
   gameResult: null,
 
   setGame: (game) => set({ currentGame: game }),
   setQueueStatus: (status) => set({ queueStatus: status }),
+  setLastQueue: (q) => set({ lastQueue: q }),
   setSelectedTile: (tile) => set({ selectedTile: tile }),
   setGameResult: (result) => set({ gameResult: result }),
   clearGame: () => set({ currentGame: null, queueStatus: 'idle', selectedTile: null, gameResult: null }),

@@ -34,8 +34,8 @@ function findPlay(
 ): { side: Side; flipped: boolean } | null {
   if (!firstPlayMade) return firstPlay(tile);
   if (leftOpen !== -1) {
-    if (tile[0] === leftOpen) return { side: 'left', flipped: false };
-    if (tile[1] === leftOpen && tile[0] !== tile[1]) return { side: 'left', flipped: true };
+    if (tile[1] === leftOpen) return { side: 'left', flipped: false };
+    if (tile[0] === leftOpen && tile[0] !== tile[1]) return { side: 'left', flipped: true };
   }
   if (rightOpen !== -1) {
     if (tile[0] === rightOpen) return { side: 'right', flipped: false };
@@ -48,21 +48,28 @@ function applyMove(state: any, playerIdx: number, tile: Tile, side: Side, flippe
   const players = state.players.map((p: any, i: number) => {
     if (i !== playerIdx) return p;
     // guard nulls — normalised hand may contain null slots
-    const hand = p.hand.filter((t: any) => t && !(t[0] === tile[0] && t[1] === tile[1]));
+    const hand = p.hand.filter(
+      (t: any) =>
+        t &&
+        !(
+          (t[0] === tile[0] && t[1] === tile[1]) ||
+          (t[0] === tile[1] && t[1] === tile[0])
+        )
+    );
     return { ...p, hand };
   });
 
   const board = [...state.board, { tile, side, flipped }];
 
   let { leftOpen, rightOpen, firstPlayMade } = state;
+  const effective: Tile = flipped ? [tile[1], tile[0]] : tile;
   if (!firstPlayMade) {
     firstPlayMade = true;
-    leftOpen  = tile[0];
-    rightOpen = tile[1];
+    leftOpen  = effective[0];
+    rightOpen = effective[1];
   } else {
-    const exposed = flipped ? tile[0] : tile[1];
-    if (side === 'left')  leftOpen  = exposed;
-    else                  rightOpen = exposed;
+    if (side === 'left')  leftOpen  = effective[0];
+    else                  rightOpen = effective[1];
   }
 
   const nextIdx = (playerIdx + 1) % players.length;

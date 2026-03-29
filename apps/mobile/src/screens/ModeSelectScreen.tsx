@@ -216,7 +216,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const { width: screenWidth } = useWindowDimensions();
 
   const { user, refreshUser, setTokens, setUser } = useAuthStore();
-  const { setQueueStatus } = useGameStore();
+  const { setQueueStatus, setLastQueue } = useGameStore();
   const [onlineCount, setOnlineCount]   = useState(6654);
   const [queueStats, setQueueStats] = useState<Record<string, { total: number; byBet: Record<string, number> }>>({});
   const [serverBotWaitSeconds, setServerBotWaitSeconds] = useState<number | null>(null);
@@ -254,42 +254,67 @@ export function ModeSelectScreen({ navigation, route }: Props) {
     setQueueStatus('queuing');
     const gameMode = section === '2v2' ? 'RECREATIONAL_2V2' : 'ARENA_1V1';
     try {
-      const isLocalhost =
-        typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-      if (isLocalhost && !user) {
-        const { data } = await api.post('/auth/dev/login', {});
-        setTokens(data.accessToken, data.refreshToken);
-        setUser(data.user);
+      const forceDevLogin = process.env.EXPO_PUBLIC_FORCE_DEV_LOGIN === 'true';
+      const canAutoDevLogin = (() => {
+        if (forceDevLogin) return true;
+        try {
+          const base = String((api.defaults.baseURL || '')).trim();
+          if (!base) return false;
+          const url = new URL(base);
+          const host = url.hostname;
+          if (host === 'localhost' || host === '127.0.0.1') return true;
+          if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+            const [a, b] = host.split('.').map((x) => Number(x));
+            if (a === 10) return true;
+            if (a === 192 && b === 168) return true;
+            if (a === 172 && b >= 16 && b <= 31) return true;
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      })();
+
+      if (!user && canAutoDevLogin) {
+        try {
+          const { data } = await api.post('/auth/dev/login', {});
+          setTokens(data.accessToken, data.refreshToken);
+          setUser(data.user);
+        } catch {}
       }
       const socket = await connectSocket();
       const betAmount = room.buyIn ?? 0;
+      setLastQueue({ mode: gameMode as any, betAmount });
       const cleanup = () => {
         socket.off('game:found');
         socket.off('queue:error');
         socket.off('queue:joined');
       };
 
-      const defaultWaitMs = 20000;
-      const serverWaitMs = serverBotWaitSeconds ? (serverBotWaitSeconds + 5) * 1000 : defaultWaitMs;
-      const waitMs = Math.max(defaultWaitMs, Math.min(60000, serverWaitMs));
+      const defaultWaitMs = 45000;
+      let timeout: ReturnType<typeof setTimeout> | null = null;
+      const setSearchTimeout = (ms: number) => {
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          cleanup();
+          socket.emit('queue:leave');
+          setSearching(false);
+          setQueueStatus('idle');
+          toast.warning('Ainda não encontramos uma partida. Tente novamente.');
+        }, ms);
+      };
 
-      const timeout = setTimeout(() => {
-        cleanup();
-        socket.emit('queue:leave');
-        setSearching(false);
-        setQueueStatus('idle');
-        toast.warning('Ainda não encontramos uma partida. Tente novamente.');
-      }, waitMs);
+      setSearchTimeout(defaultWaitMs);
 
       socket.once('game:found', ({ gameId }: { gameId: string }) => {
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
         cleanup();
         setQueueStatus('found');
         navigation.replace('Game', { gameId });
       });
 
       socket.once('queue:error', ({ message }: { message: string }) => {
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
         cleanup();
         setSearching(false);
         setQueueStatus('idle');
@@ -299,6 +324,8 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       socket.once('queue:joined', ({ botWaitSeconds }: { botWaitSeconds?: number }) => {
         if (typeof botWaitSeconds === 'number' && Number.isFinite(botWaitSeconds)) {
           setServerBotWaitSeconds(botWaitSeconds);
+          const waitMs = Math.max(20000, Math.min(60000, (botWaitSeconds + 5) * 1000));
+          setSearchTimeout(waitMs);
         }
       });
 

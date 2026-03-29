@@ -2,14 +2,25 @@ import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api';
 
-const envSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL;
-const isLocalhostWeb =
-  typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-const SOCKET_URL =
-  envSocketUrl ||
-  (typeof location !== 'undefined'
+function getSocketUrl(): string {
+  const envSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL;
+  if (envSocketUrl) return envSocketUrl;
+
+  const base = String((api.defaults.baseURL ?? '')).trim();
+  if (base) {
+    try {
+      const u = new URL(base);
+      return u.origin;
+    } catch {
+    }
+  }
+
+  const isLocalhostWeb =
+    typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+  return typeof location !== 'undefined'
     ? (isLocalhostWeb ? 'http://localhost:3002' : location.origin)
-    : 'http://localhost:3002');
+    : 'http://localhost:3002';
+}
 const IS_MOCK    = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
 
 let socket: Socket | null = null;
@@ -68,9 +79,9 @@ function waitForConnect(s: Socket): Promise<Socket> {
 }
 
 function createSocket(token: string | null) {
-  const s = io(SOCKET_URL, {
+  const s = io(getSocketUrl(), {
     auth: { token },
-    transports: ['websocket'],
+    transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: 10,
     reconnectionDelay: 2000,

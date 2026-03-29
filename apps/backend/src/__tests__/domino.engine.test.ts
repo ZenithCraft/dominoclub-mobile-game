@@ -144,7 +144,7 @@ describe('canPlayTile', () => {
 
   it('tile matching leftOpen is playable on the left', () => {
     const state = makeState({ firstPlayMade: true, leftOpen: 3, rightOpen: 6 });
-    const plays = canPlayTile(state, [3, 2]);
+    const plays = canPlayTile(state, [2, 3]);
     expect(plays.some((p) => p.side === 'left' && !p.flipped)).toBe(true);
   });
 
@@ -156,7 +156,7 @@ describe('canPlayTile', () => {
 
   it('tile needs flipping when second pip matches open end', () => {
     const state = makeState({ firstPlayMade: true, leftOpen: 3, rightOpen: 6 });
-    const plays = canPlayTile(state, [1, 3]); // [1,3] — must flip to get 3 on the matching end
+    const plays = canPlayTile(state, [3, 1]);
     expect(plays.some((p) => p.side === 'left' && p.flipped)).toBe(true);
   });
 
@@ -259,11 +259,9 @@ describe('applyMove', () => {
   });
 
   it('updates leftOpen when playing on the left', () => {
-    const state = stateWithHand([[3, 1]], { firstPlayMade: true, leftOpen: 3, rightOpen: 6 });
-    const next = applyMove(state, 0, [3, 1], 'left', false);
-    // effective tile [3,1] on left side: leftOpen becomes 3
-    // Wait — placing on left: leftOpen becomes the *outer* pip, which is effectiveTile[0]
-    expect(next.leftOpen).toBe(3);
+    const state = stateWithHand([[1, 3]], { firstPlayMade: true, leftOpen: 3, rightOpen: 6 });
+    const next = applyMove(state, 0, [1, 3], 'left', false);
+    expect(next.leftOpen).toBe(1);
   });
 
   it('updates rightOpen when playing on the right', () => {
@@ -303,6 +301,11 @@ describe('applyMove', () => {
   it('throws if tile is not in player hand', () => {
     const state = stateWithHand([[1, 2]]);
     expect(() => applyMove(state, 0, [3, 5], 'left', false)).toThrow('Tile not in hand');
+  });
+
+  it('throws on illegal move (tile does not match open ends)', () => {
+    const state = stateWithHand([[1, 2]], { firstPlayMade: true, leftOpen: 3, rightOpen: 6 });
+    expect(() => applyMove(state, 0, [1, 2], 'left', false)).toThrow('Illegal move');
   });
 
   it('resets consecutivePasses to 0 after a move', () => {

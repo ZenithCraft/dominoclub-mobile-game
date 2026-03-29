@@ -100,9 +100,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
         } catch (err: any) {
           if (err?.response?.status === 401) {
-            const isLocalhost =
-              typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-            const allowDevLogin = isLocalhost;
+            const forceDevLogin = process.env.EXPO_PUBLIC_FORCE_DEV_LOGIN === 'true';
+            const allowDevLogin = (() => {
+              if (forceDevLogin) return true;
+              try {
+                const base = String((api.defaults.baseURL || '')).trim();
+                if (!base) return false;
+                const url = new URL(base);
+                const host = url.hostname;
+                if (host === 'localhost' || host === '127.0.0.1') return true;
+                if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+                  const [a, b] = host.split('.').map((x) => Number(x));
+                  if (a === 10) return true;
+                  if (a === 192 && b === 168) return true;
+                  if (a === 172 && b >= 16 && b <= 31) return true;
+                }
+                return false;
+              } catch {
+                return false;
+              }
+            })();
             if (allowDevLogin) {
               try {
                 const { data } = await api.post('/auth/dev/login', {});

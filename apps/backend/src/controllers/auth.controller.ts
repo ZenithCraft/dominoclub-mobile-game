@@ -43,7 +43,7 @@ export async function devLoginHandler(req: Request, res: Response) {
       ip === '::ffff:127.0.0.1' ||
       (typeof ip === 'string' && ip.startsWith('127.')) ||
       (typeof ip === 'string' && ip.startsWith('::ffff:127.'));
-    if (!config.devAuthBypass && !(config.env !== 'production' && isLocalIp)) {
+    if (!isLocalIp && !config.devAuthBypass && config.env === 'production') {
       return res.status(404).json({ error: 'Not found' });
     }
     const phone = String(req.body?.phone || config.devAuthDefaultPhone);

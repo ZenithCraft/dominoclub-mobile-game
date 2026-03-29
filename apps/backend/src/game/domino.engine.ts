@@ -118,8 +118,14 @@ export function canPlayTile(state: GameState, tile: Tile): { side: 'left' | 'rig
 
   const checkEnd = (open: number, side: 'left' | 'right' | 'top' | 'bottom') => {
     if (open === -1) return;
-    if (tile[0] === open) plays.push({ side, flipped: false });
-    if (tile[1] === open && tile[0] !== tile[1]) plays.push({ side, flipped: true });
+    const isLeftLike = side === 'left' || side === 'top';
+    if (isLeftLike) {
+      if (tile[1] === open) plays.push({ side, flipped: false });
+      if (tile[0] === open && tile[0] !== tile[1]) plays.push({ side, flipped: true });
+    } else {
+      if (tile[0] === open) plays.push({ side, flipped: false });
+      if (tile[1] === open && tile[0] !== tile[1]) plays.push({ side, flipped: true });
+    }
   };
 
   checkEnd(state.leftOpen, 'left');
@@ -148,6 +154,13 @@ export function applyMove(
 ): GameState {
   const s = JSON.parse(JSON.stringify(state)) as GameState;
   const player = s.players[playerIndex];
+
+  if (s.firstPlayMade) {
+    const allowed = canPlayTile(s, tile);
+    if (!allowed.some((p) => p.side === side && p.flipped === flipped)) {
+      throw new Error('Illegal move');
+    }
+  }
 
   // Remove tile from hand
   const idx = player.hand.findIndex((t) => t[0] === tile[0] && t[1] === tile[1]);

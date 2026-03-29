@@ -13,7 +13,7 @@ import {
   IconVolumeUp, IconMusic,
 } from '../components/Icons';
 import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
-import { connectSocket } from '../services/socket';
+import { connectSocket, disconnectSocket } from '../services/socket';
 import { useGameStore, Tile, GameState, PlacedTile } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
 import { RootStackParamList } from '../navigation';
@@ -24,6 +24,89 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 
 const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
 const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
+
+function GradientToggle({
+  value,
+  onValueChange,
+  pressableTestID,
+  accessibilityLabel,
+  kind,
+}: {
+  value: boolean;
+  onValueChange: (next: boolean) => void;
+  pressableTestID?: string;
+  accessibilityLabel?: string;
+  kind?: 'sound' | 'music';
+}) {
+  const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'test') {
+      anim.setValue(value ? 1 : 0);
+      return;
+    }
+
+    const a = Animated.timing(anim, {
+      toValue: value ? 1 : 0,
+      duration: 160,
+      useNativeDriver: false,
+    });
+    a.start();
+    return () => a.stop();
+  }, [anim, value]);
+
+  const thumbBgColor = value ? '#EDF186' : '#FA8A28';
+  const iconColor = value ? '#0a1f0a' : '#ffffff';
+
+  const translateX = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, 88 - 34 - 2],
+  });
+
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      style={toggleStyles.hit}
+      testID={pressableTestID}
+      accessibilityRole="switch"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ checked: value }}
+      hitSlop={8}
+    >
+      <View style={toggleStyles.track}>
+        <Animated.View style={[toggleStyles.thumbWrap, { transform: [{ translateX }] }]}>
+          <View style={[toggleStyles.thumb, { backgroundColor: thumbBgColor, alignItems: 'center', justifyContent: 'center' }]}>
+            {kind === 'sound' ? (
+              <IconVolumeUp size={18} color={iconColor} accessibilityLabel="Som" />
+            ) : kind === 'music' ? (
+              <IconMusic size={18} color={iconColor} accessibilityLabel="Música" />
+            ) : null}
+          </View>
+        </Animated.View>
+      </View>
+    </Pressable>
+  );
+}
+
+const toggleStyles = StyleSheet.create({
+  hit: { width: 92, height: 44, justifyContent: 'center' },
+  track: {
+    width: 88,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    overflow: 'hidden',
+  },
+  thumbWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    overflow: 'hidden',
+  },
+  thumb: { width: '100%', height: '100%' },
+});
 
 function asNumber(v: any, fallback: number) {
   const n = typeof v === 'number' ? v : Number(v);
@@ -74,25 +157,27 @@ function computeOpenEndsFromBoard(board: PlacedTile[], variant: string) {
   if (!board || board.length === 0) {
     return { left: undefined, right: undefined, top: undefined, bottom: undefined, first: false };
   }
-  let left: number | undefined = undefined;
-  let right: number | undefined = undefined;
-  let top: number | undefined = undefined;
-  let bottom: number | undefined = undefined;
-  const first = board[0];
-  if (first) {
-    left = first.tile[0];
-    right = first.tile[1];
-  }
-  for (let i = 1; i < board.length; i++) {
+  let left: number | undefined;
+  let right: number | undefined;
+  let top: number | undefined;
+  let bottom: number | undefined;
+
+  for (let i = 0; i < board.length; i++) {
     const pt = board[i];
-    const exposed = pt.flipped ? pt.tile[0] : pt.tile[1];
-    if (pt.side === 'left') left = exposed;
-    else if (pt.side === 'right') right = exposed;
+    const effective: Tile = pt.flipped ? [pt.tile[1], pt.tile[0]] : pt.tile;
+    if (i === 0) {
+      left = effective[0];
+      right = effective[1];
+      continue;
+    }
+    if (pt.side === 'left') left = effective[0];
+    else if (pt.side === 'right') right = effective[1];
     else if (variant === 'CRUZADA') {
-      if (pt.side === 'top') top = exposed;
-      if (pt.side === 'bottom') bottom = exposed;
+      if (pt.side === 'top') top = effective[0];
+      if (pt.side === 'bottom') bottom = effective[1];
     }
   }
+
   return { left, right, top, bottom, first: true };
 }
 
@@ -114,8 +199,14 @@ function canPlayTile(tile: Tile, game: GameState): PlayOption[] {
   const plays: PlayOption[] = [];
   const checkEnd = (open: number, side: PlaySide) => {
     if (open === -1 || open === undefined) return;
-    if (tile[0] === open) plays.push({ side, flipped: false });
-    if (tile[1] === open && tile[0] !== tile[1]) plays.push({ side, flipped: true });
+    const isLeftLike = side === 'left' || side === 'top';
+    if (isLeftLike) {
+      if (tile[1] === open) plays.push({ side, flipped: false });
+      if (tile[0] === open && tile[0] !== tile[1]) plays.push({ side, flipped: true });
+    } else {
+      if (tile[0] === open) plays.push({ side, flipped: false });
+      if (tile[1] === open && tile[0] !== tile[1]) plays.push({ side, flipped: true });
+    }
   };
   checkEnd(leftOpen, 'left');
   checkEnd(rightOpen, 'right');
@@ -140,16 +231,16 @@ function tileKey(tile: Tile): string { return `${tile[0]}-${tile[1]}`; }
 
 function buildLinearBoardTiles(board: PlacedTile[]): Tile[] {
   if (!board || board.length === 0) return [];
-  const seq: Tile[] = [board[0].tile];
-  for (let i = 1; i < board.length; i++) {
+  const seq: Tile[] = [];
+  for (let i = 0; i < board.length; i++) {
     const pt = board[i];
-    const connecting = pt.flipped ? pt.tile[1] : pt.tile[0];
-    const exposed = pt.flipped ? pt.tile[0] : pt.tile[1];
-    const oriented: Tile = (pt.side === 'left' || pt.side === 'top')
-      ? [exposed, connecting]
-      : [connecting, exposed];
-    if (pt.side === 'left' || pt.side === 'top') seq.unshift(oriented);
-    else seq.push(oriented);
+    const effective: Tile = pt.flipped ? [pt.tile[1], pt.tile[0]] : pt.tile;
+    if (i === 0) {
+      seq.push(effective);
+      continue;
+    }
+    if (pt.side === 'left' || pt.side === 'top') seq.unshift(effective);
+    else seq.push(effective);
   }
   return seq;
 }
@@ -265,6 +356,9 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
 
 function Pips({ value, halfW, halfH, dot }: { value: number; halfW: number; halfH: number; dot: number }) {
   const spots = PIP_POSITIONS[value] ?? [];
+  const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+  const edge = Math.max(dot * 0.65, Math.min(halfW, halfH) * 0.08);
+  const minCenter = dot / 2 + edge;
   return (
     <View style={{ width: halfW, height: halfH }}>
       {spots.map(([topFrac, leftFrac], idx) => (
@@ -276,8 +370,8 @@ function Pips({ value, halfW, halfH, dot }: { value: number; halfW: number; half
             height: dot,
             borderRadius: dot / 2,
             backgroundColor: TILE_PIP,
-            top:  topFrac  * halfH - dot / 2,
-            left: leftFrac * halfW - dot / 2,
+            top:  clamp(topFrac * halfH, minCenter, halfH - minCenter) - dot / 2,
+            left: clamp(leftFrac * halfW, minCenter, halfW - minCenter) - dot / 2,
           }}
         />
       ))}
@@ -393,7 +487,7 @@ const scoreStyles = StyleSheet.create({
 
 // ─── Opponent card (top centre) ───────────────────────────────────────────────
 
-function OpponentCard({ player, tileCount }: { player: any; tileCount: number }) {
+function OpponentCard({ player, tileCount, isTurn }: { player: any; tileCount: number; isTurn: boolean }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
@@ -402,7 +496,7 @@ function OpponentCard({ player, tileCount }: { player: any; tileCount: number })
       colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
-      style={oppStyles.card}
+      style={[oppStyles.card, isTurn && oppStyles.cardTurn]}
     >
       <View style={oppStyles.sideSlot}>
         <DominoTile tile={[1, 1]} size="icon" />
@@ -440,6 +534,9 @@ const oppStyles = StyleSheet.create({
     minWidth: 200,
     minHeight: 48,
   },
+  cardTurn: Platform.OS === 'web'
+    ? ({ borderColor: 'rgba(74,222,128,0.65)', boxShadow: '0 0 14px rgba(74,222,128,0.45)' } as any)
+    : { borderColor: 'rgba(74,222,128,0.65)', shadowColor: '#4ade80', shadowOpacity: 0.8, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 10 },
   sideSlot: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -478,7 +575,7 @@ const oppStyles = StyleSheet.create({
 
 // ─── Side player card (4p left/right) ────────────────────────────────────────
 
-function SidePlayerCard({ player, tileCount }: { player: any; tileCount: number }) {
+function SidePlayerCard({ player, tileCount, isTurn }: { player: any; tileCount: number; isTurn: boolean }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
@@ -487,7 +584,7 @@ function SidePlayerCard({ player, tileCount }: { player: any; tileCount: number 
       colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
-      style={sideStyles.card}
+      style={[sideStyles.card, isTurn && sideStyles.cardTurn]}
     >
       <View style={sideStyles.sideSlot}>
         <DominoTile tile={[1, 1]} size="icon" />
@@ -525,6 +622,9 @@ const sideStyles = StyleSheet.create({
     minWidth: 180,
     minHeight: 48,
   },
+  cardTurn: Platform.OS === 'web'
+    ? ({ borderColor: 'rgba(74,222,128,0.65)', boxShadow: '0 0 14px rgba(74,222,128,0.45)' } as any)
+    : { borderColor: 'rgba(74,222,128,0.65)', shadowColor: '#4ade80', shadowOpacity: 0.8, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 10 },
   sideSlot: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -640,8 +740,25 @@ const myCardStyles = StyleSheet.create({
 
 // ─── Result card ──────────────────────────────────────────────────────────────
 
-function ResultCard({ result, userId, onClose }: { result: any; userId?: string; onClose: () => void }) {
-  const isWinner = result?.winnerId === userId;
+function ResultCard({
+  result,
+  userId,
+  playAgainLoading,
+  onPlayAgain,
+  onExit,
+}: {
+  result: any;
+  userId?: string;
+  playAgainLoading: boolean;
+  onPlayAgain: () => void;
+  onExit: () => void;
+}) {
+  const winnerId = result?.winnerId ? String(result.winnerId) : '';
+  const isWinner = !!winnerId && winnerId === String(userId ?? '');
+  const betAmount = typeof result?.betAmount === 'number' ? result.betAmount : Number(result?.betAmount ?? 0);
+  const prizePerWinner = typeof result?.prizePerWinner === 'number' ? result.prizePerWinner : Number(result?.prizePerWinner ?? 0);
+  const net = winnerId ? (isWinner ? (prizePerWinner - betAmount) : -betAmount) : 0;
+  const netAbs = Math.abs(net);
   return (
     <View style={styles.resultCard}>
       {isWinner ? (
@@ -649,12 +766,23 @@ function ResultCard({ result, userId, onClose }: { result: any; userId?: string;
       ) : (
         <IconFrown size={48} color={colors.textSecondary} accessibilityLabel="Rosto triste" />
       )}
-      <Text style={styles.resultTitle}>{isWinner ? 'Você ganhou!' : 'Fim de jogo'}</Text>
-      {result?.prizePerWinner > 0 && (
-        <Text style={styles.resultPrize}>Prêmio: R$ {result.prizePerWinner.toFixed(2)}</Text>
-      )}
-      <TouchableOpacity style={styles.resultBtn} onPress={onClose}>
-        <Text style={styles.resultBtnText}>Jogar novamente</Text>
+      <Text style={styles.resultTitle}>
+        {!winnerId ? 'Fim de jogo' : isWinner ? 'Você ganhou!' : 'Você perdeu!'}
+      </Text>
+      {winnerId ? (
+        <Text style={styles.resultPrize}>
+          {net >= 0 ? 'Você ganhou' : 'Você perdeu'}: R$ {netAbs.toFixed(2)}
+        </Text>
+      ) : null}
+      <TouchableOpacity
+        style={[styles.resultBtn, playAgainLoading && styles.resultBtnDisabled]}
+        onPress={onPlayAgain}
+        disabled={playAgainLoading}
+      >
+        <Text style={styles.resultBtnText}>{playAgainLoading ? 'Procurando...' : 'Jogar novamente'}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.resultSecondaryBtn} onPress={onExit} disabled={playAgainLoading}>
+        <Text style={styles.resultSecondaryText}>Voltar ao menu</Text>
       </TouchableOpacity>
     </View>
   );
@@ -665,22 +793,29 @@ function ResultCard({ result, userId, onClose }: { result: any; userId?: string;
 export function GameScreen({ navigation, route }: Props) {
   const { gameId } = route.params;
   const { user } = useAuthStore();
-  const { currentGame, selectedTile, setGame, setSelectedTile, setGameResult, clearGame } = useGameStore();
+  const { currentGame, selectedTile, gameResult, lastQueue, setGame, setSelectedTile, setGameResult, clearGame } = useGameStore();
 
   const { width: viewportWidth } = useWindowDimensions();
 
   const [turnTimer, setTurnTimer]       = useState(30);
   const [resultModal, setResultModal]   = useState(false);
+  const [playAgainSearching, setPlayAgainSearching] = useState(false);
   const [gameError, setGameError]       = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [leaveConfirmVisible, setLeaveConfirmVisible] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [musicOn, setMusicOn] = useState(true);
+  const [joinAttempt, setJoinAttempt] = useState(0);
+  const [emojiByUser, setEmojiByUser] = useState<Record<string, { char: string; nonce: number }>>({});
+  const [drawByUser, setDrawByUser] = useState<Record<string, { nonce: number }>>({});
 
   const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef      = useRef<Socket | null>(null);
   const errorFadeAnim  = useRef(new Animated.Value(0)).current;
+  const prevStateRef   = useRef<GameState | null>(null);
+  const emojiAnimRef   = useRef<Map<string, Animated.Value>>(new Map());
+  const drawAnimRef    = useRef<Map<string, Animated.Value>>(new Map());
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const tableHeight = Math.round(Math.min(viewportWidth * 0.82, 880) / 2.4);
@@ -696,6 +831,7 @@ export function GameScreen({ navigation, route }: Props) {
   const myEffectiveUserId = currentGame?.players[myPlayerIndex]?.userId ?? myUserId;
   const mySeat = myPlayerIndex >= 0 ? (currentGame?.players[myPlayerIndex]?.seat ?? 0) : 0;
   const isMyTurn      = currentGame?.currentPlayerIndex === myPlayerIndex && currentGame?.status === 'playing';
+  const turnUserId    = currentGame?.players[currentGame?.currentPlayerIndex ?? 0]?.userId ?? '';
   const myHand        = (currentGame?.players[myPlayerIndex]?.hand || []) as (Tile | null)[];
 
   const validMovesMap: Map<string, PlayOption[]> = currentGame && isMyTurn
@@ -706,7 +842,7 @@ export function GameScreen({ navigation, route }: Props) {
   const hasBoneyard   = (currentGame?.boneyard.length ?? 0) > 0;
 
   const validPlaysForSelected: PlayOption[] = selectedTile
-    ? (validMovesMap.get(tileKey(selectedTile)) ?? [])
+    ? (validMovesMap.get(tileKey(selectedTile.tile)) ?? [])
     : [];
   const uniqueSides = [...new Set(validPlaysForSelected.map((p) => p.side))];
 
@@ -759,40 +895,123 @@ export function GameScreen({ navigation, route }: Props) {
     ]).start(() => setGameError(null));
   }, [errorFadeAnim]);
 
+  const ensureAnim = useCallback((refMap: { current: Map<string, Animated.Value> }, userId: string) => {
+    const map = refMap.current;
+    let v = map.get(userId);
+    if (!v) {
+      v = new Animated.Value(0);
+      map.set(userId, v);
+    }
+    return v;
+  }, []);
+
+  const triggerEmojiFx = useCallback((userId: string, emojiId: string) => {
+    const found = EMOJIS.find((e) => e.id === emojiId);
+    const char = found?.char ?? emojiId;
+    setEmojiByUser((s) => ({ ...s, [userId]: { char, nonce: Date.now() } }));
+    const v = ensureAnim(emojiAnimRef, userId);
+    v.stopAnimation();
+    v.setValue(0);
+    Animated.sequence([
+      Animated.timing(v, { toValue: 1, duration: 140, useNativeDriver: true }),
+      Animated.delay(1200),
+      Animated.timing(v, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start();
+  }, [ensureAnim]);
+
+  const triggerDrawFx = useCallback((userId: string) => {
+    setDrawByUser((s) => ({ ...s, [userId]: { nonce: Date.now() } }));
+    const v = ensureAnim(drawAnimRef, userId);
+    v.stopAnimation();
+    v.setValue(0);
+    Animated.sequence([
+      Animated.timing(v, { toValue: 1, duration: 160, useNativeDriver: true }),
+      Animated.delay(550),
+      Animated.timing(v, { toValue: 0, duration: 240, useNativeDriver: true }),
+    ]).start();
+  }, [ensureAnim]);
+
   // ── Socket ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
+    let didReceiveState = false;
+    let cleanup: (() => void) | null = null;
+    let joinTimeout: ReturnType<typeof setTimeout> | null = null;
+
     (async () => {
       try {
         const socket = await connectSocket();
         if (!mounted) return;
         socketRef.current = socket;
-        socket.emit('game:join', { gameId });
 
         const onGameState = (state: GameState) => {
+          didReceiveState = true;
+          if (joinTimeout) { clearTimeout(joinTimeout); joinTimeout = null; }
           const normalized = normalizeGameState(state);
+          const prev = prevStateRef.current;
           setGame(normalized);
           resetTurnTimer();
           const me = normalized.players.find((p) => p.userId === myUserId) ?? normalized.players.find((p) => p.seat === 0);
           const newHand = me?.hand ?? [];
           const cur = useGameStore.getState().selectedTile;
           if (cur) {
-            const stillInHand = newHand.some((t) => t && t[0] === cur[0] && t[1] === cur[1]);
-            if (!stillInHand) setSelectedTile(null);
+            const idx = cur.handIndex;
+            const isSameAtIndex =
+              idx >= 0 &&
+              idx < newHand.length &&
+              !!newHand[idx] &&
+              (newHand[idx] as any)[0] === cur.tile[0] &&
+              (newHand[idx] as any)[1] === cur.tile[1];
+
+            if (!isSameAtIndex) {
+              const foundIdx = newHand.findIndex((t) => t && t[0] === cur.tile[0] && t[1] === cur.tile[1]);
+              if (foundIdx === -1) setSelectedTile(null);
+              else setSelectedTile({ tile: newHand[foundIdx] as Tile, handIndex: foundIdx });
+            }
           }
+
+          if (prev) {
+            const prevB = prev.boneyard?.length ?? 0;
+            const nextB = normalized.boneyard?.length ?? 0;
+            if (prevB - nextB === 1) {
+              const prevLen = new Map(prev.players.map((p) => [p.userId, p.hand?.length ?? 0]));
+              const drew = normalized.players.find((p) => (p.hand?.length ?? 0) === (prevLen.get(p.userId) ?? 0) + 1);
+              if (drew) triggerDrawFx(drew.userId);
+            }
+          }
+          prevStateRef.current = normalized;
         };
 
-        socket.on('game:state',   onGameState);
-        socket.on('game:ended',   (result: any) => { if (timerRef.current) clearInterval(timerRef.current); setGameResult(result); setResultModal(true); });
-        socket.on('game:error',   ({ message }: { message: string }) => showError(message));
-        socket.on('game:timeout', ({ userId }: { userId: string }) => { if (String(userId) === myUserId) showError('Tempo esgotado — sua vez foi pulada'); });
-        socket.on('disconnect',   () => setDisconnected(true));
-        socket.on('connect',      () => { setDisconnected(false); socket.emit('game:join', { gameId }); });
+        const onEnded = (result: any) => { if (timerRef.current) clearInterval(timerRef.current); setGameResult(result); setResultModal(true); };
+        const onGameError = ({ message }: { message: string }) => showError(message);
+        const onTimeout = ({ userId }: { userId: string }) => { if (String(userId) === myUserId) showError('Tempo esgotado — sua vez foi pulada'); };
+        const onEmoji = ({ userId, emoji }: { userId: string; emoji: string }) => triggerEmojiFx(String(userId), String(emoji));
+        const onDisconnect = () => setDisconnected(true);
+        const onConnect = () => { setDisconnected(false); socket.emit('game:join', { gameId }); };
 
-        return () => {
-          socket.off('game:state'); socket.off('game:ended');
-          socket.off('game:error'); socket.off('game:timeout');
-          socket.off('disconnect'); socket.off('connect');
+        socket.on('game:state', onGameState);
+        socket.on('game:ended', onEnded);
+        socket.on('game:error', onGameError);
+        socket.on('game:timeout', onTimeout);
+        socket.on('game:emoji', onEmoji);
+        socket.on('disconnect', onDisconnect);
+        socket.on('connect', onConnect);
+
+        socket.emit('game:join', { gameId });
+        joinTimeout = setTimeout(() => {
+          if (!mounted || didReceiveState) return;
+          setDisconnected(true);
+          setGameError('Não foi possível entrar na partida. Verifique sua conexão e tente novamente.');
+        }, 9000);
+
+        cleanup = () => {
+          socket.off('game:state', onGameState);
+          socket.off('game:ended', onEnded);
+          socket.off('game:error', onGameError);
+          socket.off('game:timeout', onTimeout);
+          socket.off('game:emoji', onEmoji);
+          socket.off('disconnect', onDisconnect);
+          socket.off('connect', onConnect);
         };
       } catch (err: any) {
         if (!mounted) return;
@@ -802,17 +1021,28 @@ export function GameScreen({ navigation, route }: Props) {
     })();
     return () => {
       mounted = false;
+      if (joinTimeout) clearTimeout(joinTimeout);
+      cleanup?.();
       socketRef.current?.emit('game:leave', { gameId });
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [gameId, myUserId]);
+  }, [gameId, myUserId, joinAttempt]);
+
+  const handleRetryJoin = useCallback(() => {
+    disconnectSocket();
+    socketRef.current = null;
+    prevStateRef.current = null;
+    setDisconnected(false);
+    setGameError(null);
+    setJoinAttempt((n) => n + 1);
+  }, []);
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  const handleTileSelect = (tile: Tile) => {
+  const handleTileSelect = (tile: Tile, handIndex: number) => {
     if (!isMyTurn) return;
     if ((validMovesMap.get(tileKey(tile)) ?? []).length === 0) { showError('Esta pedra não pode ser jogada agora'); return; }
-    const isSame = selectedTile?.[0] === tile[0] && selectedTile?.[1] === tile[1];
-    setSelectedTile(isSame ? null : tile);
+    const isSame = selectedTile?.handIndex === handIndex;
+    setSelectedTile(isSame ? null : { tile, handIndex });
   };
 
   const handlePlayTile = useCallback(async (side: PlaySide) => {
@@ -821,7 +1051,7 @@ export function GameScreen({ navigation, route }: Props) {
     if (!plays.length) return;
     try {
       const socket = socketRef.current ?? await connectSocket();
-      socket.emit('game:move', { gameId, tile: selectedTile, side, flipped: plays[0].flipped });
+      socket.emit('game:move', { gameId, tile: selectedTile.tile, side, flipped: plays[0].flipped });
       setSelectedTile(null);
     } catch (err: any) {
       showError(err?.message || 'Falha ao jogar');
@@ -833,7 +1063,7 @@ export function GameScreen({ navigation, route }: Props) {
     const { side, flipped } = validPlaysForSelected[0];
     try {
       const socket = socketRef.current ?? await connectSocket();
-      socket.emit('game:move', { gameId, tile: selectedTile, side, flipped });
+      socket.emit('game:move', { gameId, tile: selectedTile.tile, side, flipped });
       setSelectedTile(null);
     } catch (err: any) {
       showError(err?.message || 'Falha ao jogar');
@@ -878,6 +1108,59 @@ export function GameScreen({ navigation, route }: Props) {
     setLeaveConfirmVisible(true);
   };
 
+  const handlePlayAgain = useCallback(async () => {
+    const qMode = (gameResult?.mode || lastQueue?.mode) as any;
+    const qBet = typeof gameResult?.betAmount === 'number'
+      ? gameResult.betAmount
+      : typeof lastQueue?.betAmount === 'number'
+        ? lastQueue.betAmount
+        : 0;
+
+    if (!qMode) {
+      setResultModal(false);
+      clearGame();
+      navigation.replace('Main');
+      return;
+    }
+
+    setPlayAgainSearching(true);
+    try {
+      const socket = socketRef.current ?? await connectSocket();
+      const cleanup = () => {
+        socket.off('game:found');
+        socket.off('queue:error');
+      };
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        socket.emit('queue:leave');
+        setPlayAgainSearching(false);
+        showError('Ainda não encontramos uma partida. Tente novamente.');
+      }, 45000);
+
+      socket.once('game:found', ({ gameId: nextGameId }: { gameId: string }) => {
+        clearTimeout(timeout);
+        cleanup();
+        setPlayAgainSearching(false);
+        setResultModal(false);
+        clearGame();
+        navigation.replace('Game', { gameId: nextGameId });
+      });
+
+      socket.once('queue:error', ({ message }: { message: string }) => {
+        clearTimeout(timeout);
+        cleanup();
+        setPlayAgainSearching(false);
+        showError(message);
+      });
+
+      socket.emit('queue:join', { mode: qMode, betAmount: qBet });
+    } catch (err: any) {
+      setPlayAgainSearching(false);
+      showError(err?.message || 'Falha ao procurar nova partida');
+    }
+  }, [gameResult?.mode, gameResult?.betAmount, lastQueue?.mode, lastQueue?.betAmount, navigation, clearGame, showError]);
+
   // ── Loading state ──────────────────────────────────────────────────────────
   if (!currentGame) {
     return (
@@ -889,6 +1172,21 @@ export function GameScreen({ navigation, route }: Props) {
         <View style={styles.bgOverlay} />
         <SafeAreaView style={[styles.container, styles.centered]}>
           <Text style={styles.loadingText}>Entrando na partida...</Text>
+          {(disconnected || gameError) && (
+            <View style={styles.loadingCard}>
+              <Text style={styles.loadingHint}>{gameError || 'Sem conexão com o servidor.'}</Text>
+              <TouchableOpacity style={styles.retryBtn} onPress={handleRetryJoin} activeOpacity={0.85}>
+                <Text style={styles.retryBtnText}>Tentar novamente</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.backBtn}
+                onPress={() => { clearGame(); navigation.replace('Main'); }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.backBtnText}>Voltar</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </SafeAreaView>
       </ImageBackground>
     );
@@ -897,6 +1195,66 @@ export function GameScreen({ navigation, route }: Props) {
   // ── Render ─────────────────────────────────────────────────────────────────
   const boardCount = currentGame?.board?.length ?? 0;
   const boardScale = Math.min(1, Math.max(0.48, 11 / Math.max(11, boardCount)));
+
+  const renderPlayerFx = (userId: string, placement: 'top' | 'bottom' | 'left' | 'right') => {
+    const emoji = emojiByUser[userId];
+    const draw = drawByUser[userId];
+    if (!emoji && !draw) return null;
+
+    const emojiAnim = ensureAnim(emojiAnimRef, userId);
+    const drawAnim = ensureAnim(drawAnimRef, userId);
+
+    const emojiAnchor =
+      placement === 'left'
+        ? { top: -18, left: -10 }
+        : { top: -18, right: -10 };
+
+    const drawAnchor =
+      placement === 'left'
+        ? { bottom: -14, left: -10 }
+        : { bottom: -14, right: -10 };
+
+    return (
+      <View pointerEvents="none" style={styles.playerFxLayer}>
+        {!!draw && (
+          <Animated.View
+            style={[
+              styles.drawBubble,
+              drawAnchor,
+              {
+                opacity: drawAnim,
+                transform: [
+                  { scale: drawAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+                  { translateY: drawAnim.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) },
+                ],
+              },
+            ]}
+          >
+            <Text style={styles.drawBubbleText}>+1</Text>
+          </Animated.View>
+        )}
+
+        {!!emoji && (
+          <Animated.View
+            key={emoji.nonce}
+            style={[
+              styles.emojiBubble,
+              emojiAnchor,
+              {
+                opacity: emojiAnim,
+                transform: [
+                  { scale: emojiAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+                  { translateY: emojiAnim.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) },
+                ],
+              },
+            ]}
+          >
+            <Text style={styles.emojiBubbleText}>{emoji.char}</Text>
+          </Animated.View>
+        )}
+      </View>
+    );
+  };
 
   return (
     <ImageBackground
@@ -953,19 +1311,28 @@ export function GameScreen({ navigation, route }: Props) {
               {/* Top opponent card — centred on the oval's top rim */}
               {topOpponent && (
                 <View style={styles.oppCardOverlay}>
-                  <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} />
+                  <View style={styles.playerCardFxWrap}>
+                    <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} isTurn={turnUserId === topOpponent.userId} />
+                    {renderPlayerFx(topOpponent.userId, 'top')}
+                  </View>
                 </View>
               )}
 
               {/* Side player cards — centred on the oval's left/right rims */}
               {is4Player && leftOpponent && (
                 <View style={styles.tableSideBadgeLeft}>
-                  <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} />
+                  <View style={styles.playerCardFxWrap}>
+                    <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} />
+                    {renderPlayerFx(leftOpponent.userId, 'left')}
+                  </View>
                 </View>
               )}
               {is4Player && rightOpponent && (
                 <View style={styles.tableSideBadgeRight}>
-                  <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} />
+                  <View style={styles.playerCardFxWrap}>
+                    <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} />
+                    {renderPlayerFx(rightOpponent.userId, 'right')}
+                  </View>
                 </View>
               )}
 
@@ -983,10 +1350,10 @@ export function GameScreen({ navigation, route }: Props) {
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={[styles.boardTiles, { gap: 0 }]}
+                    contentContainerStyle={[styles.boardTiles, { gap: 6 }]}
                   >
                     {buildLinearBoardTiles(currentGame.board).map((tile, i) => (
-                      <View key={i} style={i > 0 ? { marginLeft: -2 } : undefined}>
+                      <View key={i}>
                         <DominoTile
                           tile={tile}
                           size="sm"
@@ -1050,26 +1417,29 @@ export function GameScreen({ navigation, route }: Props) {
                   if (!tile) return null;
                   const key = tileKey(tile);
                   const isPlayable = isMyTurn && validMovesMap.has(key);
-                  const isSelected = selectedTile?.[0] === tile[0] && selectedTile?.[1] === tile[1];
+                  const isSelected = selectedTile?.handIndex === i;
                   return (
                     <View key={`${key}-${i}`} style={[styles.handTileWrap, isSelected && styles.handTileSelected]}>
                       <TileHandImage
                         tile={tile}
                         selected={isSelected}
                         playable={!isMyTurn || isPlayable}
-                        onPress={() => handleTileSelect(tile)}
+                        onPress={() => handleTileSelect(tile, i)}
                       />
                       {isMyTurn && isPlayable && !isSelected && <View style={styles.playIndicator} />}
                     </View>
                   );
                 })}
               </ScrollView>
-              <MyPlayerCard
-                name={user?.name?.split(' ')[0] || 'Você'}
-                hand={myHand.filter(Boolean).length}
-                isMyTurn={isMyTurn}
-                avatarUri={(user as any)?.avatarUrl ?? (user as any)?.avatar}
-              />
+              <View style={styles.playerCardFxWrap}>
+                <MyPlayerCard
+                  name={user?.name?.split(' ')[0] || 'Você'}
+                  hand={myHand.filter(Boolean).length}
+                  isMyTurn={isMyTurn}
+                  avatarUri={(user as any)?.avatarUrl ?? (user as any)?.avatar}
+                />
+                {renderPlayerFx(myEffectiveUserId, 'bottom')}
+              </View>
             </View>
 
           </View>
@@ -1099,42 +1469,33 @@ export function GameScreen({ navigation, route }: Props) {
               />
             </View>
 
-            <View style={styles.settingsHeader}>
+            <View style={styles.modalHeader}>
               <View style={{ width: 26 }} />
               <Text style={styles.settingsTitle}>Configurações</Text>
-              <TouchableOpacity onPress={() => setSettingsVisible(false)}>
+              <TouchableOpacity onPress={() => setSettingsVisible(false)} accessibilityLabel="Fechar configurações">
                 <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
-            {/* Sound */}
-            <View style={styles.settingRow}>
-              <View style={styles.settingLabelRow}>
-                <IconVolumeUp size={20} color="#fff" accessibilityLabel="Som" />
-                <Text style={styles.settingLabel}>Som</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.togglePill, { backgroundColor: soundOn ? '#4ade80' : 'rgba(255,255,255,0.12)' }]}
-                onPress={() => setSoundOn(v => !v)}
-              >
-                <Text style={[styles.togglePillText, { color: soundOn ? '#000' : '#fff' }]}>
-                  {soundOn ? 'On' : 'Off'}
-                </Text>
-              </TouchableOpacity>
+            <View style={styles.settingItem}>
+              <Text style={styles.settingLabel}>Som:</Text>
+              <GradientToggle
+                value={soundOn}
+                onValueChange={setSoundOn}
+                pressableTestID="settings-sound-toggle"
+                accessibilityLabel="Som"
+                kind="sound"
+              />
             </View>
-            {/* Music */}
-            <View style={styles.settingRow}>
-              <View style={styles.settingLabelRow}>
-                <IconMusic size={20} color="#fff" accessibilityLabel="Música" />
-                <Text style={styles.settingLabel}>Música</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.togglePill, { backgroundColor: musicOn ? '#4ade80' : 'rgba(255,255,255,0.12)' }]}
-                onPress={() => setMusicOn(v => !v)}
-              >
-                <Text style={[styles.togglePillText, { color: musicOn ? '#000' : '#fff' }]}>
-                  {musicOn ? 'On' : 'Off'}
-                </Text>
-              </TouchableOpacity>
+
+            <View style={styles.settingItem}>
+              <Text style={styles.settingLabel}>Música:</Text>
+              <GradientToggle
+                value={musicOn}
+                onValueChange={setMusicOn}
+                pressableTestID="settings-music-toggle"
+                accessibilityLabel="Música"
+                kind="music"
+              />
             </View>
             {/* Leave */}
             <TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveGame}>
@@ -1174,9 +1535,11 @@ export function GameScreen({ navigation, route }: Props) {
       <Modal visible={resultModal} transparent animationType="fade">
         <View style={styles.overlay}>
           <ResultCard
-            result={useGameStore.getState().gameResult}
-            userId={user?.id}
-            onClose={() => { setResultModal(false); clearGame(); navigation.replace('Main'); }}
+            result={gameResult}
+            userId={myEffectiveUserId}
+            playAgainLoading={playAgainSearching}
+            onPlayAgain={handlePlayAgain}
+            onExit={() => { setResultModal(false); setPlayAgainSearching(false); clearGame(); navigation.replace('Main'); }}
           />
         </View>
       </Modal>
@@ -1198,6 +1561,38 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   centered:  { alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: colors.textMuted, fontSize: fonts.sizes.lg },
+  loadingCard: {
+    marginTop: 16,
+    width: 320,
+    maxWidth: '92%',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    padding: 14,
+    gap: 10,
+  },
+  loadingHint: { color: '#e2e8f0', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  retryBtn: {
+    backgroundColor: '#4ade80',
+    borderRadius: radius.full,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryBtnText: { color: '#000', fontWeight: '900', fontSize: fonts.sizes.sm },
+  backBtn: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: radius.full,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backBtnText: { color: '#e2e8f0', fontWeight: '800', fontSize: fonts.sizes.sm },
 
   disconnectBanner: { backgroundColor: colors.warning, paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
   disconnectText:   { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
@@ -1322,6 +1717,28 @@ const styles = StyleSheet.create({
     opacity: 0.1,
   },
   boardTiles: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md },
+  playerCardFxWrap: { position: 'relative', alignSelf: 'center' },
+  playerFxLayer: { ...StyleSheet.absoluteFillObject, zIndex: 50 },
+  emojiBubble: {
+    position: 'absolute',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  emojiBubbleText: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  drawBubble: {
+    position: 'absolute',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(74,222,128,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.35)',
+  },
+  drawBubbleText: { color: '#bbf7d0', fontSize: 14, fontWeight: '900' },
 
   // ── Hand section ──
   handSection: {
@@ -1427,7 +1844,7 @@ const styles = StyleSheet.create({
     left: '-20%',
     ...(Platform.OS === 'web' ? ({ objectFit: 'cover', objectPosition: 'center' } as any) : null),
   } as any,
-  settingsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   settingsTitle: {
     fontSize: fonts.sizes.xxxl,
     fontWeight: '900',
@@ -1436,27 +1853,22 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
   },
-  settingRow: {
+  settingItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SETTINGS_CARD_PAD,
     paddingVertical: SETTINGS_ITEM_GAP,
     borderRadius: radius.lg,
+    borderWidth: 0,
     overflow: 'hidden',
   },
-  settingLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, flex: 1 },
   settingLabel: {
     fontSize: fonts.sizes.xl,
     color: '#fff',
     fontWeight: '800',
     fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
   },
-  togglePill: {
-    borderRadius: radius.full, paddingVertical: 6, paddingHorizontal: 20,
-    minWidth: 64, alignItems: 'center',
-  },
-  togglePillText: { fontWeight: '800', fontSize: fonts.sizes.sm },
   leaveBtn: {
     marginTop: spacing.sm,
     borderWidth: 1,
@@ -1512,5 +1924,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#4ade80', borderRadius: radius.lg,
     paddingVertical: 14, paddingHorizontal: 32, marginTop: spacing.md,
   },
+  resultBtnDisabled: {
+    opacity: 0.75,
+  },
   resultBtnText: { color: '#000', fontWeight: '800', fontSize: fonts.sizes.md },
+  resultSecondaryBtn: {
+    marginTop: spacing.xs,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+  resultSecondaryText: { color: 'rgba(255,255,255,0.85)', fontWeight: '700', fontSize: fonts.sizes.sm },
 });

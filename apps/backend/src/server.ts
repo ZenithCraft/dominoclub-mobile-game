@@ -9,6 +9,27 @@ import { logger } from './utils/logger';
 
 const server = http.createServer(app);
 
+async function connectPrismaWithRetry(): Promise<void> {
+  let attempt = 0;
+  while (true) {
+    try {
+      await prisma.$connect();
+      logger.info('Database connected');
+      return;
+    } catch (err: any) {
+      attempt += 1;
+      const retryInMs = Math.min(30000, 1000 * Math.pow(2, Math.min(attempt, 5)));
+      logger.warn('Database unavailable — running without DB', {
+        message: err?.message,
+        attempt,
+        retryInMs: config.env === 'production' ? undefined : retryInMs,
+      });
+      if (config.env === 'production') return;
+      await new Promise((resolve) => setTimeout(resolve, retryInMs));
+    }
+  }
+}
+
 async function main() {
   // Connect Redis (optional — graceful fallback to in-memory if unavailable)
   await connectRedis();
@@ -17,9 +38,7 @@ async function main() {
   const io = createSocketServer(server);
 
   // Try DB connection but don't block server startup
-  prisma.$connect()
-    .then(() => logger.info('Database connected'))
-    .catch((err) => logger.warn('Database unavailable — running without DB', { message: err.message }));
+  void connectPrismaWithRetry();
 
   server.listen(config.port, () => {
     logger.info(`DominoClub backend running on port ${config.port} [${config.env}]`);
