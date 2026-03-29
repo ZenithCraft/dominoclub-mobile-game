@@ -31,16 +31,30 @@ export async function getStatsHandler(_req: Request, res: Response) {
 
     const [
       totalUsers,
+      bannedUsers,
       activeGamesCount,
       deposits24h,
       withdrawals24h,
+      depositsAmount24h,
+      withdrawalsAmount24h,
+      totalTransactions24h,
       revenue24hRows,
       revenueWeek,
     ] = await Promise.all([
       prisma.user.count({ where: { is_banned: false } }),
+      prisma.user.count({ where: { is_banned: true } }),
       prisma.game.count({ where: { status: 'PLAYING' } }),
       prisma.transaction.count({ where: { type: 'DEPOSIT', status: 'COMPLETED', created_at: { gte: since24h } } }),
       prisma.transaction.count({ where: { type: 'WITHDRAWAL', status: { in: ['COMPLETED', 'PENDING'] }, created_at: { gte: since24h } } }),
+      prisma.transaction.aggregate({
+        where: { type: 'DEPOSIT', status: 'COMPLETED', created_at: { gte: since24h } },
+        _sum: { amount: true },
+      }),
+      prisma.transaction.aggregate({
+        where: { type: 'WITHDRAWAL', status: { in: ['COMPLETED', 'PENDING'] }, created_at: { gte: since24h } },
+        _sum: { amount: true },
+      }),
+      prisma.transaction.count({ where: { created_at: { gte: since24h } } }),
       prisma.transaction.aggregate({
         where: { type: 'BET', status: 'COMPLETED', created_at: { gte: since24h } },
         _sum: { amount: true },
@@ -49,8 +63,8 @@ export async function getStatsHandler(_req: Request, res: Response) {
       prisma.$queryRaw<{ day: string; revenue: number; games: number }[]>`
         SELECT
           TO_CHAR(DATE_TRUNC('day', created_at), 'Dy') AS day,
-          COALESCE(SUM(CASE WHEN type = 'BET' AND status = 'COMPLETED' THEN ABS(amount) ELSE 0 END), 0) AS revenue,
-          COUNT(DISTINCT CASE WHEN type = 'BET' AND status = 'COMPLETED' THEN id END) AS games
+          COALESCE(SUM(CASE WHEN type = 'BET' AND status = 'COMPLETED' THEN ABS(amount) ELSE 0 END), 0)::float AS revenue,
+          COUNT(DISTINCT CASE WHEN type = 'BET' AND status = 'COMPLETED' THEN id END)::int AS games
         FROM "Transaction"
         WHERE created_at >= NOW() - INTERVAL '7 days'
         GROUP BY DATE_TRUNC('day', created_at)
@@ -58,13 +72,21 @@ export async function getStatsHandler(_req: Request, res: Response) {
       `,
     ]);
 
+    const betSum = revenue24hRows._sum.amount ?? 0;
+    const depSum = depositsAmount24h._sum.amount ?? 0;
+    const wdSum = withdrawalsAmount24h._sum.amount ?? 0;
+
     res.json({
       totalUsers,
+      bannedUsers,
       onlineNow: activeGames.size,
       activeGames: activeGamesCount,
-      revenue24h: Math.abs(revenue24hRows._sum.amount ?? 0) * (config.game.houseEdgePercent / 100),
+      revenue24h: Math.abs(Number(betSum)) * (config.game.houseEdgePercent / 100),
       deposits24h,
       withdrawals24h,
+      depositsAmount24h: Math.abs(Number(depSum)),
+      withdrawalsAmount24h: Math.abs(Number(wdSum)),
+      totalTransactions24h,
       revenueWeek,
     });
   } catch (err: any) {
@@ -199,12 +221,15 @@ export async function getTransactionsHandler(req: Request, res: Response) {
       }),
     ]);
 
+    const formatted = transactions.map((t) => ({ ...t, amount: Number(t.amount) }));
+    const pendingTotal = pendingWithdrawals._sum.amount ?? 0;
+
     res.json({
-      transactions,
+      transactions: formatted,
       total,
       page,
       pages: Math.ceil(total / limit),
-      pendingWithdrawalsTotal: pendingWithdrawals._sum.amount ?? 0,
+      pendingWithdrawalsTotal: Math.abs(Number(pendingTotal)),
       pendingWithdrawalsCount: pendingWithdrawals._count,
     });
   } catch (err: any) {
