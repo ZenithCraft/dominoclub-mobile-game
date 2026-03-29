@@ -40,6 +40,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ accessToken, refreshToken });
     AsyncStorage.setItem('access_token', accessToken);
     AsyncStorage.setItem('refresh_token', refreshToken);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem('access_token', accessToken);
+      window.localStorage.setItem('refresh_token', refreshToken);
+    }
   },
 
   setUser: (user) => set({ user }),
@@ -57,33 +61,59 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await api.post('/auth/logout');
     } catch {}
     await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'profile_avatar_uri']);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem('access_token');
+      window.localStorage.removeItem('refresh_token');
+      window.localStorage.removeItem('profile_avatar_uri');
+    }
     set({ user: null, accessToken: null, refreshToken: null });
   },
 
   loadFromStorage: async () => {
     try {
       const [accessToken, refreshToken] = await AsyncStorage.multiGet(['access_token', 'refresh_token']);
-      const access = accessToken[1];
-      const refresh = refreshToken[1];
+      const accessFromStorage = accessToken[1];
+      const refreshFromStorage = refreshToken[1];
+
+      const accessFromWeb =
+        typeof window !== 'undefined' && window.localStorage
+          ? window.localStorage.getItem('access_token')
+          : null;
+      const refreshFromWeb =
+        typeof window !== 'undefined' && window.localStorage
+          ? window.localStorage.getItem('refresh_token')
+          : null;
+
+      const access = accessFromWeb || accessFromStorage;
+      const refresh = refreshFromWeb || refreshFromStorage;
 
       if (access && refresh) {
         set({ accessToken: access, refreshToken: refresh });
-        // Verify token and load user
+        if (typeof window !== 'undefined' && window.localStorage) {
+          if (accessFromStorage && !accessFromWeb) window.localStorage.setItem('access_token', accessFromStorage);
+          if (refreshFromStorage && !refreshFromWeb) window.localStorage.setItem('refresh_token', refreshFromStorage);
+        }
+
         try {
           const { data } = await api.get('/auth/me');
           const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
           set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
-        } catch {
-          // Token expired — try refresh
-          try {
-            const { data } = await api.post('/auth/token/refresh', { refreshToken: refresh });
-            set({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-            await AsyncStorage.setItem('access_token', data.accessToken);
-            await AsyncStorage.setItem('refresh_token', data.refreshToken);
-            const me = await api.get('/auth/me');
-            const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
-            set({ user: avatarUri ? { ...me.data, avatar: avatarUri } : me.data });
-          } catch {
+        } catch (err: any) {
+          if (err?.response?.status === 401) {
+            const isLocalhost =
+              typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+            const allowDevLogin = isLocalhost;
+            if (allowDevLogin) {
+              try {
+                const { data } = await api.post('/auth/dev/login', {});
+                get().setTokens(data.accessToken, data.refreshToken);
+                const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
+                set({ user: avatarUri ? { ...data.user, avatar: avatarUri } : data.user });
+                return;
+              } catch {}
+            }
+            await get().logout();
+          } else {
             set({ user: null, accessToken: null, refreshToken: null });
           }
         }
@@ -98,6 +128,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { data } = await api.get('/auth/me');
       const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
       set({ user: avatarUri ? { ...data, avatar: avatarUri } : data });
-    } catch {}
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        await get().logout();
+      }
+    }
   },
 }));

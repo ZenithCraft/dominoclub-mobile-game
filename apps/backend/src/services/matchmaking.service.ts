@@ -10,6 +10,7 @@ export interface QueueEntry {
   betAmount: number;
   mode: 'ARENA_1V1' | 'CUP_1V1' | 'TOURNAMENT_2V2' | 'RECREATIONAL_2V2';
   joinedAt: number;
+  isBot?: boolean;
 }
 
 export const matchmakingEvents = new EventEmitter();
@@ -45,6 +46,19 @@ export function dequeue(userId: string) {
   });
 }
 
+export function getQueueStats() {
+  const stats: Record<string, { total: number; byBet: Record<string, number> }> = {};
+  queues.forEach((queue, mode) => {
+    const byBet: Record<string, number> = {};
+    for (const entry of queue) {
+      const key = String(entry.betAmount ?? 0);
+      byBet[key] = (byBet[key] ?? 0) + 1;
+    }
+    stats[mode] = { total: queue.length, byBet };
+  });
+  return stats;
+}
+
 function tryMatch(mode: string) {
   const queue = queues.get(mode);
   if (!queue) return;
@@ -59,7 +73,8 @@ function tryMatch(mode: string) {
       for (let j = i + 1; j < queue.length; j++) {
         const a = queue[i];
         const b = queue[j];
-        const diff = Math.abs(a.betAmount - b.betAmount) / Math.max(a.betAmount, b.betAmount);
+        const denom = Math.max(a.betAmount, b.betAmount);
+        const diff = denom > 0 ? Math.abs(a.betAmount - b.betAmount) / denom : a.betAmount === b.betAmount ? 0 : 1;
         if (diff <= config.game.matchmakingBetTolerance) {
           queue.splice(j, 1);
           queue.splice(i, 1);
@@ -93,6 +108,7 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
     team: mode.includes('2V2') ? (i < 2 ? 1 : 2) : i + 1,
     seat: i,
     socketId: p.socketId,
+    isBot: !!p.isBot,
   }));
 
   try {
@@ -109,6 +125,7 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
             userId: p.userId,
             team: p.team,
             seat: p.seat,
+            is_bot: p.isBot,
           })),
         },
       },
@@ -121,23 +138,42 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
   }
 }
 
+async function createBotUser() {
+  const suffix = uuidv4().replace(/-/g, '').slice(0, 12);
+  const phone = `+5599${suffix}`;
+  return prisma.user.create({
+    data: {
+      phone,
+      name: 'Bot',
+      cpf_verified: true,
+      phone_verified: true,
+    },
+    select: { id: true },
+  });
+}
+
 // Bot injection: if a player waits too long, inject a bot opponent
 export function startBotInjectionTimer(entry: QueueEntry) {
   const timeout = setTimeout(() => {
-    const queue = queues.get(entry.mode);
-    if (!queue) return;
-    const stillWaiting = queue.find((e) => e.userId === entry.userId);
-    if (!stillWaiting) return;
+    void (async () => {
+      const queue = queues.get(entry.mode);
+      if (!queue) return;
+      const stillWaiting = queue.find((e) => e.userId === entry.userId);
+      if (!stillWaiting) return;
 
-    logger.info('Injecting bot for waiting player', { userId: entry.userId });
-    const botEntry: QueueEntry = {
-      userId: `bot_${uuidv4()}`,
-      socketId: `bot_socket_${uuidv4()}`,
-      betAmount: entry.betAmount,
-      mode: entry.mode,
-      joinedAt: Date.now(),
-    };
-    enqueue(botEntry);
+      logger.info('Injecting bot for waiting player', { userId: entry.userId, mode: entry.mode, betAmount: entry.betAmount });
+
+      const bot = await createBotUser();
+      const botEntry: QueueEntry = {
+        userId: bot.id,
+        socketId: `bot_socket_${uuidv4()}`,
+        betAmount: entry.betAmount,
+        mode: entry.mode,
+        joinedAt: Date.now(),
+        isBot: true,
+      };
+      enqueue(botEntry);
+    })();
   }, config.game.botInjectWaitSeconds * 1000);
 
   return timeout;

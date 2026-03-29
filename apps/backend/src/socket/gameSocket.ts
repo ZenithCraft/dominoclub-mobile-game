@@ -48,6 +48,8 @@ function recordMove(gameId: string, move: Omit<ReplayMove, 'seq'>) {
 }
 
 export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: string; name: string; avatar: string | null }) {
+  const joinedGames = new Set<string>();
+
   // Join game room
   socket.on('game:join', async ({ gameId }: { gameId: string }) => {
     const game = await prisma.game.findUnique({
@@ -67,6 +69,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     }
 
     socket.join(`game:${gameId}`);
+    joinedGames.add(gameId);
 
     // Update connected status
     await prisma.gamePlayer.updateMany({
@@ -76,11 +79,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
 
     // Initialize game state if not already active
     if (!activeGames.has(gameId)) {
-      const allReady = game.players.every((p) => !p.is_bot);
-      if (game.players.length === game.players.filter((p) => !p.is_bot).length) {
-        // Start game
-        await startGame(gameId, game.variant as DominoVariant, game.players, game.bet_amount, io);
-      }
+      await startGame(gameId, game.variant as DominoVariant, game.players, game.bet_amount, io);
     } else {
       // Send current state to rejoining player
       const state = activeGames.get(gameId)!;
@@ -195,9 +194,19 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
 
   socket.on('game:leave', async ({ gameId }: { gameId: string }) => {
     socket.leave(`game:${gameId}`);
+    joinedGames.delete(gameId);
     await prisma.gamePlayer.updateMany({
       where: { gameId, userId: user.id },
       data: { connected: false },
+    });
+    await forfeitGame(gameId, user.id, io, 'leave');
+  });
+
+  socket.on('disconnect', () => {
+    const gameIds = [...joinedGames];
+    joinedGames.clear();
+    gameIds.forEach((gameId) => {
+      forfeitGame(gameId, user.id, io, 'disconnect').catch(() => {});
     });
   });
 }
@@ -363,7 +372,12 @@ function scheduleBotTurn(gameId: string, state: GameState, io: SocketServer) {
   }, thinkTime);
 }
 
-async function handleGameEnd(gameId: string, state: GameState, io: SocketServer) {
+async function handleGameEnd(
+  gameId: string,
+  state: GameState,
+  io: SocketServer,
+  opts?: { status?: 'FINISHED' | 'ABANDONED' }
+) {
   clearTurnTimer(gameId);
   activeGames.delete(gameId);
 
@@ -390,7 +404,7 @@ async function handleGameEnd(gameId: string, state: GameState, io: SocketServer)
   await prisma.game.update({
     where: { id: gameId },
     data: {
-      status: 'FINISHED',
+      status: opts?.status ?? 'FINISHED',
       winner_id: state.winnerId || null,
       winning_team: state.winnerTeam || null,
       finished_at: new Date(),
@@ -408,6 +422,7 @@ async function handleGameEnd(gameId: string, state: GameState, io: SocketServer)
   }
 
   io.to(`game:${gameId}`).emit('game:ended', {
+    status: opts?.status ?? 'FINISHED',
     winnerId: state.winnerId,
     winnerTeam: state.winnerTeam,
     prizePool,
@@ -428,4 +443,32 @@ async function handleGameEnd(gameId: string, state: GameState, io: SocketServer)
       logger.error('[Tournament] Failed to advance bracket', { tournamentId: game.tournamentId, gameId, err: err.message });
     });
   }
+}
+
+async function forfeitGame(gameId: string, forfeitingUserId: string, io: SocketServer, reason: 'leave' | 'disconnect') {
+  const state = activeGames.get(gameId);
+  if (!state || state.status !== 'playing') return;
+
+  const forfeitingPlayer = state.players.find((p) => p.userId === forfeitingUserId);
+  if (!forfeitingPlayer || forfeitingPlayer.isBot) return;
+
+  const winnerTeam = forfeitingPlayer.team === 1 ? 2 : 1;
+  const winner = state.players.find((p) => p.team === winnerTeam && !p.isBot) ?? state.players.find((p) => p.team === winnerTeam);
+  const newState: GameState = {
+    ...state,
+    status: 'finished',
+    winnerTeam,
+    winnerId: winner?.userId,
+  };
+
+  activeGames.set(gameId, newState);
+
+  io.to(`game:${gameId}`).emit('game:forfeit', {
+    forfeitedUserId: forfeitingUserId,
+    reason,
+    winnerId: newState.winnerId,
+    winnerTeam: newState.winnerTeam,
+  });
+
+  await handleGameEnd(gameId, newState, io, { status: 'ABANDONED' });
 }

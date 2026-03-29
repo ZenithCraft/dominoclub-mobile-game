@@ -5,7 +5,7 @@ import { verifyAccessToken } from '../utils/jwt';
 import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
 import { setupGameSocket, activeGames } from './gameSocket';
-import { enqueue, dequeue, matchmakingEvents, startBotInjectionTimer, QueueEntry } from '../services/matchmaking.service';
+import { enqueue, dequeue, getQueueStats, matchmakingEvents, startBotInjectionTimer, QueueEntry } from '../services/matchmaking.service';
 import { getRedisClient, getRedisSubscriber, isRedisAvailable } from '../services/redis.service';
 
 export function createSocketServer(httpServer: HttpServer): SocketServer {
@@ -53,6 +53,12 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
 
     socket.join(`user:${user.id}`);
 
+    const emitQueueStats = () => {
+      io.emit('queue:stats', getQueueStats());
+    };
+
+    socket.emit('queue:stats', getQueueStats());
+
     // ── Matchmaking ──────────────────────────────────────────
     socket.on('queue:join', async (data: { mode: string; betAmount: number }) => {
       const entry: QueueEntry = {
@@ -72,17 +78,20 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
 
       enqueue(entry);
       const botTimer = startBotInjectionTimer(entry);
-      socket.emit('queue:joined', { mode: data.mode, betAmount: data.betAmount });
+      socket.emit('queue:joined', { mode: data.mode, betAmount: data.betAmount, botWaitSeconds: config.game.botInjectWaitSeconds });
+      emitQueueStats();
 
       socket.once('disconnect', () => {
         clearTimeout(botTimer);
         dequeue(user.id);
+        emitQueueStats();
       });
 
       socket.once('queue:leave', () => {
         clearTimeout(botTimer);
         dequeue(user.id);
         socket.emit('queue:left');
+        emitQueueStats();
       });
     });
 
@@ -94,6 +103,7 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       dequeue(user.id);
       logger.info('Socket disconnected', { userId: user.id });
       io.emit('online:count', { count: io.sockets.sockets.size });
+      emitQueueStats();
     });
 
     setupGameSocket(socket, io, user);

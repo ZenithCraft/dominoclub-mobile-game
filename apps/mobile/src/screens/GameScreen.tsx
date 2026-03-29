@@ -9,7 +9,7 @@ import { Socket } from 'socket.io-client';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  IconTrophy, IconDices, IconSettings, IconAlert, IconX, IconFrown,
+  IconTrophy, IconSettings, IconAlert, IconX, IconFrown,
   IconVolumeUp, IconMusic,
 } from '../components/Icons';
 import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
@@ -68,21 +68,60 @@ function normalizeGameState(raw: any): GameState {
   };
 }
 
-// ─── Game logic (unchanged) ───────────────────────────────────────────────────
+// ─── Game logic (ends + validation) ───────────────────────────────────────────
+
+function computeOpenEndsFromBoard(board: PlacedTile[], variant: string) {
+  if (!board || board.length === 0) {
+    return { left: undefined, right: undefined, top: undefined, bottom: undefined, first: false };
+  }
+  let left: number | undefined = undefined;
+  let right: number | undefined = undefined;
+  let top: number | undefined = undefined;
+  let bottom: number | undefined = undefined;
+  const first = board[0];
+  if (first) {
+    left = first.tile[0];
+    right = first.tile[1];
+  }
+  for (let i = 1; i < board.length; i++) {
+    const pt = board[i];
+    const exposed = pt.flipped ? pt.tile[0] : pt.tile[1];
+    if (pt.side === 'left') left = exposed;
+    else if (pt.side === 'right') right = exposed;
+    else if (variant === 'CRUZADA') {
+      if (pt.side === 'top') top = exposed;
+      if (pt.side === 'bottom') bottom = exposed;
+    }
+  }
+  return { left, right, top, bottom, first: true };
+}
 
 function canPlayTile(tile: Tile, game: GameState): PlayOption[] {
-  if (!game.firstPlayMade) return [{ side: 'left', flipped: false }];
+  if (!game.firstPlayMade && (!game.board || game.board.length === 0)) return [{ side: 'left', flipped: false }];
+  let leftOpen = game.leftOpen;
+  let rightOpen = game.rightOpen;
+  let topOpen = game.topOpen;
+  let bottomOpen = game.bottomOpen;
+  if ((leftOpen === -1 || rightOpen === -1) && (game.board?.length ?? 0) > 0) {
+    const ends = computeOpenEndsFromBoard(game.board, game.variant);
+    if (ends.left !== undefined) leftOpen = ends.left as any;
+    if (ends.right !== undefined) rightOpen = ends.right as any;
+    if (game.variant === 'CRUZADA') {
+      if (ends.top !== undefined) topOpen = ends.top;
+      if (ends.bottom !== undefined) bottomOpen = ends.bottom;
+    }
+  }
   const plays: PlayOption[] = [];
   const checkEnd = (open: number, side: PlaySide) => {
     if (open === -1 || open === undefined) return;
     if (tile[0] === open) plays.push({ side, flipped: false });
     if (tile[1] === open && tile[0] !== tile[1]) plays.push({ side, flipped: true });
   };
-  checkEnd(game.leftOpen, 'left');
-  checkEnd(game.rightOpen, 'right');
+  checkEnd(leftOpen, 'left');
+  checkEnd(rightOpen, 'right');
   if (game.variant === 'CRUZADA') {
-    if (game.topOpen !== undefined) checkEnd(game.topOpen, 'top');
-    if (game.bottomOpen !== undefined) checkEnd(game.bottomOpen, 'bottom');
+    if (topOpen !== undefined) checkEnd(topOpen as any, 'top');
+    if (bottomOpen !== undefined) checkEnd(bottomOpen as any, 'bottom');
   }
   return plays;
 }
@@ -99,248 +138,152 @@ function getValidMovesForHand(hand: (Tile | null)[], game: GameState): Map<strin
 
 function tileKey(tile: Tile): string { return `${tile[0]}-${tile[1]}`; }
 
-// ─── Tile image map (portrait PNGs → landscape in hand) ──────────────────────
-// Keys use min-max order so [6,5] and [5,6] map to the same image.
-const TILE_IMAGE_MAP: Record<string, any> = {
-  '6-6': require('../../assets/Domino Tiles/Frame 14164.png'),
-  '5-6': require('../../assets/Domino Tiles/Frame 14165.png'),
-  '5-5': require('../../assets/Domino Tiles/Frame 14166.png'),
-  '4-6': require('../../assets/Domino Tiles/Frame 14167.png'),
-  '4-5': require('../../assets/Domino Tiles/Frame 14168.png'),
-  '4-4': require('../../assets/Domino Tiles/Frame 14169.png'),
-  '3-6': require('../../assets/Domino Tiles/Frame 14170.png'),
-  '3-5': require('../../assets/Domino Tiles/Frame 14171.png'),
-  '3-4': require('../../assets/Domino Tiles/Frame 14172.png'),
-  '3-3': require('../../assets/Domino Tiles/Frame 14173.png'),
-  '2-6': require('../../assets/Domino Tiles/Frame 14174.png'),
-  '2-5': require('../../assets/Domino Tiles/Frame 14175.png'),
-  '2-4': require('../../assets/Domino Tiles/Frame 14176.png'),
-  '2-3': require('../../assets/Domino Tiles/Frame 14177.png'),
-  '2-2': require('../../assets/Domino Tiles/Frame 14178.png'),
-  '1-6': require('../../assets/Domino Tiles/Frame 14179.png'),
-  '1-5': require('../../assets/Domino Tiles/Frame 14180.png'),
-  '1-4': require('../../assets/Domino Tiles/Frame 14181.png'),
-  '1-3': require('../../assets/Domino Tiles/Frame 14182.png'),
-  '1-2': require('../../assets/Domino Tiles/Frame 14183.png'),
-  '0-0': require('../../assets/Domino Tiles/Frame 14191.png'),
+function buildLinearBoardTiles(board: PlacedTile[]): Tile[] {
+  if (!board || board.length === 0) return [];
+  const seq: Tile[] = [board[0].tile];
+  for (let i = 1; i < board.length; i++) {
+    const pt = board[i];
+    const connecting = pt.flipped ? pt.tile[1] : pt.tile[0];
+    const exposed = pt.flipped ? pt.tile[0] : pt.tile[1];
+    const oriented: Tile = (pt.side === 'left' || pt.side === 'top')
+      ? [exposed, connecting]
+      : [connecting, exposed];
+    if (pt.side === 'left' || pt.side === 'top') seq.unshift(oriented);
+    else seq.push(oriented);
+  }
+  return seq;
+}
+
+// ─── Pip positions ────────────────────────────────────────────────────────────
+// [topFraction, leftFraction] within each half, matching standard domino layout.
+const PIP_POSITIONS: Record<number, [number, number][]> = {
+  0: [],
+  1: [[0.50, 0.50]],
+  2: [[0.25, 0.25], [0.75, 0.75]],
+  3: [[0.25, 0.25], [0.50, 0.50], [0.75, 0.75]],
+  4: [[0.25, 0.25], [0.25, 0.75], [0.75, 0.25], [0.75, 0.75]],
+  5: [[0.25, 0.25], [0.25, 0.75], [0.50, 0.50], [0.75, 0.25], [0.75, 0.75]],
+  6: [[0.18, 0.25], [0.50, 0.25], [0.82, 0.25], [0.18, 0.75], [0.50, 0.75], [0.82, 0.75]],
 };
 
-// Portrait tile dimensions for hand display
-const HAND_W = 30;
-const HAND_H = 50;
-
-function TileHandImage({
-  tile, selected, playable, onPress,
-}: {
+function TileHandImage({ tile, selected, playable, onPress }: {
   tile: Tile; selected?: boolean; playable?: boolean; onPress?: () => void;
 }) {
-  const lo = Math.min(tile[0], tile[1]);
-  const hi = Math.max(tile[0], tile[1]);
-  const imgSrc = TILE_IMAGE_MAP[`${lo}-${hi}`];
-
-  if (!imgSrc) return null;
-
-  const inner = (
-    <View style={[
-      handImgStyles.container,
-      selected && handImgStyles.selected,
-      !playable && handImgStyles.unplayable,
-    ]}>
-      <Image source={imgSrc} style={handImgStyles.img} resizeMode="stretch" />
-    </View>
-  );
-
-  return onPress ? (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>{inner}</TouchableOpacity>
-  ) : inner;
-}
-
-const handImgStyles = StyleSheet.create({
-  container: {
-    width: HAND_W,
-    height: HAND_H,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  img: { width: '100%', height: '100%' },
-  selected: {
-    borderColor: '#4ade80',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 0 10px rgba(74,222,128,0.55)' } as any)
-      : {
-          shadowColor: '#4ade80',
-          shadowOpacity: 0.8,
-          shadowRadius: 6,
-          shadowOffset: { width: 0, height: 0 },
-          elevation: 6,
-        }),
-  },
-  unplayable: { opacity: 0.38 },
-});
-
-const BOARD_SHORT = 30;
-const BOARD_LONG = 60;
-
-function TileBoardImage({ tile, horizontal, flipped }: { tile: Tile; horizontal?: boolean; flipped?: boolean }) {
-  const lo = Math.min(tile[0], tile[1]);
-  const hi = Math.max(tile[0], tile[1]);
-  const imgSrc = TILE_IMAGE_MAP[`${lo}-${hi}`];
-
-  if (!imgSrc) {
-    return <DominoTile tile={tile} size="sm" horizontal={horizontal} />;
-  }
-
-  const w = horizontal ? BOARD_LONG : BOARD_SHORT;
-  const h = horizontal ? BOARD_SHORT : BOARD_LONG;
-  const transforms = [
-    horizontal ? ({ rotate: '90deg' } as const) : null,
-    flipped ? ({ rotate: '180deg' } as const) : null,
-  ].filter(Boolean) as any[];
-
   return (
-    <View style={[boardImgStyles.wrap, { width: w, height: h }]}>
-      <Image source={imgSrc} style={[boardImgStyles.img, { transform: transforms }]} resizeMode="contain" />
-    </View>
+    <DominoTile
+      tile={tile}
+      size="hand"
+      selected={selected}
+      style={!playable ? { opacity: 0.38 } : undefined}
+      onPress={onPress}
+    />
   );
 }
 
-const boardImgStyles = StyleSheet.create({
-  wrap: {
-    backgroundColor: colors.tileBg,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.tileBorder,
-  },
-  img: { width: '100%', height: '100%' },
-});
-
-type DominoTileSize = 'sm' | 'md';
+// ─── Tile size presets ────────────────────────────────────────────────────────
+type DominoTileSize = 'icon' | 'hand' | 'sm' | 'md';
 type DominoTileProps = {
   tile: Tile;
   size?: DominoTileSize;
   horizontal?: boolean;
+  tileScale?: number;
   selected?: boolean;
   onPress?: () => void;
   style?: any;
 };
 
-const PIP_POS: Record<number, Array<[number, number]>> = {
-  0: [],
-  1: [[1, 1]],
-  2: [[0, 0], [2, 2]],
-  3: [[0, 0], [1, 1], [2, 2]],
-  4: [[0, 0], [0, 2], [2, 0], [2, 2]],
-  5: [[0, 0], [0, 2], [1, 1], [2, 0], [2, 2]],
-  6: [[0, 0], [0, 1], [0, 2], [2, 0], [2, 1], [2, 2]],
+const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
+  icon: { short: 16, long: 28, pip: 3,  corner: 4  },
+  hand: { short: 32, long: 56, pip: 7,  corner: 10 },
+  sm:   { short: 32, long: 64, pip: 7,  corner: 10 },
+  md:   { short: 44, long: 88, pip: 9,  corner: 12 },
 };
 
-function DominoTile({ tile, size = 'md', horizontal, selected, onPress, style }: DominoTileProps) {
-  const dims = size === 'sm'
-    ? { short: 30, long: 60, dot: 4, pad: 4 }
-    : { short: 42, long: 84, dot: 6, pad: 6 };
+// Ivory white matching the PNG tile colour
+const TILE_BG    = '#f8f6f0';
+const TILE_LINE  = '#c8c4bc';
+const TILE_PIP   = '#1c1c1e';
 
-  const w = horizontal ? dims.long : dims.short;
-  const h = horizontal ? dims.short : dims.long;
+function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, onPress, style }: DominoTileProps) {
+  const base   = TILE_DIMS[size] ?? TILE_DIMS.md;
+  const S      = Math.round(base.short  * tileScale);
+  const L      = Math.round(base.long   * tileScale);
+  const pip    = Math.max(2, Math.round(base.pip    * tileScale));
+  const corner = Math.max(2, Math.round(base.corner * tileScale));
+  const divW   = Math.max(1, Math.round(tileScale));
 
-  const borderColor = selected ? colors.primary : colors.tileBorder;
-  const borderWidth = selected ? 2 : 1;
+  const tileW  = horizontal ? L : S;
+  const tileH  = horizontal ? S : L;
+  const halfW  = horizontal ? (L - divW) / 2 : S;
+  const halfH  = horizontal ? S : (L - divW) / 2;
 
-  const wrapStyle = [
-    tileStyles.wrap,
-    {
-      width: w,
-      height: h,
-      borderColor,
-      borderWidth,
-      flexDirection: horizontal ? 'row' : 'column',
-    },
-    style,
-  ];
+  const selectedStyle = selected
+    ? (Platform.OS === 'web'
+        ? ({ borderColor: colors.primary, boxShadow: '0 0 10px rgba(74,222,128,0.6)' } as any)
+        : { borderColor: colors.primary, shadowColor: '#4ade80', shadowOpacity: 0.8, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 6 })
+    : { borderColor: TILE_LINE };
 
-  const halfStyle = horizontal
-    ? [{ width: w / 2, height: h }]
-    : [{ width: w, height: h / 2 }];
-
-  const dividerStyle = horizontal ? tileStyles.dividerV : tileStyles.dividerH;
+  const tileShadow = Platform.OS === 'web'
+    ? ({ boxShadow: '0px 6px 10px rgba(0,0,0,0.55)' } as any)
+    : {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.45,
+        shadowRadius: 7,
+        elevation: 9,
+      };
 
   const content = (
-    <View style={wrapStyle}>
-      <View style={[tileStyles.half, ...halfStyle]}>
-        <Pips value={tile[0]} dot={dims.dot} pad={dims.pad} />
-      </View>
-      <View style={dividerStyle} />
-      <View style={[tileStyles.half, ...halfStyle]}>
-        <Pips value={tile[1]} dot={dims.dot} pad={dims.pad} />
-      </View>
+    <View style={[
+      {
+        width: tileW,
+        height: tileH,
+        backgroundColor: TILE_BG,
+        borderRadius: corner,
+        borderWidth: selected ? 2 : 1,
+        flexDirection: horizontal ? 'row' : 'column',
+        overflow: 'hidden',
+      },
+      !selected && tileShadow,
+      selectedStyle,
+      style,
+    ]}>
+      <Pips value={tile[0]} halfW={halfW} halfH={halfH} dot={pip} />
+      <View style={horizontal
+        ? { width: divW, height: tileH, backgroundColor: TILE_LINE }
+        : { width: tileW, height: divW, backgroundColor: TILE_LINE }
+      } />
+      <Pips value={tile[1]} halfW={halfW} halfH={halfH} dot={pip} />
     </View>
   );
 
   if (onPress) {
-    return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={{ borderRadius: radius.md }}>
-        {content}
-      </TouchableOpacity>
-    );
+    return <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={{ borderRadius: corner }}>{content}</TouchableOpacity>;
   }
-
   return content;
 }
 
-function Pips({ value, dot, pad }: { value: number; dot: number; pad: number }) {
-  const spots = PIP_POS[value] ?? [];
+function Pips({ value, halfW, halfH, dot }: { value: number; halfW: number; halfH: number; dot: number }) {
+  const spots = PIP_POSITIONS[value] ?? [];
   return (
-    <View style={[tileStyles.pips, { padding: pad }]}>
-      {spots.map(([r, c], idx) => (
+    <View style={{ width: halfW, height: halfH }}>
+      {spots.map(([topFrac, leftFrac], idx) => (
         <View
           key={idx}
-          style={[
-            tileStyles.pip,
-            {
-              width: dot,
-              height: dot,
-              borderRadius: dot / 2,
-              top: `${(r / 2) * 100}%`,
-              left: `${(c / 2) * 100}%`,
-            },
-          ]}
+          style={{
+            position: 'absolute',
+            width: dot,
+            height: dot,
+            borderRadius: dot / 2,
+            backgroundColor: TILE_PIP,
+            top:  topFrac  * halfH - dot / 2,
+            left: leftFrac * halfW - dot / 2,
+          }}
         />
       ))}
     </View>
   );
 }
-
-const tileStyles = StyleSheet.create({
-  wrap: {
-    backgroundColor: colors.tileBg,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  half: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dividerH: {
-    height: 1,
-    backgroundColor: colors.tileBorder,
-  },
-  dividerV: {
-    width: 1,
-    backgroundColor: colors.tileBorder,
-  },
-  pips: {
-    flex: 1,
-    alignSelf: 'stretch',
-    position: 'relative',
-  },
-  pip: {
-    position: 'absolute',
-    backgroundColor: colors.tilePip,
-    transform: [{ translateX: -0.5 }, { translateY: -0.5 }],
-  },
-});
 
 // ─── Emoji panel ──────────────────────────────────────────────────────────────
 
@@ -353,32 +296,54 @@ const EMOJIS = [
   { id: 'angry',   char: '😡' },
 ];
 
-function EmojiPanel({ onEmoji }: { onEmoji: (e: string) => void }) {
+function EmojiToggle({ onEmoji }: { onEmoji: (e: string) => void }) {
+  const [open, setOpen] = useState(false);
   return (
-    <View style={emojiStyles.grid}>
-      {EMOJIS.map((e) => (
-        <TouchableOpacity
-          key={e.id}
-          style={emojiStyles.btn}
-          onPress={() => onEmoji(e.id)}
-          accessibilityLabel={`Reação ${e.id}`}
-          activeOpacity={0.65}
-        >
-          <Text style={emojiStyles.emoji}>{e.char}</Text>
-        </TouchableOpacity>
-      ))}
+    <View>
+      <TouchableOpacity style={emojiStyles.toggleBtn} onPress={() => setOpen(v => !v)} activeOpacity={0.75}>
+        <Text style={emojiStyles.toggleChar}>😊</Text>
+      </TouchableOpacity>
+      {open && (
+        <View style={emojiStyles.popup}>
+          {EMOJIS.map((e) => (
+            <TouchableOpacity
+              key={e.id}
+              style={emojiStyles.btn}
+              onPress={() => { onEmoji(e.id); setOpen(false); }}
+              accessibilityLabel={`Reação ${e.id}`}
+              activeOpacity={0.65}
+            >
+              <Text style={emojiStyles.emoji}>{e.char}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
 const emojiStyles = StyleSheet.create({
-  grid: {
+  toggleBtn: {
+    width: 36, height: 36,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,100,0,0.6)',
+    borderRadius: 18,
+    borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)',
+  },
+  toggleChar: { fontSize: 20 },
+  popup: {
+    position: 'absolute',
+    top: 42,
+    right: 0,
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'center',
     width: 90,
     gap: 6,
-    padding: 6,
-    backgroundColor: 'rgba(0,0,0,0.40)',
+    padding: 8,
+    backgroundColor: 'rgba(8,18,8,0.94)',
     borderRadius: radius.lg,
+    borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)',
+    zIndex: 200,
   },
   btn: {
     width: 36, height: 36,
@@ -440,11 +405,7 @@ function OpponentCard({ player, tileCount }: { player: any; tileCount: number })
       style={oppStyles.card}
     >
       <View style={oppStyles.sideSlot}>
-        <Image
-          source={require('../../assets/Domino Tiles/Frame 14183.png')}
-          style={oppStyles.tileIcon}
-          resizeMode="contain"
-        />
+        <DominoTile tile={[1, 1]} size="icon" />
         <Text style={oppStyles.tileCount}>{tileCount}</Text>
       </View>
 
@@ -529,11 +490,7 @@ function SidePlayerCard({ player, tileCount }: { player: any; tileCount: number 
       style={sideStyles.card}
     >
       <View style={sideStyles.sideSlot}>
-        <Image
-          source={require('../../assets/Domino Tiles/Frame 14183.png')}
-          style={sideStyles.tileIcon}
-          resizeMode="contain"
-        />
+        <DominoTile tile={[1, 1]} size="icon" />
         <Text style={sideStyles.tileCount}>{tileCount}</Text>
       </View>
 
@@ -613,11 +570,7 @@ function MyPlayerCard({ name, hand, isMyTurn, avatarUri }: {
       style={[myCardStyles.card, isMyTurn && myCardStyles.cardMyTurn]}
     >
       <View style={myCardStyles.sideSlot}>
-        <Image
-          source={require('../../assets/Domino Tiles/Frame 14183.png')}
-          style={myCardStyles.tileIcon}
-          resizeMode="contain"
-        />
+        <DominoTile tile={[1, 1]} size="icon" />
         <Text style={myCardStyles.tileCount}>{hand}</Text>
       </View>
 
@@ -809,37 +762,44 @@ export function GameScreen({ navigation, route }: Props) {
   // ── Socket ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
-    connectSocket().then((socket) => {
-      if (!mounted) return;
-      socketRef.current = socket;
-      socket.emit('game:join', { gameId });
+    (async () => {
+      try {
+        const socket = await connectSocket();
+        if (!mounted) return;
+        socketRef.current = socket;
+        socket.emit('game:join', { gameId });
 
-      const onGameState = (state: GameState) => {
-        const normalized = normalizeGameState(state);
-        setGame(normalized);
-        resetTurnTimer();
-        const me = normalized.players.find((p) => p.userId === myUserId) ?? normalized.players.find((p) => p.seat === 0);
-        const newHand = me?.hand ?? [];
-        const cur = useGameStore.getState().selectedTile;
-        if (cur) {
-          const stillInHand = newHand.some((t) => t && t[0] === cur[0] && t[1] === cur[1]);
-          if (!stillInHand) setSelectedTile(null);
-        }
-      };
+        const onGameState = (state: GameState) => {
+          const normalized = normalizeGameState(state);
+          setGame(normalized);
+          resetTurnTimer();
+          const me = normalized.players.find((p) => p.userId === myUserId) ?? normalized.players.find((p) => p.seat === 0);
+          const newHand = me?.hand ?? [];
+          const cur = useGameStore.getState().selectedTile;
+          if (cur) {
+            const stillInHand = newHand.some((t) => t && t[0] === cur[0] && t[1] === cur[1]);
+            if (!stillInHand) setSelectedTile(null);
+          }
+        };
 
-      socket.on('game:state',   onGameState);
-      socket.on('game:ended',   (result: any) => { if (timerRef.current) clearInterval(timerRef.current); setGameResult(result); setResultModal(true); });
-      socket.on('game:error',   ({ message }: { message: string }) => showError(message));
-      socket.on('game:timeout', ({ userId }: { userId: string }) => { if (String(userId) === myUserId) showError('Tempo esgotado — sua vez foi pulada'); });
-      socket.on('disconnect',   () => setDisconnected(true));
-      socket.on('connect',      () => { setDisconnected(false); socket.emit('game:join', { gameId }); });
+        socket.on('game:state',   onGameState);
+        socket.on('game:ended',   (result: any) => { if (timerRef.current) clearInterval(timerRef.current); setGameResult(result); setResultModal(true); });
+        socket.on('game:error',   ({ message }: { message: string }) => showError(message));
+        socket.on('game:timeout', ({ userId }: { userId: string }) => { if (String(userId) === myUserId) showError('Tempo esgotado — sua vez foi pulada'); });
+        socket.on('disconnect',   () => setDisconnected(true));
+        socket.on('connect',      () => { setDisconnected(false); socket.emit('game:join', { gameId }); });
 
-      return () => {
-        socket.off('game:state'); socket.off('game:ended');
-        socket.off('game:error'); socket.off('game:timeout');
-        socket.off('disconnect'); socket.off('connect');
-      };
-    });
+        return () => {
+          socket.off('game:state'); socket.off('game:ended');
+          socket.off('game:error'); socket.off('game:timeout');
+          socket.off('disconnect'); socket.off('connect');
+        };
+      } catch (err: any) {
+        if (!mounted) return;
+        showError(err?.message || 'Falha ao conectar na partida');
+        setDisconnected(true);
+      }
+    })();
     return () => {
       mounted = false;
       socketRef.current?.emit('game:leave', { gameId });
@@ -859,33 +819,53 @@ export function GameScreen({ navigation, route }: Props) {
     if (!selectedTile) return;
     const plays = validPlaysForSelected.filter((p) => p.side === side);
     if (!plays.length) return;
-    const socket = socketRef.current ?? await connectSocket();
-    socket.emit('game:move', { gameId, tile: selectedTile, side, flipped: plays[0].flipped });
-    setSelectedTile(null);
-  }, [selectedTile, validPlaysForSelected, gameId]);
+    try {
+      const socket = socketRef.current ?? await connectSocket();
+      socket.emit('game:move', { gameId, tile: selectedTile, side, flipped: plays[0].flipped });
+      setSelectedTile(null);
+    } catch (err: any) {
+      showError(err?.message || 'Falha ao jogar');
+    }
+  }, [selectedTile, validPlaysForSelected, gameId, showError]);
 
   const handlePlayImmediate = useCallback(async () => {
     if (!selectedTile || validPlaysForSelected.length !== 1) return;
     const { side, flipped } = validPlaysForSelected[0];
-    const socket = socketRef.current ?? await connectSocket();
-    socket.emit('game:move', { gameId, tile: selectedTile, side, flipped });
-    setSelectedTile(null);
-  }, [selectedTile, validPlaysForSelected, gameId]);
+    try {
+      const socket = socketRef.current ?? await connectSocket();
+      socket.emit('game:move', { gameId, tile: selectedTile, side, flipped });
+      setSelectedTile(null);
+    } catch (err: any) {
+      showError(err?.message || 'Falha ao jogar');
+    }
+  }, [selectedTile, validPlaysForSelected, gameId, showError]);
 
   const handlePass = useCallback(async () => {
-    const socket = socketRef.current ?? await connectSocket();
-    socket.emit('game:pass', { gameId });
-  }, [gameId]);
+    try {
+      const socket = socketRef.current ?? await connectSocket();
+      socket.emit('game:pass', { gameId });
+    } catch (err: any) {
+      showError(err?.message || 'Falha ao passar');
+    }
+  }, [gameId, showError]);
 
   const handleDraw = useCallback(async () => {
-    const socket = socketRef.current ?? await connectSocket();
-    socket.emit('game:draw', { gameId });
-  }, [gameId]);
+    try {
+      const socket = socketRef.current ?? await connectSocket();
+      socket.emit('game:draw', { gameId });
+    } catch (err: any) {
+      showError(err?.message || 'Falha ao comprar');
+    }
+  }, [gameId, showError]);
 
   const handleEmoji = useCallback(async (emoji: string) => {
-    const socket = socketRef.current ?? await connectSocket();
-    socket.emit('game:emoji', { gameId, emoji });
-  }, [gameId]);
+    try {
+      const socket = socketRef.current ?? await connectSocket();
+      socket.emit('game:emoji', { gameId, emoji });
+    } catch (err: any) {
+      showError(err?.message || 'Falha ao enviar reação');
+    }
+  }, [gameId, showError]);
 
   const doLeave = () => {
     setLeaveConfirmVisible(false);
@@ -915,6 +895,9 @@ export function GameScreen({ navigation, route }: Props) {
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
+  const boardCount = currentGame?.board?.length ?? 0;
+  const boardScale = Math.min(1, Math.max(0.48, 11 / Math.max(11, boardCount)));
+
   return (
     <ImageBackground
       source={require('../../assets/background.png')}
@@ -939,12 +922,21 @@ export function GameScreen({ navigation, route }: Props) {
         </Animated.View>
       )}
 
-      {/* ── Top bar: settings only (score moved near table) ── */}
+      {/* ── Top bar ── */}
       <View style={styles.topBar}>
-        <View style={styles.topCenter} />
         <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)}>
           <IconSettings size={24} color={colors.textPrimary} accessibilityLabel="Configurações" />
         </TouchableOpacity>
+        <View style={styles.topCenter}>
+          {currentGame?.status === 'playing' && (
+            <View style={[styles.timerBadge, turnTimer <= 10 && styles.timerBadgeUrgent]}>
+              <Text style={[styles.timerText, turnTimer <= 10 && styles.timerTextUrgent]}>
+                {turnTimer}
+              </Text>
+            </View>
+          )}
+        </View>
+        <EmojiToggle onEmoji={handleEmoji} />
       </View>
 
       {/* ── Middle: [left player] [table] [emoji] [right player] ── */}
@@ -987,20 +979,21 @@ export function GameScreen({ navigation, route }: Props) {
                   />
                 )}
 
-                {/* Board tiles */}
                 {currentGame.board.length > 0 && (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.boardTiles}
+                    contentContainerStyle={[styles.boardTiles, { gap: 0 }]}
                   >
-                    {currentGame.board.map((pt: PlacedTile, i: number) => (
-                      <TileBoardImage
-                        key={i}
-                        tile={pt.tile}
-                        horizontal={pt.side === 'left' || pt.side === 'right'}
-                        flipped={pt.flipped}
-                      />
+                    {buildLinearBoardTiles(currentGame.board).map((tile, i) => (
+                      <View key={i} style={i > 0 ? { marginLeft: -2 } : undefined}>
+                        <DominoTile
+                          tile={tile}
+                          size="sm"
+                          horizontal={tile[0] !== tile[1]}
+                          tileScale={boardScale}
+                        />
+                      </View>
                     ))}
                   </ScrollView>
                 )}
@@ -1009,77 +1002,68 @@ export function GameScreen({ navigation, route }: Props) {
             </View>
           </View>
 
-          {/* Hand section below oval — outside overflow:hidden so tiles are always visible */}
+          {/* Hand section — action bar above tiles, player card beside */}
           <View style={styles.handSection}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.handScroll}
-              contentContainerStyle={styles.handContent}
-            >
-              {myHand.map((tile, i) => {
-                if (!tile) return null;
-                const lo = Math.min(tile[0], tile[1]);
-                const hi = Math.max(tile[0], tile[1]);
-                if (!TILE_IMAGE_MAP[`${lo}-${hi}`]) return null;
-                const key = tileKey(tile);
-                const isPlayable = isMyTurn && validMovesMap.has(key);
-                const isSelected = selectedTile?.[0] === tile[0] && selectedTile?.[1] === tile[1];
-                return (
-                  <View key={`${key}-${i}`} style={{ alignItems: 'center' }}>
-                    <TileHandImage
-                      tile={tile}
-                      selected={isSelected}
-                      playable={!isMyTurn || isPlayable}
-                      onPress={() => handleTileSelect(tile)}
-                    />
-                    {isMyTurn && isPlayable && !isSelected && <View style={styles.playIndicator} />}
-                  </View>
-                );
-              })}
-              {/* Draw button inline with tiles — identical structure to hand tiles */}
-              {isMyTurn && !selectedTile && hasBoneyard && (
-                <View style={{ alignItems: 'center' }}>
-                  <TouchableOpacity onPress={handleDraw} activeOpacity={0.85}>
-                    <View style={handImgStyles.container}>
-                      <Image
-                        source={require('../../assets/Domino Tiles/Frame 14183.png')}
-                        style={handImgStyles.img}
-                        resizeMode="stretch"
-                      />
-                    </View>
+
+            {/* ── Action bar ── */}
+            {isMyTurn && (
+              <View style={styles.actionBar}>
+                {selectedTile && uniqueSides.length === 1 && (
+                  <TouchableOpacity style={styles.jogarBtn} onPress={handlePlayImmediate} activeOpacity={0.85}>
+                    <Text style={styles.jogarBtnText}>Jogar</Text>
                   </TouchableOpacity>
-                  <View style={styles.playIndicator} />
-                </View>
-              )}
-            </ScrollView>
-            <View style={styles.myBottomArea}>
-              {isMyTurn && (
-                <>
-                  {selectedTile && uniqueSides.length > 1 && uniqueSides.map((side) => (
-                    <TouchableOpacity key={side} style={styles.tablePlayBtn} onPress={() => handlePlayTile(side)}>
-                      <Text style={styles.tablePlayBtnText}>
-                        {side === 'left' ? '←' : side === 'right' ? '→' : side === 'top' ? '↑' : '↓'}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                  {selectedTile && uniqueSides.length === 1 && (
-                    <TouchableOpacity style={styles.tablePlayBtnPrimary} onPress={handlePlayImmediate}>
-                      <Text style={styles.tablePlayBtnText}>Jogar</Text>
-                    </TouchableOpacity>
-                  )}
-                  {!selectedTile && !hasValidMoves && !hasBoneyard && (
-                    <TouchableOpacity style={styles.tablePassBtn} onPress={handlePass}>
-                      <Text style={styles.tablePassText}>Passar</Text>
-                    </TouchableOpacity>
-                  )}
-                  {selectedTile && (
-                    <TouchableOpacity style={styles.tableCancelBtn} onPress={() => setSelectedTile(null)}>
-                      <Text style={styles.tableCancelText}>✕</Text>
-                    </TouchableOpacity>
-                  )}
-                </>
-              )}
+                )}
+                {selectedTile && uniqueSides.length > 1 && uniqueSides.map((side) => (
+                  <TouchableOpacity key={side} style={styles.sideBtn} onPress={() => handlePlayTile(side)} activeOpacity={0.8}>
+                    <Text style={styles.sideBtnText}>
+                      {side === 'left' ? '← Esquerda' : side === 'right' ? 'Direita →' : side === 'top' ? '↑ Cima' : '↓ Baixo'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {!selectedTile && hasBoneyard && (
+                  <TouchableOpacity style={styles.drawBtn} onPress={handleDraw} activeOpacity={0.8}>
+                    <Text style={styles.drawBtnText}>+ Comprar</Text>
+                  </TouchableOpacity>
+                )}
+                {!selectedTile && !hasValidMoves && !hasBoneyard && (
+                  <TouchableOpacity style={styles.passBtn} onPress={handlePass} activeOpacity={0.8}>
+                    <Text style={styles.passBtnText}>Passar vez</Text>
+                  </TouchableOpacity>
+                )}
+                {selectedTile && (
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setSelectedTile(null)}>
+                    <IconX size={14} color="#fff" accessibilityLabel="Cancelar" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {/* ── Hand tiles + player card ── */}
+            <View style={styles.handRow}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.handScroll}
+                contentContainerStyle={styles.handContent}
+              >
+                {myHand.map((tile, i) => {
+                  if (!tile) return null;
+                  const key = tileKey(tile);
+                  const isPlayable = isMyTurn && validMovesMap.has(key);
+                  const isSelected = selectedTile?.[0] === tile[0] && selectedTile?.[1] === tile[1];
+                  return (
+                    <View key={`${key}-${i}`} style={[styles.handTileWrap, isSelected && styles.handTileSelected]}>
+                      <TileHandImage
+                        tile={tile}
+                        selected={isSelected}
+                        playable={!isMyTurn || isPlayable}
+                        onPress={() => handleTileSelect(tile)}
+                      />
+                      {isMyTurn && isPlayable && !isSelected && <View style={styles.playIndicator} />}
+                    </View>
+                  );
+                })}
+              </ScrollView>
               <MyPlayerCard
                 name={user?.name?.split(' ')[0] || 'Você'}
                 hand={myHand.filter(Boolean).length}
@@ -1087,13 +1071,10 @@ export function GameScreen({ navigation, route }: Props) {
                 avatarUri={(user as any)?.avatarUrl ?? (user as any)?.avatar}
               />
             </View>
+
           </View>
         </View>
 
-        {/* Right column: emoji + my player card */}
-        <View style={[styles.rightColumn, Platform.OS !== 'web' && styles.rightColumnMobile]}>
-          <EmojiPanel onEmoji={handleEmoji} />
-        </View>
       </View>
 
 
@@ -1249,6 +1230,20 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)',
     alignItems: 'center', justifyContent: 'center',
   },
+  timerBadge: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 2, borderColor: 'rgba(74,222,128,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  timerBadgeUrgent: {
+    borderColor: colors.error,
+    backgroundColor: 'rgba(248,113,113,0.15)',
+  },
+  timerText: {
+    color: '#fff', fontWeight: '900', fontSize: fonts.sizes.lg,
+  },
+  timerTextUrgent: { color: colors.error },
 
   // ── Middle ──
   middle: {
@@ -1320,116 +1315,88 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  tableBottomCenter: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    zIndex: 5,
-    transform: [{ translateY: 30 }],
-  },
+
   watermarkImage: {
     width: 130,
     height: 80,
     opacity: 0.1,
   },
-  boardTiles: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.lg },
-  emojiWrap: { justifyContent: 'center' },
-  rightColumn: {
-    position: 'absolute',
-    right: spacing.sm,
-    bottom: 12,
-    zIndex: 15,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-  },
-  rightColumnMobile: {
-    position: 'absolute',
-    right: spacing.sm,
-    bottom: 12,
-    zIndex: 15,
-  },
+  boardTiles: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md },
 
-  // ── In-table floating action controls ──
-  tableActions: {
-    position: 'absolute',
-    top: 6,
-    right: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    zIndex: 5,
-  },
-  tablePlayBtnPrimary: {
-    backgroundColor: '#4ade80',
-    borderRadius: radius.sm,
-    paddingVertical: 5, paddingHorizontal: 12,
-  },
-  tablePlayBtn: {
-    backgroundColor: '#16a34a',
-    borderRadius: radius.sm,
-    paddingVertical: 5, paddingHorizontal: 10,
-  },
-  tablePlayBtnText: { color: '#000', fontWeight: '800', fontSize: fonts.sizes.xs },
-  tableCancelBtn: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: radius.full,
-    width: 24, height: 24, alignItems: 'center', justifyContent: 'center',
-  },
-  tableCancelText: { color: '#fff', fontSize: 12 },
-  tablePassBtn: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: radius.sm,
-    paddingVertical: 5, paddingHorizontal: 8,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-  },
-  tablePassText: { color: colors.textMuted, fontSize: fonts.sizes.xs },
-
-  // ── Hand section (below oval) ──
+  // ── Hand section ──
   handSection: {
     position: 'absolute',
     left: 0, right: 0, bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    paddingTop: spacing.sm,
+    flexDirection: 'column',
     paddingHorizontal: spacing.sm,
-    gap: 2,
     zIndex: 30,
   },
-  handScroll: {
-    flexGrow: 0,
-    flexShrink: 1,
-    zIndex: 10,
-    ...(Platform.OS === 'web' ? ({ minWidth: 0, maxWidth: '62%' } as any) : ({ maxWidth: '58%' } as any)),
-  },
-  myBottomArea: {
+  actionBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    paddingTop: 2,
-    zIndex: 40,
-    ...(Platform.OS !== 'web' ? { elevation: 8 } : null),
+    paddingVertical: spacing.xs,
+    minHeight: 48,
   },
-  handActions: {
+  jogarBtn: {
+    backgroundColor: '#4ade80',
+    borderRadius: radius.full,
+    paddingVertical: 11, paddingHorizontal: 32,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 0 14px rgba(74,222,128,0.65)' } as any)
+      : { shadowColor: '#4ade80', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.65, shadowRadius: 12, elevation: 10 }),
+  },
+  jogarBtnText: { color: '#000', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.4 },
+  sideBtn: {
+    backgroundColor: '#16a34a',
+    borderRadius: radius.full,
+    paddingVertical: 11, paddingHorizontal: 18,
+  },
+  sideBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
+  drawBtn: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: radius.full,
+    paddingVertical: 11, paddingHorizontal: 22,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+  },
+  drawBtnText: { color: '#e2e8f0', fontWeight: '700', fontSize: fonts.sizes.sm },
+  passBtn: {
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    borderRadius: radius.full,
+    paddingVertical: 11, paddingHorizontal: 22,
+    borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)',
+  },
+  passBtnText: { color: '#fca5a5', fontWeight: '700', fontSize: fonts.sizes.sm },
+  cancelBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  handRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: spacing.sm,
-    paddingBottom: 2,
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  handScroll: {
+    flex: 1,
+    zIndex: 10,
   },
   handContent: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 3,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    alignItems: 'flex-end',
+    gap: 4,
+    paddingHorizontal: spacing.xs,
+    paddingTop: 14,
+    paddingBottom: 4,
   },
-  tileUnplayable: { opacity: 0.38 },
+  handTileWrap: {
+    alignItems: 'center',
+  },
+  handTileSelected: {
+    transform: [{ translateY: -12 }],
+  },
   playIndicator: {
     width: 6, height: 6, borderRadius: 3,
     backgroundColor: '#4ade80',
@@ -1539,7 +1506,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', gap: spacing.lg,
     borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)', minWidth: 280,
   },
-  resultEmoji: { fontSize: 56 },
   resultTitle: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: '#fff' },
   resultPrize: { fontSize: fonts.sizes.xl, fontWeight: '700', color: '#facc15' },
   resultBtn: {

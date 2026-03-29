@@ -5,14 +5,20 @@ import rateLimit from 'express-rate-limit';
 import { config } from './config';
 import { antifraudMiddleware } from './middleware/antifraud.middleware';
 import routes from './routes';
+import type { CorsOptions } from 'cors';
 
 const app = express();
+
+// Trust the first proxy (ngrok / reverse proxy) so express-rate-limit
+// can read X-Forwarded-For correctly.
+app.set('trust proxy', 1);
 
 // ── Health check (before rate limiting / auth) ─────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', env: config.env }));
 
 app.use(helmet());
-app.use(cors({ origin: config.cors.origins, credentials: true }));
+const corsOrigin: CorsOptions['origin'] = config.env !== 'production' ? true : config.cors.origins;
+app.use(cors({ origin: corsOrigin, credentials: true }));
 
 // Capture raw body for PIX webhook HMAC verification.
 // Uses express.json's built-in `verify` callback — fires after the body
