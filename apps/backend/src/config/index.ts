@@ -63,6 +63,7 @@ export const config = {
     botInjectWaitSeconds: parseInt(process.env.BOT_INJECT_WAIT_SECONDS || '5', 10),
     matchmakingBetTolerance: parseFloat(process.env.MATCHMAKING_BET_TOLERANCE || '0.10'),
     houseEdgePercent: parseFloat(process.env.HOUSE_EDGE_PERCENT || '10'),
+    disconnectGraceSeconds: parseInt(process.env.DISCONNECT_GRACE_SECONDS || '15', 10),
   },
 
   admin: {

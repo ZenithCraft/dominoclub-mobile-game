@@ -17,6 +17,7 @@ import {
 
 export const activeGames = new Map<string, GameState>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
+const disconnectTimers = new Map<string, NodeJS.Timeout>();
 
 // ─── Replay Tracking ─────────────────────────────────────────────────────────
 
@@ -76,6 +77,13 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       where: { gameId, userId: user.id },
       data: { connected: true },
     });
+
+    const k = `${gameId}:${user.id}`;
+    const pending = disconnectTimers.get(k);
+    if (pending) {
+      clearTimeout(pending);
+      disconnectTimers.delete(k);
+    }
 
     // Initialize game state if not already active
     if (!activeGames.has(gameId)) {
@@ -205,8 +213,17 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
   socket.on('disconnect', () => {
     const gameIds = [...joinedGames];
     joinedGames.clear();
-    gameIds.forEach((gameId) => {
-      forfeitGame(gameId, user.id, io, 'disconnect').catch(() => {});
+    gameIds.forEach(async (gameId) => {
+      await prisma.gamePlayer.updateMany({
+        where: { gameId, userId: user.id },
+        data: { connected: false },
+      });
+      const k = `${gameId}:${user.id}`;
+      const t = setTimeout(() => {
+        disconnectTimers.delete(k);
+        forfeitGame(gameId, user.id, io, 'disconnect').catch(() => {});
+      }, config.game.disconnectGraceSeconds * 1000);
+      disconnectTimers.set(k, t);
     });
   });
 }
