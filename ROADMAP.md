@@ -1,31 +1,72 @@
-# DominoClub — Implementation Roadmap
+# DominoClub — Roadmap & Handoff (Client)
+
+Updated: **2026-03-30**
+
+This document serves two purposes:
+1) summarize the **current state** of the project; 2) list what the **client must provide** (accounts/credentials/infra) to go to production and publish to app stores.
+
+---
+
+## Client Handoff (what must be provided)
+
+### External accounts and credentials
+
+- **Banco Inter (PIX)**
+  - `INTER_CLIENT_ID`, `INTER_CLIENT_SECRET`
+  - **mTLS certificate** (`inter.crt` and `inter.key`) with configured paths (`INTER_CERT_PATH`, `INTER_KEY_PATH`)
+  - `INTER_PIX_KEY` (receiving PIX key)
+  - Public webhook URL: `INTER_WEBHOOK_URL = https://<api-domain>/api/v1/wallet/pix/webhook`
+  - Webhook HMAC secret: `INTER_WEBHOOK_SECRET` (signs the body, header `x-inter-ae-in-ativa`)
+- **Serpro (CPF)**: `SERPRO_API_KEY` and `SERPRO_MOCK_MODE=false` in production
+- **SMS OTP**: choose provider and credentials
+  - Zenvia: `SMS_PROVIDER=zenvia`, `SMS_API_KEY`, `SMS_SENDER`
+  - Twilio: `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`
+
+### Infrastructure (production)
+
+- **Domain + TLS** (recommended reverse proxy: Nginx/Traefik/Cloudflare)
+  - Example: `api.yourdomain.com` → backend
+  - Example: `admin.yourdomain.com` → admin
+- **PostgreSQL** (with backups/retention) and **Redis** (recommended for Socket.io scale)
+- **CDN/Proxy for geofencing** (optional, backend already supports Cloudflare)
+  - With `NODE_ENV=production`, if `cf-ipcountry` is present and not `BR`, the backend blocks
+
+### App store publishing
+
+- **Apple Developer Account** and **Google Play Console**
+- Set `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_SOCKET_URL` in EAS Build (mobile)
+
+### Decisions the client must make
+
+- **Withdrawals**: automatic (PIX triggered by backend) vs. manual (admin approve/reject)
+- **LGPD data export**: API returns JSON; in production we recommend sending via email (SMTP/Email API)
+
+---
 
 ## Current State Summary
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **Database schema** | ✅ 100% | All 8 models + tournament bracket migration done |
-| **Backend API** | ✅ ~95% | Auth, wallet, PIX, game engine, matchmaking, socket, anti-fraud, tournaments, replays, LGPD endpoints |
-| **Mobile App** | ✅ ~95% | Game client, wallet, tournaments, legal screens, first-launch consent modal — beta-ready |
-| **Admin Dashboard** | ✅ 100% | Connected to live backend: stats, users, games, financial tabs all wired |
-| **PIX Payments** | ✅ 100% | Webhook + mTLS + HMAC verification + withdrawal flow complete |
-| **CPF / SMS** | ⚠️ Partial | SMS: Zenvia + Twilio wired. CPF: Serpro call coded, real API key needed |
-| **Tests** | ⚠️ ~60% | Backend unit tests (engine, OTP, wallet, matchmaking) + integration test setup done. E2E: none |
-| **DevOps / Deploy** | ✅ 100% | Docker (multi-stage), docker-compose, GitHub Actions CI, Redis adapter |
-| **Launch Prep** | ✅ ~95% | EAS Build config, legal screens, LGPD endpoints — pending live store accounts for beta |
+| **Database schema** | ✅ 100% | Prisma + migrations incl. tournaments |
+| **Backend API** | ✅ ~95% | Auth, wallet, PIX, engine, matchmaking, socket, anti-fraud, tournaments, replays, LGPD |
+| **Mobile App** | ✅ ~95% | Gameplay, wallet, tournaments, legal screens, first-launch consent — beta-ready |
+| **Admin Dashboard** | ✅ 100% | Login + Stats/Users/Games/Financial/Tournaments |
+| **PIX Payments** | ✅ 100% | Charges + webhook + idempotency + mTLS (prod) |
+| **CPF / SMS** | ⚠️ Partial | SMS OK; CPF coded with mock — real Serpro key still needed |
+| **Tests** | ⚠️ ~60% | Backend unit solid; missing integration (game-flow + PIX) and mobile E2E |
+| **DevOps / Deploy** | ✅ 100% | Docker + docker-compose + CI |
+| **Launch Prep** | ✅ ~95% | Legal/LGPD and EAS config ready — store accounts pending |
 
 ---
 
-## Remaining Work Before Launch
+## Outstanding Items Before Launch
 
-| Item | Effort | Blocks |
-|------|--------|--------|
-| Serpro CPF API key (production credential) | Low | Compliance |
-| Full game-flow integration test | Medium | CI confidence |
-| PIX webhook integration test | Medium | CI confidence |
-| PgBouncer connection pooling | Low | Scale |
-| Mobile E2E tests (Detox/Maestro) | High | QA |
-| TestFlight / internal Play track beta | Low | Store accounts |
+- Serpro CPF: add real API key and set `SERPRO_MOCK_MODE=false`
+- Integration test “full flow”: join queue → match → finish → wallet updated
+- PIX webhook integration test (idempotency + credit)
+- Mobile E2E (Detox/Maestro) for login + match + deposit (at least smoke)
+- Decide **withdrawal** policy (automatic vs manual/admin)
+- Create release pipeline (EAS + stores) with real accounts
 
 ---
 
@@ -55,7 +96,7 @@ Phase 6   (Launch)           ✅ legal/config done — store submission pending
 - [x] Implement `pixWebhook` handler to receive payment confirmations from Banco Inter
 - [x] Update transaction status from `PENDING → COMPLETED` on webhook callback
 - [x] Credit user wallet automatically after PIX confirmation
-- [x] Implement withdrawal flow: validate balance → create PIX transfer → mark as `PROCESSING`
+- [x] Implement withdrawal flow: validate balance → create PIX transfer (production) / mock (dev)
 - [x] Webhook HMAC-SHA256 signature verification (`x-inter-ae-in-ativa` header)
 - [x] mTLS certificates support in Axios client (production only)
 - [x] `registerPixWebhook()` called on server startup
@@ -76,7 +117,7 @@ Phase 6   (Launch)           ✅ legal/config done — store submission pending
 - [x] Twilio integration (international fallback) — REST API with Basic Auth
 - [x] Resend cooldown — throws if new OTP requested before `OTP_RESEND_COOLDOWN_SECONDS` (default 60s)
 - [x] Max-attempts enforcement — locks code after `OTP_MAX_ATTEMPTS` (default 5) failed tries
-- [x] Remaining attempts shown in error message ("2 tentativas restantes")
+- [x] Remaining attempts shown in error message (“2 attempts remaining”)
 - [x] Mobile `handleResend` now shows server cooldown error inline instead of swallowing it
 - [x] `auth.service.ts` updated — `verifyOtp` throws descriptive errors, no silent `false` return
 
@@ -110,7 +151,7 @@ Phase 6   (Launch)           ✅ legal/config done — store submission pending
 - [x] Client-side valid move detection (mirrors domino.engine.ts `canPlayTile`)
 - [x] Unplayable tiles dimmed (opacity 0.4); playable tiles show green dot indicator
 - [x] Tap-to-select: selecting an unplayable tile shows error toast instead
-- [x] Smart side selection: single valid play → one "Jogar" button; multiple sides → separate buttons
+- [x] Smart side selection: single valid play → one “Play” button; multiple sides → separate buttons
 - [x] Correct `flipped` value computed from valid plays (no longer hardcoded `false`)
 - [x] Auto-deselect tile when server state invalidates selection
 - [x] `game:error` handler with animated toast
@@ -126,14 +167,14 @@ Phase 6   (Launch)           ✅ legal/config done — store submission pending
 
 ### 2.2 Wallet Deposit/Withdrawal Flow ✅
 - [x] Deposit 3-step flow: amount → QR code → confirmed
-- [x] Real QR code rendered via `react-native-qrcode-svg` (added dependency)
-- [x] Preset amounts + custom amount input ("Outro" option)
+- [x] Real QR code rendered via `react-native-qrcode-svg`
+- [x] Preset amounts + custom amount input (“Other” option)
 - [x] Polling `GET /wallet/transaction/:id` every 3s to detect PENDING → COMPLETED
 - [x] Success pulse animation + balance auto-refresh on confirmation
 - [x] Rollover remaining indicator on balance card
 - [x] Withdraw button disabled + explanation when rollover > 0 or balance < R$20
 - [x] MAX button auto-fills full available balance
-- [x] PIX key warning ("Não é possível reverter um saque")
+- [x] PIX key warning (“Withdrawals are irreversible”)
 - [x] Pull-to-refresh on transaction history
 - [x] Error state with tap-to-retry on transaction list
 - [x] PROCESSING status badge added (for withdrawals in transit)
