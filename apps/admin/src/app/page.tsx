@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { adminApi } from '../lib/api';
+import logo from '../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
 
 type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments';
 
@@ -215,13 +216,7 @@ export default function AdminDashboard() {
       <div className="fixed left-0 top-0 bottom-0 w-60 bg-black/20 backdrop-blur border-r border-white/10 flex flex-col">
         <div className="p-5 border-b border-white/10">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-12 bg-[#4ade80] rounded flex flex-col items-center justify-around p-1">
-              {[0,1,2].map(i => <div key={i} className="w-1.5 h-1.5 bg-[#0a1f0a] rounded-full" />)}
-            </div>
-            <div>
-              <p className="text-white font-black text-sm tracking-widest">DOMINO</p>
-              <p className="text-[#4ade80] font-black text-sm tracking-widest">CLUB</p>
-            </div>
+            <img src={logo.src} alt="DominoClub" className="h-12 w-auto" />
           </div>
           <p className="text-green-600 text-xs mt-1">Admin Dashboard</p>
         </div>
