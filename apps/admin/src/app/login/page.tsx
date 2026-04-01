@@ -3,6 +3,7 @@ import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { adminApi } from '../../lib/api';
 import background from '../../../../mobile/assets/background.png';
+import logo from '../../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -39,13 +40,7 @@ export default function AdminLogin() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex items-center gap-3 justify-center mb-8">
-          <div className="w-10 h-14 bg-[#4ade80] rounded flex flex-col items-center justify-around p-1.5">
-            {[0,1,2].map(i => <div key={i} className="w-2 h-2 bg-[#0a1f0a] rounded-full" />)}
-          </div>
-          <div>
-            <p className="text-white font-black text-xl tracking-widest">DOMINO</p>
-            <p className="text-[#4ade80] font-black text-xl tracking-widest">CLUB</p>
-          </div>
+          <img src={logo.src} alt="DominoClub" className="h-14 w-auto" />
         </div>
 
         <form

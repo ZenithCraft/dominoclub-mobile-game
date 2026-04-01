@@ -342,10 +342,10 @@ type DominoTileProps = {
 };
 
 const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
-  icon: { short: 16, long: 28, pip: 3,  corner: 4  },
-  hand: { short: 32, long: 56, pip: 7,  corner: 10 },
-  sm:   { short: 32, long: 64, pip: 7,  corner: 10 },
-  md:   { short: 44, long: 88, pip: 9,  corner: 12 },
+  icon: { short: 16, long: 28, pip: 2, corner: 2 },
+  hand: { short: 32, long: 56, pip: 5, corner: 6 },
+  sm:   { short: 32, long: 64, pip: 5, corner: 6 },
+  md:   { short: 44, long: 88, pip: 7, corner: 8 },
 };
 
 // Ivory white matching the PNG tile colour
@@ -415,7 +415,7 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
 function Pips({ value, halfW, halfH, dot }: { value: number; halfW: number; halfH: number; dot: number }) {
   const spots = PIP_POSITIONS[value] ?? [];
   const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-  const edge = Math.max(dot * 0.65, Math.min(halfW, halfH) * 0.08);
+  const edge = Math.max(dot * 0.8, Math.min(halfW, halfH) * 0.08);
   const minCenter = dot / 2 + edge;
   return (
     <View style={{ width: halfW, height: halfH }}>
@@ -448,40 +448,7 @@ const EMOJIS = [
   { id: 'angry',   char: '😡' },
 ];
 
-function EmojiToggle({ onEmoji }: { onEmoji: (e: string) => void }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <View>
-      <TouchableOpacity style={emojiStyles.toggleBtn} onPress={() => setOpen(v => !v)} activeOpacity={0.75}>
-        <Text style={emojiStyles.toggleChar}>😊</Text>
-      </TouchableOpacity>
-      {open && (
-        <View style={emojiStyles.popup}>
-          {EMOJIS.map((e) => (
-            <TouchableOpacity
-              key={e.id}
-              style={emojiStyles.btn}
-              onPress={() => { onEmoji(e.id); setOpen(false); }}
-              accessibilityLabel={`Reação ${e.id}`}
-              activeOpacity={0.65}
-            >
-              <Text style={emojiStyles.emoji}>{e.char}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
 const emojiStyles = StyleSheet.create({
-  toggleBtn: {
-    width: 36, height: 36,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(0,100,0,0.6)',
-    borderRadius: 18,
-    borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)',
-  },
-  toggleChar: { fontSize: 20 },
   popup: {
     position: 'absolute',
     top: 42,
@@ -717,9 +684,10 @@ const sideStyles = StyleSheet.create({
 
 // ─── My player card (right side, below emoji) ────────────────────────────────
 
-function MyPlayerCard({ name, hand, isMyTurn, avatarUri }: {
-  name: string; hand: number; isMyTurn: boolean; avatarUri?: string;
+function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji }: {
+  name: string; hand: number; isMyTurn: boolean; avatarUri?: string; onSelectEmoji?: (e: string) => void;
 }) {
+  const [open, setOpen] = React.useState(false);
   return (
     <LinearGradient
       colors={['rgba(32,100,22,0.93)', 'rgba(8,38,14,0.97)']}
@@ -738,11 +706,30 @@ function MyPlayerCard({ name, hand, isMyTurn, avatarUri }: {
       </View>
 
       <View style={[myCardStyles.sideSlot, myCardStyles.sideSlotRight]}>
-        <View style={myCardStyles.avatar}>
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={myCardStyles.avatarImg} />
-          ) : (
-            <Text style={myCardStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
+        <View>
+          <TouchableOpacity onPress={() => setOpen(v => !v)} activeOpacity={0.75} accessibilityLabel="Abrir reações">
+            <View style={myCardStyles.avatar}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={myCardStyles.avatarImg} />
+              ) : (
+                <Text style={myCardStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+          {open && (
+            <View style={[emojiStyles.popup, { top: 6, right: 0, position: 'absolute' }]}>
+              {EMOJIS.map((e) => (
+                <TouchableOpacity
+                  key={e.id}
+                  style={emojiStyles.btn}
+                  onPress={() => { onSelectEmoji?.(e.id); setOpen(false); }}
+                  accessibilityLabel={`Reação ${e.id}`}
+                  activeOpacity={0.65}
+                >
+                  <Text style={emojiStyles.emoji}>{e.char}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           )}
         </View>
       </View>
@@ -1387,9 +1374,6 @@ export function GameScreen({ navigation, route }: Props) {
 
       {/* ── Top bar ── */}
       <View style={styles.topBar}>
-        <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)}>
-          <IconSettings size={24} color={colors.textPrimary} accessibilityLabel="Configurações" />
-        </TouchableOpacity>
         <View style={styles.topCenter}>
           {currentGame?.status === 'playing' && (
             <View style={[styles.timerBadge, turnTimer <= 10 && styles.timerBadgeUrgent]}>
@@ -1399,7 +1383,9 @@ export function GameScreen({ navigation, route }: Props) {
             </View>
           )}
         </View>
-        <EmojiToggle onEmoji={handleEmoji} />
+        <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)}>
+          <IconSettings size={24} color={colors.textPrimary} accessibilityLabel="Configurações" />
+        </TouchableOpacity>
       </View>
 
       {/* ── Middle: [left player] [table] [emoji] [right player] ── */}
@@ -1542,6 +1528,7 @@ export function GameScreen({ navigation, route }: Props) {
                   hand={myHand.filter(Boolean).length}
                   isMyTurn={isMyTurn}
                   avatarUri={(user as any)?.avatarUrl ?? (user as any)?.avatar}
+                  onSelectEmoji={handleEmoji}
                 />
                 {renderPlayerFx(myEffectiveUserId, 'bottom')}
               </View>
@@ -1692,7 +1679,7 @@ const styles = StyleSheet.create({
   miniDomino: {
     width: 44,
     height: 64,
-    borderRadius: 10,
+    borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.15)',
@@ -1703,9 +1690,9 @@ const styles = StyleSheet.create({
   miniPips: { width: '100%', height: '100%' },
   miniPip: {
     position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: '#111827',
   },
   loadingCard: {

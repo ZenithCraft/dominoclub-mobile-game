@@ -7,7 +7,7 @@
       "policy": "appVersion"
     },
     "orientation": "landscape",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png",
     "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/background.png",
@@ -31,7 +31,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png",
         "backgroundColor": "#0a1f0a"
       },
       "package": "com.dominoclub.app",
@@ -40,7 +40,7 @@
       "blockedPermissions": ["com.google.android.gms.permission.AD_ID"]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png"
     },
     "plugins": [
       "expo-location",

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ImageBackground,
+  View, Text, StyleSheet, ImageBackground, Image,
   ActivityIndicator, Animated, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -108,6 +108,12 @@ export function SplashScreen({ navigation }: Props) {
     >
       <SafeAreaView style={styles.safe}>
         <Animated.View style={[styles.card, { opacity, transform: [{ scale }] }]}>
+          <Image
+            source={require('../../assets/b9e1ca54722e75c0419489ace1bdc6e4b752369c.png')}
+            style={styles.brandLogo}
+            resizeMode="contain"
+            accessibilityLabel="DominoClub"
+          />
           <Animated.View style={{ transform: [{ translateY: pulse.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) }, { rotate: '-10deg' }] }}>
             <MiniDomino left={6} right={6} />
           </Animated.View>
@@ -154,7 +160,7 @@ const styles = StyleSheet.create({
   miniDomino: {
     width: 96,
     height: 54,
-    borderRadius: 14,
+    borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.10)',
@@ -166,10 +172,16 @@ const styles = StyleSheet.create({
   miniPips: { width: '100%', height: '100%', position: 'relative' },
   miniPip: {
     position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#0a1f0a',
-    transform: [{ translateX: -4 }, { translateY: -4 }],
+    transform: [{ translateX: -3 }, { translateY: -3 }],
+  },
+  brandLogo: {
+    width: 260,
+    height: 64,
+    maxWidth: '92%',
+    marginBottom: 10,
   },
 });
