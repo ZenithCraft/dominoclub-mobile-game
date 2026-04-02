@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ImageBackground, Image,
   TouchableOpacity, Modal, Alert, Animated, Pressable, ActivityIndicator,
-  Platform, useWindowDimensions,
+  Platform, useWindowDimensions, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
@@ -448,6 +448,12 @@ const EMOJIS = [
   { id: 'angry',   char: '😡' },
 ];
 
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 const emojiStyles = StyleSheet.create({
   popup: {
     position: 'absolute',
@@ -464,6 +470,7 @@ const emojiStyles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)',
     zIndex: 200,
   },
+  row: { flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', width: '100%' },
   btn: {
     width: 36, height: 36,
     alignItems: 'center', justifyContent: 'center',
@@ -717,17 +724,21 @@ function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji }: {
             </View>
           </TouchableOpacity>
           {open && (
-            <View style={[emojiStyles.popup, { top: 6, right: 0, position: 'absolute' }]}>
-              {EMOJIS.map((e) => (
-                <TouchableOpacity
-                  key={e.id}
-                  style={emojiStyles.btn}
-                  onPress={() => { onSelectEmoji?.(e.id); setOpen(false); }}
-                  accessibilityLabel={`Reação ${e.id}`}
-                  activeOpacity={0.65}
-                >
-                  <Text style={emojiStyles.emoji}>{e.char}</Text>
-                </TouchableOpacity>
+            <View style={[emojiStyles.popup, { top: -170, right: 0, position: 'absolute' }]}>
+              {chunk(EMOJIS, 2).map((row, ri) => (
+                <View key={ri} style={emojiStyles.row}>
+                  {row.map((e) => (
+                    <TouchableOpacity
+                      key={e.id}
+                      style={emojiStyles.btn}
+                      onPress={() => { onSelectEmoji?.(e.id); setOpen(false); }}
+                      accessibilityLabel={`Reação ${e.id}`}
+                      activeOpacity={0.65}
+                    >
+                      <Text style={emojiStyles.emoji}>{e.char}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               ))}
             </View>
           )}
@@ -841,6 +852,7 @@ export function GameScreen({ navigation, route }: Props) {
   const { currentGame, selectedTile, gameResult, lastQueue, setGame, setSelectedTile, setGameResult, clearGame } = useGameStore();
 
   const { width: viewportWidth } = useWindowDimensions();
+  const [feltWidth, setFeltWidth] = useState(0);
 
   const [turnTimer, setTurnTimer]       = useState(30);
   const [resultModal, setResultModal]   = useState(false);
@@ -861,7 +873,10 @@ export function GameScreen({ navigation, route }: Props) {
   const joinPulseAnim  = useRef(new Animated.Value(0)).current;
   const prevStateRef   = useRef<GameState | null>(null);
   const emojiAnimRef   = useRef<Map<string, Animated.Value>>(new Map());
+  const bounceAnimRef  = useRef<Map<string, Animated.Value>>(new Map());
+  const sideAnimRef    = useRef<Map<string, Animated.Value>>(new Map());
   const drawAnimRef    = useRef<Map<string, Animated.Value>>(new Map());
+  const drawPulseAnim  = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'test') return;
@@ -974,15 +989,47 @@ export function GameScreen({ navigation, route }: Props) {
     const char = found?.char ?? emojiId;
     setEmojiByUser((s) => ({ ...s, [userId]: { char, nonce: Date.now() } }));
     const v = ensureAnim(emojiAnimRef, userId);
+    const b = ensureAnim(bounceAnimRef, userId);
+    const s = ensureAnim(sideAnimRef, userId);
     v.stopAnimation();
     v.setValue(0);
+    b.stopAnimation();
+    b.setValue(0);
+    s.stopAnimation();
+    s.setValue(0);
     Animated.sequence([
       Animated.timing(v, { toValue: 1, duration: 140, useNativeDriver: true }),
-      Animated.delay(1200),
+      Animated.sequence([
+        Animated.timing(b, { toValue: 1, duration: 160, useNativeDriver: true }),
+        Animated.timing(b, { toValue: 0, duration: 160, useNativeDriver: true }),
+        Animated.timing(b, { toValue: 1, duration: 140, useNativeDriver: true }),
+        Animated.timing(b, { toValue: 0, duration: 140, useNativeDriver: true }),
+        Animated.sequence([
+          Animated.timing(s, { toValue: 1, duration: 280, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+          Animated.timing(s, { toValue: 0, duration: 280, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+          Animated.timing(s, { toValue: 1, duration: 280, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+          Animated.timing(s, { toValue: 0, duration: 280, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        ]),
+      ]),
+      Animated.delay(1400),
       Animated.timing(v, { toValue: 0, duration: 220, useNativeDriver: true }),
     ]).start();
   }, [ensureAnim]);
 
+  useEffect(() => {
+    if (!selectedTile && hasBoneyard) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(drawPulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+          Animated.timing(drawPulseAnim, { toValue: 0, duration: 900, useNativeDriver: true }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+    drawPulseAnim.stopAnimation();
+    drawPulseAnim.setValue(0);
+  }, [selectedTile, hasBoneyard, drawPulseAnim]);
   const triggerDrawFx = useCallback((userId: string) => {
     setDrawByUser((s) => ({ ...s, [userId]: { nonce: Date.now() } }));
     const v = ensureAnim(drawAnimRef, userId);
@@ -1154,12 +1201,13 @@ export function GameScreen({ navigation, route }: Props) {
 
   const handleEmoji = useCallback(async (emoji: string) => {
     try {
+      triggerEmojiFx(myEffectiveUserId, emoji);
       const socket = socketRef.current ?? await connectSocket();
       socket.emit('game:emoji', { gameId, emoji });
     } catch (err: any) {
       showError(err?.message || 'Falha ao enviar reação');
     }
-  }, [gameId, showError]);
+  }, [gameId, showError, triggerEmojiFx, myEffectiveUserId]);
 
   const doLeave = () => {
     setLeaveConfirmVisible(false);
@@ -1286,7 +1334,57 @@ export function GameScreen({ navigation, route }: Props) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   const boardCount = currentGame?.board?.length ?? 0;
-  const boardScale = Math.min(1, Math.max(0.48, 11 / Math.max(11, boardCount)));
+  const boardTilesLinear = buildLinearBoardTiles(currentGame.board ?? []);
+  const baseGap = 6;
+  const minScale = 0.34;
+  const calcScale = (() => {
+    if (!feltWidth || boardTilesLinear.length === 0) {
+      return Math.min(1, Math.max(minScale, 11 / Math.max(11, boardCount)));
+    }
+    let totalBase = 0;
+    for (const t of boardTilesLinear) {
+      const isHorizontal = t[0] !== t[1];
+      const baseW = isHorizontal ? 64 : 32; // TILE_DIMS.sm long/short
+      totalBase += baseW;
+    }
+    const gaps = Math.max(0, boardTilesLinear.length - 1) * baseGap;
+    const available = Math.max(0, feltWidth - spacing.md * 2);
+    const neededScale = available > 0 ? available / (totalBase + gaps) : 1;
+    return Math.min(1, Math.max(minScale, neededScale));
+  })();
+  const boardScale = calcScale;
+
+  const boardLines: Tile[][] = (() => {
+    if (!feltWidth || boardTilesLinear.length === 0) return [];
+    const available = Math.max(0, feltWidth - spacing.md * 2);
+    let totalBase = 0;
+    for (const t of boardTilesLinear) {
+      const isHorizontal = t[0] !== t[1];
+      const baseW = isHorizontal ? 64 : 32;
+      totalBase += baseW;
+    }
+    const gaps = Math.max(0, boardTilesLinear.length - 1) * baseGap;
+    const totalScaled = (totalBase + gaps) * boardScale;
+    if (totalScaled <= available) return [];
+
+    const lines: Tile[][] = [];
+    let line: Tile[] = [];
+    let acc = 0;
+    for (const t of boardTilesLinear) {
+      const isHorizontal = t[0] !== t[1];
+      const baseW = isHorizontal ? 64 : 32;
+      const add = baseW * minScale + (line.length > 0 ? baseGap : 0);
+      if (acc + add > available && line.length > 0) {
+        lines.push(line);
+        line = [];
+        acc = 0;
+      }
+      line.push(t);
+      acc += add;
+    }
+    if (line.length > 0) lines.push(line);
+    return lines;
+  })();
 
   const renderPlayerFx = (userId: string, placement: 'top' | 'bottom' | 'left' | 'right') => {
     const emoji = emojiByUser[userId];
@@ -1294,10 +1392,12 @@ export function GameScreen({ navigation, route }: Props) {
     if (!emoji && !draw) return null;
 
     const emojiAnim = ensureAnim(emojiAnimRef, userId);
+    const bounceAnim = ensureAnim(bounceAnimRef, userId);
+    const sideAnim = ensureAnim(sideAnimRef, userId);
     const drawAnim = ensureAnim(drawAnimRef, userId);
 
     const emojiAnchor =
-      placement === 'left'
+      placement === 'left' || placement === 'bottom'
         ? { top: -18, left: -10 }
         : { top: -18, right: -10 };
 
@@ -1335,8 +1435,14 @@ export function GameScreen({ navigation, route }: Props) {
               {
                 opacity: emojiAnim,
                 transform: [
-                  { scale: emojiAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+                  { scale: Animated.multiply(
+                      emojiAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.12] }),
+                      bounceAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] })
+                    ) },
                   { translateY: emojiAnim.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) },
+                  { translateY: bounceAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }) },
+                  { translateY: sideAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -4, 0] }) },
+                  { translateX: sideAnim.interpolate({ inputRange: [0, 1], outputRange: [-12, 12] }) },
                 ],
               },
             ]}
@@ -1427,7 +1533,10 @@ export function GameScreen({ navigation, route }: Props) {
                 </View>
               )}
 
-              <View style={styles.tableFelt}>
+              <View
+                style={styles.tableFelt}
+                onLayout={(e) => setFeltWidth(Math.round(e.nativeEvent.layout.width))}
+              >
                 {/* Watermark */}
                 {currentGame.board.length === 0 && (
                   <Image
@@ -1437,23 +1546,27 @@ export function GameScreen({ navigation, route }: Props) {
                   />
                 )}
 
-                {currentGame.board.length > 0 && (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={[styles.boardTiles, { gap: 6 }]}
-                  >
-                    {buildLinearBoardTiles(currentGame.board).map((tile, i) => (
+                {currentGame.board.length > 0 && boardLines.length <= 1 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.boardTiles, { gap: baseGap }]}>
+                    {boardTilesLinear.map((tile, i) => (
                       <View key={i}>
-                        <DominoTile
-                          tile={tile}
-                          size="sm"
-                          horizontal={tile[0] !== tile[1]}
-                          tileScale={boardScale}
-                        />
+                        <DominoTile tile={tile} size="sm" horizontal={tile[0] !== tile[1]} tileScale={boardScale} />
                       </View>
                     ))}
                   </ScrollView>
+                )}
+                {currentGame.board.length > 0 && boardLines.length > 1 && (
+                  <View style={styles.boardMultiWrap}>
+                    {boardLines.map((line, li) => (
+                      <View key={li} style={[styles.boardRow, { gap: baseGap }]}>
+                        {line.map((tile, i) => (
+                          <View key={`${li}-${i}`}>
+                            <DominoTile tile={tile} size="sm" horizontal={tile[0] !== tile[1]} tileScale={minScale} />
+                          </View>
+                        ))}
+                      </View>
+                    ))}
+                  </View>
                 )}
 
               </View>
@@ -1479,9 +1592,11 @@ export function GameScreen({ navigation, route }: Props) {
                   </TouchableOpacity>
                 ))}
                 {!selectedTile && hasBoneyard && (
-                  <TouchableOpacity style={styles.drawBtn} onPress={handleDraw} activeOpacity={0.8}>
-                    <Text style={styles.drawBtnText}>+ Comprar</Text>
-                  </TouchableOpacity>
+                  <Animated.View style={{ transform: [{ scale: drawPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }] }}>
+                    <TouchableOpacity style={styles.drawBtn} onPress={handleDraw} activeOpacity={0.9}>
+                      <Text style={styles.drawBtnText}>+ Comprar</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
                 )}
                 {!selectedTile && !hasValidMoves && !hasBoneyard && (
                   <TouchableOpacity style={styles.passBtn} onPress={handlePass} activeOpacity={0.8}>
@@ -1502,6 +1617,16 @@ export function GameScreen({ navigation, route }: Props) {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.handScroll}
+                {...(Platform.OS === 'web'
+                  ? ({
+                      onWheel: (e: any) => {
+                        try {
+                          (e.currentTarget as any).scrollLeft += e.deltaY;
+                          e.preventDefault?.();
+                        } catch {}
+                      },
+                    } as any)
+                  : {})}
                 contentContainerStyle={styles.handContent}
               >
                 {myHand.map((tile, i) => {
@@ -1851,18 +1976,20 @@ const styles = StyleSheet.create({
     opacity: 0.1,
   },
   boardTiles: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md },
+  boardMultiWrap: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: spacing.md },
+  boardRow: { flexDirection: 'row', alignItems: 'center' },
   playerCardFxWrap: { position: 'relative', alignSelf: 'center' },
   playerFxLayer: { ...StyleSheet.absoluteFillObject, zIndex: 50 },
   emojiBubble: {
     position: 'absolute',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 0,
     borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
-  emojiBubbleText: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  emojiBubbleText: { color: '#fff', fontSize: 26, fontWeight: '900' },
   drawBubble: {
     position: 'absolute',
     paddingHorizontal: 10,
@@ -1906,12 +2033,15 @@ const styles = StyleSheet.create({
   },
   sideBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
   drawBtn: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: '#22c55e',
     borderRadius: radius.full,
     paddingVertical: 11, paddingHorizontal: 22,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1, borderColor: '#86efac',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 0 16px rgba(34,197,94,0.55)' } as any)
+      : { shadowColor: '#22c55e', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 12, elevation: 10 }),
   },
-  drawBtnText: { color: '#e2e8f0', fontWeight: '700', fontSize: fonts.sizes.sm },
+  drawBtnText: { color: '#052e16', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.3 },
   passBtn: {
     backgroundColor: 'rgba(239,68,68,0.12)',
     borderRadius: radius.full,
@@ -1933,6 +2063,15 @@ const styles = StyleSheet.create({
   handScroll: {
     flex: 1,
     zIndex: 10,
+    ...(Platform.OS === 'web'
+      ? ({
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          touchAction: 'pan-x',
+          WebkitOverflowScrolling: 'touch',
+          scrollBehavior: 'smooth',
+        } as any)
+      : null),
   },
   handContent: {
     flexDirection: 'row',

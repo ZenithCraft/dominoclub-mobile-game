@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Platform } from 'react-native';
 
 import { SplashScreen } from '../screens/SplashScreen';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -44,7 +44,6 @@ if (process.env.NODE_ENV !== 'production' && typeof console !== 'undefined') {
   console.error = (...args: any[]) => {
     const first = args[0];
     if (typeof first === 'string' && first.startsWith('Unexpected text node:')) {
-      originalError(...args);
       return;
     }
     originalError(...args);
@@ -101,10 +100,16 @@ class ErrorBoundary extends React.Component<
 }
 
 export function AppNavigator() {
+  const initialRouteName: keyof RootStackParamList =
+    process.env.NODE_ENV !== 'production' && Platform.OS === 'web' ? 'Game' : 'Splash';
+
   return (
     <NavigationContainer>
       <ErrorBoundary>
-        <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
+        <Stack.Navigator
+          initialRouteName={initialRouteName}
+          screenOptions={{ headerShown: false, animation: 'fade' }}
+        >
           <Stack.Screen name="Splash"               component={SplashScreen} />
           <Stack.Screen name="Login"                component={LoginScreen} />
           <Stack.Screen name="Register"             component={RegisterScreen} />
@@ -114,7 +119,12 @@ export function AppNavigator() {
           <Stack.Screen name="Main"                 component={HomeScreen} />
           <Stack.Screen name="Wallet"               component={WalletScreen} />
           <Stack.Screen name="ModeSelect"           component={ModeSelectScreen} />
-          <Stack.Screen name="Game"                 component={GameScreen} options={{ gestureEnabled: false }} />
+          <Stack.Screen
+            name="Game"
+            component={GameScreen}
+            initialParams={{ gameId: 'demo-1' }}
+            options={{ gestureEnabled: false }}
+          />
           <Stack.Screen name="History"              component={HistoryScreen} />
           <Stack.Screen name="Achievements"         component={AchievementsScreen} />
           <Stack.Screen name="Terms"                component={TermsScreen} />
