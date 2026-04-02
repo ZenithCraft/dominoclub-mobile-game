@@ -18,8 +18,8 @@ function getSocketUrl(): string {
   const isLocalhostWeb =
     typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
   return typeof location !== 'undefined'
-    ? (isLocalhostWeb ? 'http://localhost:3002' : location.origin)
-    : 'http://localhost:3002';
+    ? (isLocalhostWeb ? 'http://localhost:3001' : location.origin)
+    : 'http://localhost:3001';
 }
 const IS_MOCK    = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
 

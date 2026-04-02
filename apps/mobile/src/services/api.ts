@@ -8,8 +8,8 @@ const isLocalhostWeb =
 const BASE_URL =
   envBaseUrl ||
   (typeof location !== 'undefined'
-    ? (isLocalhostWeb ? 'http://localhost:3002/api/v1' : `${location.origin}/api/v1`)
-    : 'http://localhost:3002/api/v1');
+    ? (isLocalhostWeb ? 'http://localhost:3001/api/v1' : `${location.origin}/api/v1`)
+    : 'http://localhost:3001/api/v1');
 const IS_MOCK  = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
 
 // Errors from these URLs are surfaced directly to the caller — don't double-toast
