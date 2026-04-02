@@ -29,6 +29,7 @@ Thumbs.db
 
 # Expo
 .expo/
+.userprofile/
 
 # Trae / sandbox artifacts
 **/.sandbox-localappdata/
