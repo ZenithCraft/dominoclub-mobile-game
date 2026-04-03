@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 import fs from 'fs';
 import { createHmac } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { config } from '../config';
 import { prisma } from './prisma.service';
 import { logger } from '../utils/logger';
@@ -213,7 +214,7 @@ export async function processWithdrawal(userId: string, amountBRL: number, pixKe
 
   // Reserve balance and create the transaction atomically before calling the PIX API.
   // This prevents double-spend if the API call takes long or the server restarts.
-  const transaction = await prisma.$transaction(async (tx) => {
+  const transaction = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.wallet.update({
       where: { userId },
       data: { real_balance: { decrement: amountBRL } },
