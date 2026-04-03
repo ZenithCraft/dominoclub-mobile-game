@@ -46,7 +46,7 @@ export async function getGameReplayHandler(req: Request, res: Response) {
 
     if (!game) return res.status(404).json({ error: 'Game not found' });
 
-    const isPlayer = game.players.some((p) => p.userId === userId);
+    const isPlayer = game.players.some((p: { userId: string }) => p.userId === userId);
     if (!isPlayer) return res.status(403).json({ error: 'Access denied' });
 
     res.json({ replay: game.replay_data });
