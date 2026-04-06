@@ -135,8 +135,70 @@ export async function joinTournamentHandler(req: Request, res: Response) {
       });
     }
 
-    res.json({ message: 'Joined tournament successfully', starting: isFull });
+    // Return updated wallet balance + tournament info for the waiting screen
+    const updatedWallet = await prisma.wallet.findUnique({ where: { userId } });
+    const updatedTournament = await prisma.tournament.findUnique({ where: { id } });
+
+    res.json({
+      message: 'Joined tournament successfully',
+      starting: isFull,
+      balance: updatedWallet?.real_balance ?? 0,
+      tournament: updatedTournament,
+    });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
+  }
+}
+
+export async function getTournamentBracketHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const userId = (req as any).user?.userId;
+
+    const tournament = await prisma.tournament.findUnique({
+      where: { id },
+      include: {
+        players: {
+          include: { user: { select: { id: true, name: true, avatar: true } } },
+          orderBy: { joined_at: 'asc' },
+        },
+        games: {
+          orderBy: [{ tournament_round: 'asc' }, { created_at: 'asc' }],
+          include: {
+            players: {
+              include: { user: { select: { id: true, name: true, avatar: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const myPlayer = tournament.players.find((p) => p.userId === userId);
+
+    res.json({
+      tournament: {
+        id: tournament.id,
+        name: tournament.name,
+        status: tournament.status,
+        current_round: tournament.current_round,
+        max_players: tournament.max_players,
+        current_players: tournament.current_players,
+        entry_fee: tournament.entry_fee,
+        prize_pool: tournament.prize_pool,
+        starts_at: tournament.starts_at,
+        finished_at: tournament.finished_at,
+      },
+      players: tournament.players,
+      games: tournament.games,
+      myStatus: {
+        eliminated: !!myPlayer?.eliminated_at,
+        finalPosition: myPlayer?.final_position ?? null,
+        prizeWon: myPlayer?.prize_won ?? 0,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 }

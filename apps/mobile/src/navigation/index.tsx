@@ -18,6 +18,9 @@ import { PrivacyPolicyScreen } from '../screens/PrivacyPolicyScreen';
 import { ResponsibleGamblingScreen } from '../screens/ResponsibleGamblingScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 import { AchievementsScreen } from '../screens/AchievementsScreen';
+import { TournamentWaitingScreen } from '../screens/TournamentWaitingScreen';
+import { TournamentBracketScreen } from '../screens/TournamentBracketScreen';
+import { TournamentResultScreen } from '../screens/TournamentResultScreen';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -35,6 +38,9 @@ export type RootStackParamList = {
   Terms: { showAccept?: boolean } | undefined;
   PrivacyPolicy: undefined;
   ResponsibleGambling: undefined;
+  TournamentWaiting: { tournamentId: string; tournamentName: string; startsAt: string; entryFee: number };
+  TournamentBracket: { tournamentId: string };
+  TournamentResult: { tournamentId: string; won: boolean; prize: number; finalPosition: number; totalPlayers?: number };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -100,8 +106,7 @@ class ErrorBoundary extends React.Component<
 }
 
 export function AppNavigator() {
-  const initialRouteName: keyof RootStackParamList =
-    process.env.NODE_ENV !== 'production' && Platform.OS === 'web' ? 'Game' : 'Splash';
+  const initialRouteName: keyof RootStackParamList = 'Splash';
 
   return (
     <NavigationContainer>
@@ -130,6 +135,9 @@ export function AppNavigator() {
           <Stack.Screen name="Terms"                component={TermsScreen} />
           <Stack.Screen name="PrivacyPolicy"        component={PrivacyPolicyScreen} />
           <Stack.Screen name="ResponsibleGambling"  component={ResponsibleGamblingScreen} />
+          <Stack.Screen name="TournamentWaiting"    component={TournamentWaitingScreen} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="TournamentBracket"    component={TournamentBracketScreen} />
+          <Stack.Screen name="TournamentResult"     component={TournamentResultScreen} options={{ gestureEnabled: false }} />
         </Stack.Navigator>
       </ErrorBoundary>
     </NavigationContainer>

@@ -330,7 +330,7 @@ function TileHandImage({ tile, selected, playable, onPress }: {
 }
 
 // ─── Tile size presets ────────────────────────────────────────────────────────
-type DominoTileSize = 'icon' | 'hand' | 'sm' | 'md';
+type DominoTileSize = 'icon' | 'hand' | 'xs' | 'sm' | 'md';
 type DominoTileProps = {
   tile: Tile;
   size?: DominoTileSize;
@@ -344,6 +344,7 @@ type DominoTileProps = {
 const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
   icon: { short: 16, long: 28, pip: 2, corner: 2 },
   hand: { short: 32, long: 56, pip: 5, corner: 6 },
+  xs:   { short: 22, long: 44, pip: 3, corner: 4 },
   sm:   { short: 32, long: 64, pip: 5, corner: 6 },
   md:   { short: 44, long: 88, pip: 7, corner: 8 },
 };
@@ -373,13 +374,13 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
     : { borderColor: TILE_LINE };
 
   const tileShadow = Platform.OS === 'web'
-    ? ({ boxShadow: '0px 6px 10px rgba(0,0,0,0.55)' } as any)
+    ? ({ boxShadow: '0px 2px 5px rgba(0,0,0,0.28)' } as any)
     : {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 5 },
-        shadowOpacity: 0.45,
-        shadowRadius: 7,
-        elevation: 9,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.22,
+        shadowRadius: 4,
+        elevation: 4,
       };
 
   const content = (
@@ -878,6 +879,54 @@ export function GameScreen({ navigation, route }: Props) {
   const drawAnimRef    = useRef<Map<string, Animated.Value>>(new Map());
   const drawPulseAnim  = useRef(new Animated.Value(0)).current;
 
+  // ── Dev mock: inject a 2v2 game so the board can be screenshotted ────────────
+  useEffect(() => {
+    if (process.env.EXPO_PUBLIC_MOCK_GAME !== 'true') return;
+    if (currentGame) return;
+    const board: PlacedTile[] = [
+      { tile: [6,6], side:'left',  flipped:false },
+      { tile: [6,5], side:'right', flipped:false },
+      { tile: [5,4], side:'right', flipped:false },
+      { tile: [4,4], side:'right', flipped:false },
+      { tile: [4,3], side:'right', flipped:false },
+      { tile: [3,2], side:'right', flipped:false },
+      { tile: [2,2], side:'right', flipped:false },
+      { tile: [2,1], side:'right', flipped:false },
+      { tile: [1,0], side:'right', flipped:false },
+      { tile: [0,0], side:'right', flipped:false },
+      { tile: [6,4], side:'left',  flipped:true  },
+      { tile: [4,2], side:'left',  flipped:true  },
+      { tile: [2,0], side:'left',  flipped:true  },
+      { tile: [6,3], side:'left',  flipped:true  },
+      { tile: [3,1], side:'left',  flipped:true  },
+      { tile: [5,3], side:'left',  flipped:true  },
+      { tile: [3,0], side:'left',  flipped:true  },
+      { tile: [5,2], side:'left',  flipped:true  },
+      { tile: [5,1], side:'left',  flipped:true  },
+      { tile: [5,0], side:'left',  flipped:true  },
+    ];
+    setGame({
+      id: 'dev-mock-2v2',
+      mode: 'TOURNAMENT_2V2',
+      variant: 'CARROCA',
+      status: 'playing',
+      currentPlayerIndex: 0,
+      turnCount: 20,
+      firstPlayMade: true,
+      leftOpen: 0,
+      rightOpen: 0,
+      boneyard: [],
+      board,
+      players: [
+        { userId: 'me',  name: 'Você',    team: 1, seat: 0, hand: [[6,1],[6,2],[6,0]] as Tile[],         isBot: false, connected: true },
+        { userId: 'p2',  name: 'Carlos',  team: 2, seat: 1, hand: Array(4).fill(null) as null[],         isBot: false, connected: true },
+        { userId: 'p3',  name: 'Ana',     team: 1, seat: 2, hand: Array(3).fill(null) as null[],         isBot: false, connected: true },
+        { userId: 'p4',  name: 'Pedro',   team: 2, seat: 3, hand: Array(3).fill(null) as null[],         isBot: false, connected: true },
+      ],
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (process.env.NODE_ENV === 'test') return;
     if (currentGame) {
@@ -897,7 +946,10 @@ export function GameScreen({ navigation, route }: Props) {
   }, [currentGame, joinPulseAnim]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
-  const tableHeight = Math.round(Math.min(viewportWidth * 0.82, 880) / 2.4);
+  const is2v2 = currentGame?.mode?.includes('2V2') ?? false;
+  const boardTileSize: DominoTileSize = is2v2 ? 'xs' : 'sm';
+  const boardTilePreset = TILE_DIMS[boardTileSize];
+  const tableHeight = Math.round(Math.min(viewportWidth * 0.82, 880) / (is2v2 ? 2.2 : 2.7));
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
   const myPlayerIndex = (() => {
     const players = currentGame?.players ?? [];
@@ -1212,6 +1264,8 @@ export function GameScreen({ navigation, route }: Props) {
   const doLeave = () => {
     setLeaveConfirmVisible(false);
     setSettingsVisible(false);
+    // Explicitly emit game:leave so the backend forfeit runs before unmount cleanup
+    socketRef.current?.emit('game:leave', { gameId });
     clearGame();
     navigation.replace('Main');
   };
@@ -1333,57 +1387,30 @@ export function GameScreen({ navigation, route }: Props) {
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
-  const boardCount = currentGame?.board?.length ?? 0;
   const boardTilesLinear = buildLinearBoardTiles(currentGame.board ?? []);
-  const baseGap = 6;
-  const minScale = 0.34;
-  const calcScale = (() => {
-    if (!feltWidth || boardTilesLinear.length === 0) {
-      return Math.min(1, Math.max(minScale, 11 / Math.max(11, boardCount)));
-    }
-    let totalBase = 0;
-    for (const t of boardTilesLinear) {
-      const isHorizontal = t[0] !== t[1];
-      const baseW = isHorizontal ? 64 : 32; // TILE_DIMS.sm long/short
-      totalBase += baseW;
-    }
-    const gaps = Math.max(0, boardTilesLinear.length - 1) * baseGap;
-    const available = Math.max(0, feltWidth - spacing.md * 2);
-    const neededScale = available > 0 ? available / (totalBase + gaps) : 1;
-    return Math.min(1, Math.max(minScale, neededScale));
-  })();
-  const boardScale = calcScale;
+  const SNAKE_GAP = 5;
 
-  const boardLines: Tile[][] = (() => {
-    if (!feltWidth || boardTilesLinear.length === 0) return [];
-    const available = Math.max(0, feltWidth - spacing.md * 2);
-    let totalBase = 0;
-    for (const t of boardTilesLinear) {
-      const isHorizontal = t[0] !== t[1];
-      const baseW = isHorizontal ? 64 : 32;
-      totalBase += baseW;
-    }
-    const gaps = Math.max(0, boardTilesLinear.length - 1) * baseGap;
-    const totalScaled = (totalBase + gaps) * boardScale;
-    if (totalScaled <= available) return [];
+  // 6 horizontal tiles per row; 7th tile becomes a vertical corner connector (between rows)
+  const SNAKE_H_PER_ROW = 6;
+  // Width = 6 horizontal tiles + 5 gaps only (corner is a separate element below the row)
+  const snakeBoardWidth = SNAKE_H_PER_ROW * (boardTilePreset.long + SNAKE_GAP) - SNAKE_GAP;
 
-    const lines: Tile[][] = [];
-    let line: Tile[] = [];
-    let acc = 0;
-    for (const t of boardTilesLinear) {
-      const isHorizontal = t[0] !== t[1];
-      const baseW = isHorizontal ? 64 : 32;
-      const add = baseW * minScale + (line.length > 0 ? baseGap : 0);
-      if (acc + add > available && line.length > 0) {
-        lines.push(line);
-        line = [];
-        acc = 0;
-      }
-      line.push(t);
-      acc += add;
+  // Split: every group of 7 = 6 horizontal tiles + 1 vertical corner tile
+  const snakeRows = (() => {
+    if (!boardTilesLinear.length) return [] as { tiles: Tile[]; cornerTile: Tile | null; isRtl: boolean }[];
+    const segments: { tiles: Tile[]; cornerTile: Tile | null; isRtl: boolean }[] = [];
+    let idx = 0;
+    let rowNum = 0;
+    while (idx < boardTilesLinear.length) {
+      const isRtl = rowNum % 2 === 1;
+      const end = Math.min(idx + SNAKE_H_PER_ROW, boardTilesLinear.length);
+      const hTiles = boardTilesLinear.slice(idx, end);
+      idx = end;
+      const cornerTile = idx < boardTilesLinear.length ? boardTilesLinear[idx++] : null;
+      segments.push({ tiles: hTiles, cornerTile, isRtl });
+      rowNum++;
     }
-    if (line.length > 0) lines.push(line);
-    return lines;
+    return segments;
   })();
 
   const renderPlayerFx = (userId: string, placement: 'top' | 'bottom' | 'left' | 'right') => {
@@ -1480,15 +1507,7 @@ export function GameScreen({ navigation, route }: Props) {
 
       {/* ── Top bar ── */}
       <View style={styles.topBar}>
-        <View style={styles.topCenter}>
-          {currentGame?.status === 'playing' && (
-            <View style={[styles.timerBadge, turnTimer <= 10 && styles.timerBadgeUrgent]}>
-              <Text style={[styles.timerText, turnTimer <= 10 && styles.timerTextUrgent]}>
-                {turnTimer}
-              </Text>
-            </View>
-          )}
-        </View>
+        <View style={styles.topCenter} />
         <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)}>
           <IconSettings size={24} color={colors.textPrimary} accessibilityLabel="Configurações" />
         </TouchableOpacity>
@@ -1546,25 +1565,34 @@ export function GameScreen({ navigation, route }: Props) {
                   />
                 )}
 
-                {currentGame.board.length > 0 && boardLines.length <= 1 && (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.boardTiles, { gap: baseGap }]}>
-                    {boardTilesLinear.map((tile, i) => (
-                      <View key={i}>
-                        <DominoTile tile={tile} size="sm" horizontal={tile[0] !== tile[1]} tileScale={boardScale} />
-                      </View>
-                    ))}
-                  </ScrollView>
-                )}
-                {currentGame.board.length > 0 && boardLines.length > 1 && (
-                  <View style={styles.boardMultiWrap}>
-                    {boardLines.map((line, li) => (
-                      <View key={li} style={[styles.boardRow, { gap: baseGap }]}>
-                        {line.map((tile, i) => (
-                          <View key={`${li}-${i}`}>
-                            <DominoTile tile={tile} size="sm" horizontal={tile[0] !== tile[1]} tileScale={minScale} />
+                {currentGame.board.length > 0 && (
+                  <View style={[styles.snakeBoard, { width: snakeBoardWidth }]}>
+                    {snakeRows.map(({ tiles, cornerTile, isRtl }, rowIdx) => (
+                      <React.Fragment key={rowIdx}>
+                        <View style={[styles.snakeRow, { flexDirection: isRtl ? 'row-reverse' : 'row' }]}>
+                          {tiles.map((tile, i) => {
+                            const displayTile = isRtl ? [tile[1], tile[0]] as Tile : tile;
+                            return (
+                              <DominoTile
+                                key={i}
+                                tile={displayTile}
+                                size={boardTileSize}
+                                horizontal={true}
+                              />
+                            );
+                          })}
+                        </View>
+                        {/* Corner tile below the row at the turn edge, above the next row */}
+                        {cornerTile && (
+                          <View style={{ alignSelf: !isRtl ? 'flex-end' : 'flex-start', marginVertical: 3 }}>
+                            <DominoTile
+                              tile={cornerTile}
+                              size={boardTileSize}
+                              horizontal={false}
+                            />
                           </View>
-                        ))}
-                      </View>
+                        )}
+                      </React.Fragment>
                     ))}
                   </View>
                 )}
@@ -1647,15 +1675,24 @@ export function GameScreen({ navigation, route }: Props) {
                   );
                 })}
               </ScrollView>
-              <View style={styles.playerCardFxWrap}>
-                <MyPlayerCard
-                  name={user?.name?.split(' ')[0] || 'Você'}
-                  hand={myHand.filter(Boolean).length}
-                  isMyTurn={isMyTurn}
-                  avatarUri={(user as any)?.avatarUrl ?? (user as any)?.avatar}
-                  onSelectEmoji={handleEmoji}
-                />
-                {renderPlayerFx(myEffectiveUserId, 'bottom')}
+              <View style={styles.playerCardWithTimer}>
+                {currentGame?.status === 'playing' && (
+                  <View style={[styles.timerBadge, turnTimer <= 10 && styles.timerBadgeUrgent]}>
+                    <Text style={[styles.timerText, turnTimer <= 10 && styles.timerTextUrgent]}>
+                      {turnTimer}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.playerCardFxWrap}>
+                  <MyPlayerCard
+                    name={user?.name?.split(' ')[0] || 'Você'}
+                    hand={myHand.filter(Boolean).length}
+                    isMyTurn={isMyTurn}
+                    avatarUri={(user as any)?.avatarUrl ?? (user as any)?.avatar}
+                    onSelectEmoji={handleEmoji}
+                  />
+                  {renderPlayerFx(myEffectiveUserId, 'bottom')}
+                </View>
               </View>
             </View>
 
@@ -1905,7 +1942,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: 2,
     gap: spacing.sm,
   },
   tableWrap: { flex: 1, position: 'relative' },
@@ -1951,14 +1988,14 @@ const styles = StyleSheet.create({
     borderColor: '#0d1a0d',
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow: '0 0 18px 4px rgba(57,255,106,0.22), 0 0 48px 12px rgba(57,255,106,0.10)',
+          boxShadow: '0 0 10px 2px rgba(57,255,106,0.10), 0 0 24px 6px rgba(57,255,106,0.05)',
         } as any)
       : {
           shadowColor: '#39ff6a',
           shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.35,
-          shadowRadius: 24,
-          elevation: 24,
+          shadowOpacity: 0.15,
+          shadowRadius: 12,
+          elevation: 10,
         }),
   },
   tableFelt: {
@@ -1978,6 +2015,10 @@ const styles = StyleSheet.create({
   boardTiles: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md },
   boardMultiWrap: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: spacing.md },
   boardRow: { flexDirection: 'row', alignItems: 'center' },
+  snakeBoard: { alignSelf: 'center', gap: 0 },
+  snakeRow: { alignItems: 'center', gap: 5 },
+  snakeCorner: { borderRadius: 4, backgroundColor: '#d4cfc6' },
+  playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   playerCardFxWrap: { position: 'relative', alignSelf: 'center' },
   playerFxLayer: { ...StyleSheet.absoluteFillObject, zIndex: 50 },
   emojiBubble: {

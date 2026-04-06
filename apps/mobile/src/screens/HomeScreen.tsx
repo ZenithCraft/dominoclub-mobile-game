@@ -126,6 +126,7 @@ export function GameTopBar({
   onWallet,
   onProfile,
   exitVariant = 'logout',
+  level: levelProp,
 }: {
   user: any;
   onSettings?: () => void;
@@ -133,9 +134,10 @@ export function GameTopBar({
   onWallet?: () => void;
   onProfile?: () => void;
   exitVariant?: 'logout' | 'back';
+  level?: number;
 }) {
   const balance = user?.wallet?.real_balance ?? 0;
-  const level   = 2; // TODO: pull from user profile
+  const level   = levelProp ?? 2;
 
   return (
     <View style={topBar.bar}>
@@ -402,6 +404,7 @@ export function HomeScreen({ navigation }: Props) {
         onExit={() => setLogoutVisible(true)}
         onWallet={() => navigation.navigate('Wallet')}
         onProfile={() => setProfileVisible(true)}
+        level={levelValue}
       />
 
       {/* Center content */}

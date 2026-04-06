@@ -173,6 +173,15 @@ export async function createPixCharge(userId: string, amountBRL: number): Promis
     },
   });
 
+  // Dev mode: auto-confirm after 3 seconds (simulates PIX payment)
+  if (config.env !== 'production') {
+    setTimeout(() => {
+      confirmPixDeposit(txid).catch((err) =>
+        logger.error('[PIX MOCK] Auto-confirm failed', { txid, err: err.message })
+      );
+    }, 3000);
+  }
+
   return { txid, qrCode, transactionId: transaction.id };
 }
 
