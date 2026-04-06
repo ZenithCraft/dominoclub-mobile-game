@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, fonts, radius, spacing, backgroundCoverFix } from '../theme';
 import { useAuthStore } from '../store/auth.store';
+import { api } from '../services/api';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -65,7 +66,7 @@ function MiniDomino({ left, right }: { left: number; right: number }) {
 }
 
 export function SplashScreen({ navigation }: Props) {
-  const { loadFromStorage } = useAuthStore();
+  const { loadFromStorage, setTokens, setUser } = useAuthStore();
   const opacity = useRef(new Animated.Value(0)).current;
   const scale   = useRef(new Animated.Value(0.92)).current;
   const pulse   = useRef(new Animated.Value(0)).current;
@@ -87,10 +88,31 @@ export function SplashScreen({ navigation }: Props) {
       loop.start();
     }
 
+    const DEV_AUTO_LOGIN = process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS === 'true';
+
     let timer: ReturnType<typeof setTimeout> | null = null;
-    loadFromStorage().then(() => {
-      timer = setTimeout(() => {
-        navigation.replace(useAuthStore.getState().user ? 'Main' : 'Login');
+    loadFromStorage().then(async () => {
+      if (!useAuthStore.getState().user && !useAuthStore.getState().accessToken && DEV_AUTO_LOGIN) {
+        try {
+          const { data } = await api.post('/auth/dev/login', {});
+          setTokens(data.accessToken, data.refreshToken);
+          setUser(data.user);
+        } catch {}
+      }
+      timer = setTimeout(async () => {
+        if (!useAuthStore.getState().user) {
+          navigation.replace('Login');
+          return;
+        }
+        // Check for an active game and reconnect automatically
+        try {
+          const { data } = await api.get('/game/active');
+          if (data.game?.id && (data.game.status === 'PLAYING' || data.game.status === 'WAITING')) {
+            navigation.replace('Game', { gameId: data.game.id });
+            return;
+          }
+        } catch {}
+        navigation.replace('Main');
       }, 2400);
     });
 

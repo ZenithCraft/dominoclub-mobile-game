@@ -2,6 +2,15 @@ import { v4 as uuidv4 } from 'uuid';
 import { prisma } from './prisma.service';
 import { logger } from '../utils/logger';
 import { config } from '../config';
+import type { Server as SocketServer } from 'socket.io';
+
+// Global io reference set by the socket bootstrap
+let _io: SocketServer | null = null;
+export function setTournamentIo(io: SocketServer) { _io = io; }
+
+function emitToUser(userId: string, event: string, data: unknown) {
+  _io?.to(`user:${userId}`).emit(event, data);
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,7 +54,68 @@ export async function startTournament(tournamentId: string): Promise<void> {
   const playerIds = shuffle(tournament.players.map((p) => p.userId));
   await createRoundGames(tournament, playerIds, 1);
 
+  // Notify each player of their game
+  const round1Games = await prisma.game.findMany({
+    where: { tournamentId, tournament_round: 1 },
+    include: { players: { select: { userId: true } } },
+  });
+  for (const game of round1Games) {
+    for (const gp of game.players) {
+      emitToUser(gp.userId, 'tournament:started', {
+        tournamentId,
+        gameId: game.id,
+        round: 1,
+        totalRounds: Math.ceil(Math.log2(tournament.players.length)),
+      });
+    }
+  }
+
   logger.info('[Tournament] Started', { tournamentId, players: playerIds.length, round: 1 });
+}
+
+// ─── Cancel tournament and refund all players ─────────────────────────────────
+
+export async function cancelAndRefundTournament(tournamentId: string): Promise<void> {
+  const tournament = await prisma.tournament.findUnique({
+    where: { id: tournamentId },
+    include: { players: { select: { userId: true } } },
+  });
+
+  if (!tournament || !['OPEN', 'FULL'].includes(tournament.status)) return;
+
+  // Refund entry fee to each registered player
+  for (const { userId } of tournament.players) {
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) continue;
+    await prisma.$transaction([
+      prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { real_balance: { increment: tournament.entry_fee } },
+      }),
+      prisma.transaction.create({
+        data: {
+          walletId: wallet.id,
+          type: 'REFUND',
+          amount: tournament.entry_fee,
+          status: 'COMPLETED',
+          description: `Reembolso — torneio "${tournament.name}" cancelado`,
+        },
+      }),
+    ]);
+    emitToUser(userId, 'tournament:cancelled', {
+      tournamentId,
+      name: tournament.name,
+      refundAmount: tournament.entry_fee,
+      reason: 'Jogadores insuficientes',
+    });
+  }
+
+  await prisma.tournament.update({
+    where: { id: tournamentId },
+    data: { status: 'CANCELLED', finished_at: new Date() },
+  });
+
+  logger.info('[Tournament] Cancelled and refunded', { tournamentId, players: tournament.players.length });
 }
 
 // ─── Advance bracket after a game finishes ────────────────────────────────────
@@ -75,11 +145,27 @@ export async function advanceTournamentBracket(
     .filter((p) => !p.is_bot && p.userId !== winnerId)
     .map((p) => p.userId);
 
+  // Count total registered players for position calculation
+  const totalPlayers = tournament.players.length;
+
   if (loserIds.length > 0) {
+    const remainingBefore = await prisma.tournamentPlayer.count({
+      where: { tournamentId, eliminated_at: null },
+    });
+    const finalPosition = remainingBefore; // losers finish at current remaining count
     await prisma.tournamentPlayer.updateMany({
       where: { tournamentId, userId: { in: loserIds } },
-      data: { eliminated_at: new Date() },
+      data: { eliminated_at: new Date(), final_position: finalPosition },
     });
+    for (const userId of loserIds) {
+      emitToUser(userId, 'tournament:eliminated', {
+        tournamentId,
+        name: tournament.name,
+        finalPosition,
+        totalPlayers,
+        prize: 0, // prizes only for top finishers; expand here for multi-prize
+      });
+    }
     logger.info('[Tournament] Eliminated players', { tournamentId, loserIds });
   }
 
@@ -102,7 +188,6 @@ export async function advanceTournamentBracket(
   });
 
   if (active.length === 0) {
-    // Edge case: all eliminated (e.g. tie/draw) — cancel tournament
     await prisma.tournament.update({
       where: { id: tournamentId },
       data: { status: 'CANCELLED', finished_at: new Date() },
@@ -124,6 +209,23 @@ export async function advanceTournamentBracket(
 
   const playerIds = shuffle(active.map((p) => p.userId));
   await createRoundGames(tournament, playerIds, nextRound);
+
+  // Notify advancing players of their next game
+  const nextGames = await prisma.game.findMany({
+    where: { tournamentId, tournament_round: nextRound },
+    include: { players: { select: { userId: true } } },
+  });
+  const totalRounds = Math.ceil(Math.log2(totalPlayers));
+  for (const game of nextGames) {
+    for (const gp of game.players) {
+      emitToUser(gp.userId, 'tournament:next_game', {
+        tournamentId,
+        gameId: game.id,
+        round: nextRound,
+        totalRounds,
+      });
+    }
+  }
 
   logger.info('[Tournament] Advanced to round', { tournamentId, nextRound, players: playerIds.length });
 }
@@ -211,6 +313,12 @@ async function finishTournament(
   await prisma.tournament.update({
     where: { id: tournament.id },
     data: { status: 'FINISHED', finished_at: new Date() },
+  });
+
+  // Notify winner
+  emitToUser(winnerId, 'tournament:champion', {
+    tournamentId: tournament.id,
+    prize: tournament.prize_pool,
   });
 
   logger.info('[Tournament] Finished', { tournamentId: tournament.id, winnerId, prize: tournament.prize_pool });

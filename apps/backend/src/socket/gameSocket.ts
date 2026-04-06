@@ -1,7 +1,7 @@
 import { Server as SocketServer, Socket } from 'socket.io';
 import { prisma } from '../services/prisma.service';
 import { deductBet, creditWin } from '../services/wallet.service';
-import { advanceTournamentBracket } from '../services/tournament.service';
+import { advanceTournamentBracket, setTournamentIo, cancelAndRefundTournament } from '../services/tournament.service';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import {
@@ -18,6 +18,33 @@ import {
 export const activeGames = new Map<string, GameState>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
 const disconnectTimers = new Map<string, NodeJS.Timeout>();
+
+// ─── Tournament auto-cancel scheduler ────────────────────────────────────────
+// Checks every minute for tournaments that passed starts_at without filling up
+
+export function initTournamentScheduler(io: SocketServer) {
+  setTournamentIo(io);
+  setInterval(async () => {
+    try {
+      const overdue = await prisma.tournament.findMany({
+        where: {
+          status: { in: ['OPEN', 'FULL'] },
+          starts_at: { lte: new Date() },
+        },
+        select: { id: true, current_players: true, max_players: true },
+      });
+      for (const t of overdue) {
+        if (t.current_players < 2) {
+          cancelAndRefundTournament(t.id).catch((e) =>
+            logger.error('[Tournament] Auto-cancel failed', { id: t.id, err: e.message })
+          );
+        }
+      }
+    } catch (e: any) {
+      logger.error('[Tournament] Scheduler error', { err: e.message });
+    }
+  }, 60_000);
+}
 
 // ─── Replay Tracking ─────────────────────────────────────────────────────────
 

@@ -26,7 +26,7 @@ export async function getWallet(userId: string) {
 }
 
 export async function deposit(userId: string, amount: number) {
-  if (amount < 20) throw new Error('Minimum deposit is R$20');
+  if (amount < 10) throw new Error('Minimum deposit is R$10');
   return createPixCharge(userId, amount);
 }
 

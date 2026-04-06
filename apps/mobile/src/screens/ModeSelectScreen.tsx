@@ -357,16 +357,21 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
   const handleJoinTournament = async () => {
     if (!confirmTour) return;
+    const tour = confirmTour;
     setJoining(true);
     try {
-      await api.post(`/game/tournaments/${confirmTour.id}/join`);
+      const { data } = await api.post(`/game/tournaments/${tour.id}/join`);
       await refreshUser();
-      toast.success('Inscrição confirmada!');
-      fetchTournaments();
+      setConfirmTour(null);
+      navigation.replace('TournamentWaiting', {
+        tournamentId: tour.id,
+        tournamentName: tour.name,
+        startsAt: data.tournament?.starts_at ?? tour.starts_at,
+        entryFee: tour.entry_fee,
+      });
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Erro ao entrar no torneio');
-    } finally {
-      setJoining(false); setConfirmTour(null);
+      setJoining(false);
     }
   };
 
@@ -544,17 +549,24 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       <Modal visible={!!confirmTour} transparent animationType="fade">
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => !joining && setConfirmTour(null)}>
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>Confirmar inscrição</Text>
             {confirmTour && (
               <>
+                <Text style={styles.modalTitle}>Comprar entrada por R$ {confirmTour.entry_fee.toFixed(2)}?</Text>
                 <Text style={styles.modalTourName}>{confirmTour.name}</Text>
                 <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Taxa de entrada</Text>
-                  <Text style={styles.modalValue}>R$ {confirmTour.entry_fee}</Text>
+                  <Text style={styles.modalLabel}>Prêmio total</Text>
+                  <Text style={[styles.modalValue, { color: '#fbbf24' }]}>R$ {confirmTour.prize_pool.toLocaleString('pt-BR')}</Text>
+                </View>
+                <View style={styles.modalDivider} />
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Saldo atual</Text>
+                  <Text style={styles.modalValue}>R$ {(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
                 </View>
                 <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Prêmio</Text>
-                  <Text style={[styles.modalValue, { color: '#fbbf24' }]}>R$ {confirmTour.prize_pool.toLocaleString('pt-BR')}</Text>
+                  <Text style={styles.modalLabel}>Saldo após entrar</Text>
+                  <Text style={[styles.modalValue, { color: '#4ade80' }]}>
+                    R$ {Math.max(0, (user?.wallet?.real_balance ?? 0) - confirmTour.entry_fee).toFixed(2)}
+                  </Text>
                 </View>
                 <View style={styles.modalActions}>
                   <TouchableOpacity
@@ -584,9 +596,13 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       <Modal visible={!!confirmRoom} transparent animationType="fade">
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => !searching && setConfirmRoom(null)}>
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>Confirmar partida {confirmRoom?.section === '2v2' ? '(2x2)' : '(1x1)'}</Text>
             {confirmRoom && (
               <>
+                <Text style={styles.modalTitle}>
+                  {confirmRoom.room.buyIn === null
+                    ? `Entrar na partida ${confirmRoom.section === '2v2' ? '(2x2)' : '(1x1)'}?`
+                    : `Comprar entrada por R$ ${confirmRoom.room.buyIn.toFixed(2)}?`}
+                </Text>
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Buy in</Text>
                   <Text style={styles.modalValue}>{confirmRoom.room.buyIn === null ? 'Grátis' : `R$ ${confirmRoom.room.buyIn}`}</Text>
@@ -595,16 +611,21 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                   <Text style={styles.modalLabel}>Prêmio</Text>
                   <Text style={[styles.modalValue, { color: '#fbbf24' }]}>{fmtBrl(confirmRoom.room.prize)}</Text>
                 </View>
-                <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Jogadores</Text>
-                  <Text style={styles.modalValue}>
-                    {(confirmRoom.section === '2v2'
-                      ? queueStats['RECREATIONAL_2V2']?.byBet?.[String(confirmRoom.room.buyIn ?? 0)] ?? 0
-                      : queueStats['ARENA_1V1']?.byBet?.[String(confirmRoom.room.buyIn ?? 0)] ?? 0)}
-                    /
-                    {(confirmRoom.section === '2v2' ? queueStats['RECREATIONAL_2V2']?.total ?? 0 : queueStats['ARENA_1V1']?.total ?? 0)}
-                  </Text>
-                </View>
+                {confirmRoom.room.buyIn !== null && (
+                  <>
+                    <View style={styles.modalDivider} />
+                    <View style={styles.modalRow}>
+                      <Text style={styles.modalLabel}>Saldo atual</Text>
+                      <Text style={styles.modalValue}>R$ {(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
+                    </View>
+                    <View style={styles.modalRow}>
+                      <Text style={styles.modalLabel}>Saldo após entrar</Text>
+                      <Text style={[styles.modalValue, { color: '#4ade80' }]}>
+                        R$ {Math.max(0, (user?.wallet?.real_balance ?? 0) - confirmRoom.room.buyIn).toFixed(2)}
+                      </Text>
+                    </View>
+                  </>
+                )}
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={[styles.modalBtnCancel, searching && styles.modalBtnDisabled]}
@@ -932,6 +953,7 @@ const styles = StyleSheet.create({
     fontSize: fonts.sizes.sm,
     fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
   },
+  modalDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: spacing.xs },
   modalActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
 
   modalBtnDisabled: { opacity: 0.6 },

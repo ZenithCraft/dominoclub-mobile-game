@@ -4,7 +4,7 @@ import { config } from '../config';
 import { verifyAccessToken } from '../utils/jwt';
 import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
-import { setupGameSocket, activeGames } from './gameSocket';
+import { setupGameSocket, activeGames, initTournamentScheduler } from './gameSocket';
 import { enqueue, dequeue, getQueueStats, matchmakingEvents, startBotInjectionTimer, QueueEntry } from '../services/matchmaking.service';
 import { getRedisClient, getRedisSubscriber, isRedisAvailable } from '../services/redis.service';
 
@@ -27,6 +27,9 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       logger.warn('[Socket.io] Redis adapter not available — single-server mode', { message: err.message });
     });
   }
+
+  // Tournament auto-cancel scheduler
+  initTournamentScheduler(io);
 
   // Auth middleware
   io.use(async (socket, next) => {
