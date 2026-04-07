@@ -14,7 +14,7 @@ import {
 } from '../components/Icons';
 import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
 import { connectSocket, disconnectSocket } from '../services/socket';
-import { useGameStore, Tile, GameState, PlacedTile } from '../store/game.store';
+import { useGameStore, Tile, GameState, PlacedTile, WIN_TYPE_LABEL, WIN_TYPE_POINTS } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
 import { RootStackParamList } from '../navigation';
 
@@ -481,19 +481,31 @@ const emojiStyles = StyleSheet.create({
 
 // ─── Score box ────────────────────────────────────────────────────────────────
 
-function ScoreBox({ is4Player, myScore, oppScore }: { is4Player: boolean; myScore: number; oppScore: number }) {
-  const leftLabel = is4Player ? 'Vocês:' : 'Você:';
-  const rightLabel = is4Player ? 'Eles:' : 'Ele:';
+function ScoreBox({ is4Player, myScore, oppScore, targetScore }: { is4Player: boolean; myScore: number; oppScore: number; targetScore: number }) {
+  const leftLabel  = is4Player ? 'Vocês' : 'Você';
+  const rightLabel = is4Player ? 'Eles'  : 'Ele';
+  const renderPips = (score: number) => {
+    const filled = Math.min(score, targetScore);
+    return (
+      <View style={scoreStyles.pipsRow}>
+        {Array.from({ length: targetScore }).map((_, i) => (
+          <View key={i} style={[scoreStyles.pip, i < filled && scoreStyles.pipFilled]} />
+        ))}
+      </View>
+    );
+  };
   return (
     <View style={scoreStyles.box}>
       <View style={scoreStyles.row}>
         <Text style={scoreStyles.label}>{leftLabel}</Text>
         <Text style={scoreStyles.scoreValue}>{myScore}</Text>
       </View>
-      <View style={scoreStyles.row}>
+      {renderPips(myScore)}
+      <View style={[scoreStyles.row, { marginTop: 6 }]}>
         <Text style={scoreStyles.label}>{rightLabel}</Text>
         <Text style={scoreStyles.scoreValue}>{oppScore}</Text>
       </View>
+      {renderPips(oppScore)}
     </View>
   );
 }
@@ -515,7 +527,10 @@ const scoreStyles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
   label: { color: '#fff', fontSize: fonts.sizes.md, fontWeight: '700' },
-  scoreValue: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md },
+  scoreValue: { color: '#4ade80', fontWeight: '900', fontSize: fonts.sizes.lg },
+  pipsRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
+  pip: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  pipFilled: { backgroundColor: '#4ade80', borderColor: '#4ade80' },
 });
 
 // ─── Opponent card (top centre) ───────────────────────────────────────────────
@@ -850,7 +865,7 @@ function ResultCard({
 export function GameScreen({ navigation, route }: Props) {
   const { gameId } = route.params;
   const { user } = useAuthStore();
-  const { currentGame, selectedTile, gameResult, lastQueue, setGame, setSelectedTile, setGameResult, clearGame } = useGameStore();
+  const { currentGame, selectedTile, gameResult, roundBanner, lastQueue, setGame, setSelectedTile, setGameResult, setRoundBanner, clearGame } = useGameStore();
 
   const { width: viewportWidth } = useWindowDimensions();
   const [feltWidth, setFeltWidth] = useState(0);
@@ -994,12 +1009,12 @@ export function GameScreen({ navigation, route }: Props) {
     ? currentGame?.players.find((p) => p.seat === (mySeat + 1) % 4)
     : null;
 
-  // Scores (tile counts per team)
-  const myTeam  = currentGame?.players[myPlayerIndex]?.team ?? ((mySeat % 2) + 1);
-  const myTeamTiles  = currentGame?.players.filter((p) => p.team === myTeam)
-    .reduce((s, p) => s + (p.hand?.length ?? 0), 0) ?? 0;
-  const oppTeamTiles = currentGame?.players.filter((p) => p.team !== myTeam)
-    .reduce((s, p) => s + (p.hand?.length ?? 0), 0) ?? 0;
+  // Match scores (points, not tile counts)
+  const myTeam       = currentGame?.players[myPlayerIndex]?.team ?? ((mySeat % 2) + 1);
+  const oppTeam      = myTeam === 1 ? 2 : 1;
+  const myMatchScore  = currentGame?.matchScores?.[myTeam]  ?? 0;
+  const oppMatchScore = currentGame?.matchScores?.[oppTeam] ?? 0;
+  const targetScore   = currentGame?.targetScore ?? 7;
 
   // ── Timer ──────────────────────────────────────────────────────────────────
   const resetTurnTimer = useCallback(() => {
@@ -1146,6 +1161,20 @@ export function GameScreen({ navigation, route }: Props) {
         };
 
         const onEnded = (result: any) => { if (timerRef.current) clearInterval(timerRef.current); setGameResult(result); setResultModal(true); };
+        const onRoundEnded = (data: any) => {
+          setRoundBanner({
+            roundNumber:     data.roundNumber,
+            winnerTeam:      data.winnerTeam,
+            winType:         data.winType,
+            points:          data.points,
+            matchScores:     data.matchScores,
+            targetScore:     data.targetScore,
+            matchOver:       data.matchOver,
+            matchWinnerTeam: data.matchWinnerTeam,
+          });
+          // Auto-hide banner after 3.5s (server starts next round in 4s)
+          setTimeout(() => setRoundBanner(null), 3500);
+        };
         const onGameError = ({ message }: { message: string }) => showError(message);
         const onTimeout = ({ userId }: { userId: string }) => { if (String(userId) === myUserId) showError('Tempo esgotado — sua vez foi pulada'); };
         const onEmoji = ({ userId, emoji }: { userId: string; emoji: string }) => triggerEmojiFx(String(userId), String(emoji));
@@ -1154,6 +1183,7 @@ export function GameScreen({ navigation, route }: Props) {
 
         socket.on('game:state', onGameState);
         socket.on('game:ended', onEnded);
+        socket.on('game:round_ended', onRoundEnded);
         socket.on('game:error', onGameError);
         socket.on('game:timeout', onTimeout);
         socket.on('game:emoji', onEmoji);
@@ -1170,6 +1200,7 @@ export function GameScreen({ navigation, route }: Props) {
         cleanup = () => {
           socket.off('game:state', onGameState);
           socket.off('game:ended', onEnded);
+          socket.off('game:round_ended', onRoundEnded);
           socket.off('game:error', onGameError);
           socket.off('game:timeout', onTimeout);
           socket.off('game:emoji', onEmoji);
@@ -1520,7 +1551,7 @@ export function GameScreen({ navigation, route }: Props) {
           <View style={styles.tableArea}>
             {/* Score box — enlarged, anchored to the left edge of the table area */}
             <View style={styles.scoreOverlay}>
-              <ScoreBox is4Player={is4Player} myScore={myTeamTiles} oppScore={oppTeamTiles} />
+              <ScoreBox is4Player={is4Player} myScore={myMatchScore} oppScore={oppMatchScore} targetScore={targetScore} />
             </View>
 
             <View style={[styles.tableOuter, { height: tableHeight }]}>
@@ -1797,6 +1828,32 @@ export function GameScreen({ navigation, route }: Props) {
           />
         </View>
       </Modal>
+
+      {/* ── Round banner overlay ── */}
+      {roundBanner && (
+        <View style={styles.roundBannerOverlay} pointerEvents="none">
+          <View style={styles.roundBannerCard}>
+            {roundBanner.winnerTeam === null ? (
+              <Text style={styles.roundBannerTitle}>Empate!</Text>
+            ) : (
+              <Text style={styles.roundBannerTitle}>
+                {roundBanner.winType ? WIN_TYPE_LABEL[roundBanner.winType as keyof typeof WIN_TYPE_LABEL] : 'Simples'}!
+              </Text>
+            )}
+            {roundBanner.winnerTeam !== null && roundBanner.points > 0 && (
+              <Text style={styles.roundBannerPoints}>+{roundBanner.points} ponto{roundBanner.points !== 1 ? 's' : ''}</Text>
+            )}
+            <View style={styles.roundBannerScores}>
+              <Text style={styles.roundBannerScoreLabel}>Nós</Text>
+              <Text style={styles.roundBannerScoreValue}>{roundBanner.matchScores?.[1] ?? 0}</Text>
+              <Text style={styles.roundBannerScoreSep}>–</Text>
+              <Text style={styles.roundBannerScoreValue}>{roundBanner.matchScores?.[2] ?? 0}</Text>
+              <Text style={styles.roundBannerScoreLabel}>Eles</Text>
+            </View>
+            <Text style={styles.roundBannerRound}>Rodada {roundBanner.roundNumber}</Text>
+          </View>
+        </View>
+      )}
       </SafeAreaView>
     </ImageBackground>
   );
@@ -2248,4 +2305,63 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   resultSecondaryText: { color: 'rgba(255,255,255,0.85)', fontWeight: '700', fontSize: fonts.sizes.sm },
+
+  // Round banner overlay
+  roundBannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 200,
+    pointerEvents: 'none' as any,
+  },
+  roundBannerCard: {
+    backgroundColor: 'rgba(0,0,0,0.82)',
+    borderWidth: 2,
+    borderColor: '#4ade80',
+    borderRadius: radius.xl,
+    paddingVertical: 24,
+    paddingHorizontal: 40,
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 32px rgba(0,0,0,0.7)' } as any) : shadows.card),
+  },
+  roundBannerTitle: {
+    color: '#4ade80',
+    fontSize: fonts.sizes.xxxl,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  roundBannerPoints: {
+    color: '#facc15',
+    fontSize: fonts.sizes.xxl,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  roundBannerScores: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 4,
+  },
+  roundBannerScoreLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: fonts.sizes.sm,
+    fontWeight: '700',
+  },
+  roundBannerScoreValue: {
+    color: '#fff',
+    fontSize: fonts.sizes.xxl,
+    fontWeight: '900',
+  },
+  roundBannerScoreSep: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: fonts.sizes.xl,
+    fontWeight: '700',
+  },
+  roundBannerRound: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: fonts.sizes.sm,
+    fontWeight: '600',
+    marginTop: 4,
+  },
 });
