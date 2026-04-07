@@ -3,7 +3,7 @@ import { prisma } from '../services/prisma.service';
 import { deductBet, creditWin } from '../services/wallet.service';
 import { advanceTournamentBracket, setTournamentIo, cancelAndRefundTournament } from '../services/tournament.service';
 import { config } from '../config';
-import { logger } from '../utils/logger';
+import { logger, matchLogger } from '../utils/logger';
 import {
   GameState,
   initGame,
@@ -21,8 +21,11 @@ export const activeGames = new Map<string, GameState>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
 const disconnectTimers = new Map<string, NodeJS.Timeout>();
 
+// Per-game monotonically increasing sequence counter.
+// Included in every game:state emission so clients can discard stale events.
+const gameStateSeq = new Map<string, number>();
+
 // ─── Tournament auto-cancel scheduler ────────────────────────────────────────
-// Checks every minute for tournaments that passed starts_at without filling up
 
 export function initTournamentScheduler(io: SocketServer) {
   setTournamentIo(io);
@@ -77,6 +80,32 @@ function recordMove(gameId: string, move: Omit<ReplayMove, 'seq'>) {
   replay.moves.push({ ...move, seq: replay.moves.length });
 }
 
+// ─── State broadcast with sequence numbers ────────────────────────────────────
+
+function getPlayerView(state: GameState, userId: string): any {
+  const playerIndex = state.players.findIndex((p) => p.userId === userId);
+  return {
+    ...state,
+    players: state.players.map((p, i) => ({
+      ...p,
+      hand: i === playerIndex ? p.hand : p.hand.map(() => null), // hide other hands
+    })),
+    boneyard: state.boneyard.map(() => null), // hide boneyard tiles (show count only)
+  };
+}
+
+function broadcastGameState(gameId: string, state: GameState, io: SocketServer) {
+  const seq = (gameStateSeq.get(gameId) ?? 0) + 1;
+  gameStateSeq.set(gameId, seq);
+
+  state.players.forEach((player) => {
+    const view = getPlayerView(state, player.userId);
+    io.to(`user:${player.userId}`).emit('game:state', { ...view, seq });
+  });
+}
+
+// ─── Socket handlers ─────────────────────────────────────────────────────────
+
 export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: string; name: string; avatar: string | null }) {
   const joinedGames = new Set<string>();
 
@@ -112,17 +141,34 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     if (pending) {
       clearTimeout(pending);
       disconnectTimers.delete(k);
+      logger.info('Player reconnected within grace period', { gameId, userId: user.id });
     }
 
     // Initialize game state if not already active
     if (!activeGames.has(gameId)) {
       await startGame(gameId, game.variant as DominoVariant, game.players, game.bet_amount, io);
     } else {
-      // Send current state to rejoining player
+      // Send current state to rejoining/reconnecting player
       const state = activeGames.get(gameId)!;
+      const seq = gameStateSeq.get(gameId) ?? 0;
       const playerState = getPlayerView(state, user.id);
-      socket.emit('game:state', playerState);
+      socket.emit('game:state', { ...playerState, seq });
     }
+  });
+
+  // Client-requested state sync — useful after connection hiccups
+  socket.on('game:sync_request', ({ gameId }: { gameId: string }) => {
+    const state = activeGames.get(gameId);
+    if (!state) {
+      socket.emit('game:error', { message: 'Game not active' });
+      return;
+    }
+    const isPlayer = state.players.some((p) => p.userId === user.id);
+    if (!isPlayer) return;
+
+    const seq = gameStateSeq.get(gameId) ?? 0;
+    const view = getPlayerView(state, user.id);
+    socket.emit('game:state', { ...view, seq });
   });
 
   // Play a tile
@@ -253,9 +299,16 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
         forfeitGame(gameId, user.id, io, 'disconnect').catch(() => {});
       }, config.game.disconnectGraceSeconds * 1000);
       disconnectTimers.set(k, t);
+      logger.info('Grace period started for disconnected player', {
+        gameId,
+        userId: user.id,
+        graceSeconds: config.game.disconnectGraceSeconds,
+      });
     });
   });
 }
+
+// ─── Game lifecycle ───────────────────────────────────────────────────────────
 
 async function startGame(gameId: string, variant: DominoVariant, players: any[], betAmount: number, io: SocketServer) {
   // Deduct bets
@@ -277,6 +330,7 @@ async function startGame(gameId: string, variant: DominoVariant, players: any[],
 
   const state = initGame(gameId, variant, playerData);
   activeGames.set(gameId, state);
+  gameStateSeq.set(gameId, 0);
 
   // Initialise replay record with starting deal
   gameReplays.set(gameId, {
@@ -293,25 +347,16 @@ async function startGame(gameId: string, variant: DominoVariant, players: any[],
   startTurnTimer(gameId, state, io);
   scheduleBotTurn(gameId, state, io);
 
-  logger.info('Game started', { gameId, players: playerData.map((p) => p.userId) });
-}
+  const playerIds = playerData.map((p) => p.userId);
+  logger.info('Game started', { gameId, players: playerIds });
 
-function getPlayerView(state: GameState, userId: string): any {
-  const playerIndex = state.players.findIndex((p) => p.userId === userId);
-  return {
-    ...state,
-    players: state.players.map((p, i) => ({
-      ...p,
-      hand: i === playerIndex ? p.hand : p.hand.map(() => null), // hide other hands
-    })),
-    boneyard: state.boneyard.map(() => null), // hide boneyard tiles
-  };
-}
-
-function broadcastGameState(gameId: string, state: GameState, io: SocketServer) {
-  state.players.forEach((player) => {
-    const view = getPlayerView(state, player.userId);
-    io.to(`user:${player.userId}`).emit('game:state', view);
+  matchLogger.info('match_start', {
+    event: 'match_start',
+    matchId: gameId,
+    variant,
+    betAmount,
+    mode: players[0]?.mode,
+    players: playerData.map((p) => ({ userId: p.userId, team: p.team, seat: p.seat, isBot: p.isBot })),
   });
 }
 
@@ -432,6 +477,7 @@ async function handleGameEnd(
   // ── Forfeit / Abandoned — end match immediately ──────────────────────────
   if (opts?.status === 'ABANDONED') {
     activeGames.delete(gameId);
+    gameStateSeq.delete(gameId);
     await finalizeMatch(gameId, state, game, io, 'ABANDONED');
     return;
   }
@@ -443,13 +489,13 @@ async function handleGameEnd(
 
   // Notify clients of round result
   io.to(`game:${gameId}`).emit('game:round_ended', {
-    roundNumber:  state.roundNumber,
-    winnerTeam:   state.winnerTeam ?? null,
-    winnerId:     state.winnerId ?? null,
+    roundNumber:     state.roundNumber,
+    winnerTeam:      state.winnerTeam ?? null,
+    winnerId:        state.winnerId ?? null,
     winType,
     points,
-    matchScores:  state.matchScores,
-    targetScore:  state.targetScore,
+    matchScores:     state.matchScores,
+    targetScore:     state.targetScore,
     matchOver,
     matchWinnerTeam: state.matchWinnerTeam ?? null,
   });
@@ -463,9 +509,22 @@ async function handleGameEnd(
     matchOver,
   });
 
+  matchLogger.info('round_end', {
+    event: 'round_end',
+    matchId: gameId,
+    round: state.roundNumber,
+    winnerTeam: state.winnerTeam ?? null,
+    winnerId: state.winnerId ?? null,
+    winType,
+    points,
+    matchScores: state.matchScores,
+    matchOver,
+  });
+
   if (matchOver) {
     // Match is over — pay out and close the DB game
     activeGames.delete(gameId);
+    gameStateSeq.delete(gameId);
     await finalizeMatch(gameId, state, game, io, 'FINISHED');
   } else {
     // Start next round after a 4-second pause (client shows round banner)
@@ -541,7 +600,29 @@ async function finalizeMatch(
     })),
   });
 
+  const totalMoves = replay?.moves.length ?? 0;
   logger.info('Match ended', { gameId, matchWinnerTeam, prizePerWinner, matchScores: state.matchScores });
+
+  matchLogger.info('match_end', {
+    event: 'match_end',
+    matchId: gameId,
+    status,
+    mode: game.mode,
+    betAmount: game.bet_amount,
+    prizePool,
+    prizePerWinner,
+    matchWinnerTeam: matchWinnerTeam ?? null,
+    winnerId: state.winnerId ?? null,
+    matchScores: state.matchScores,
+    rounds: state.roundNumber,
+    totalMoves,
+    players: state.players.map((p) => ({
+      userId: p.userId,
+      team: p.team,
+      isBot: p.isBot,
+      pips: p.hand.reduce((s, t) => s + t[0] + t[1], 0),
+    })),
+  });
 
   if (game.tournamentId) {
     advanceTournamentBracket(game.tournamentId, gameId, state.winnerId, matchWinnerTeam).catch((err) => {
@@ -574,6 +655,8 @@ async function forfeitGame(gameId: string, forfeitingUserId: string, io: SocketS
     winnerId: newState.winnerId,
     winnerTeam: newState.winnerTeam,
   });
+
+  logger.info('Game forfeited', { gameId, forfeitingUserId, reason });
 
   await handleGameEnd(gameId, newState, io, { status: 'ABANDONED' });
 }

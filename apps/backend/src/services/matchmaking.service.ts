@@ -4,10 +4,13 @@ import { config } from '../config';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
+export type MatchmakingVariant = 'CARROCA' | 'L_E_L' | 'CRUZADA';
+
 export interface QueueEntry {
   userId: string;
   socketId: string;
   betAmount: number;
+  variant: MatchmakingVariant;
   mode: 'ARENA_1V1' | 'CUP_1V1' | 'TOURNAMENT_2V2' | 'RECREATIONAL_2V2';
   joinedAt: number;
   isBot?: boolean;
@@ -16,6 +19,9 @@ export interface QueueEntry {
 export const matchmakingEvents = new EventEmitter();
 
 const queues = new Map<string, QueueEntry[]>();
+
+// Queue entries older than this are considered stale and removed
+const QUEUE_STALE_MS = 5 * 60 * 1000; // 5 minutes
 
 function getQueueKey(mode: string) {
   return mode;
@@ -31,13 +37,13 @@ export function enqueue(entry: QueueEntry) {
   if (existingIdx !== -1) queue.splice(existingIdx, 1);
 
   queue.push(entry);
-  logger.debug('Player enqueued', { userId: entry.userId, mode: entry.mode, betAmount: entry.betAmount });
+  logger.debug('Player enqueued', { userId: entry.userId, mode: entry.mode, betAmount: entry.betAmount, variant: entry.variant });
 
   tryMatch(entry.mode);
 }
 
 export function dequeue(userId: string) {
-  queues.forEach((queue, key) => {
+  queues.forEach((queue) => {
     const idx = queue.findIndex((e) => e.userId === userId);
     if (idx !== -1) {
       queue.splice(idx, 1);
@@ -59,6 +65,34 @@ export function getQueueStats() {
   return stats;
 }
 
+// Returns 1-based position in queue, or -1 if not found
+export function getQueuePosition(userId: string, mode: string): number {
+  const queue = queues.get(mode);
+  if (!queue) return -1;
+  const idx = queue.findIndex((e) => e.userId === userId);
+  return idx === -1 ? -1 : idx + 1;
+}
+
+// Periodically remove stale queue entries and notify via callback.
+// Returns the interval handle so caller can clear it on shutdown.
+export function startQueueCleanup(
+  onExpired: (userId: string, socketId: string) => void
+): ReturnType<typeof setInterval> {
+  return setInterval(() => {
+    const now = Date.now();
+    queues.forEach((queue) => {
+      for (let i = queue.length - 1; i >= 0; i--) {
+        const entry = queue[i];
+        if (!entry.isBot && now - entry.joinedAt > QUEUE_STALE_MS) {
+          queue.splice(i, 1);
+          logger.info('Queue entry expired (stale)', { userId: entry.userId, mode: entry.mode });
+          onExpired(entry.userId, entry.socketId);
+        }
+      }
+    });
+  }, 30_000);
+}
+
 function tryMatch(mode: string) {
   const queue = queues.get(mode);
   if (!queue) return;
@@ -67,12 +101,13 @@ function tryMatch(mode: string) {
 
   if (queue.length < playersNeeded) return;
 
-  // For 1v1: find two players with matching bet amounts (within tolerance)
+  // For 1v1: find two players with matching bet amounts AND same variant
   if (playersNeeded === 2) {
     for (let i = 0; i < queue.length; i++) {
       for (let j = i + 1; j < queue.length; j++) {
         const a = queue[i];
         const b = queue[j];
+        if (a.variant !== b.variant) continue;
         const denom = Math.max(a.betAmount, b.betAmount);
         const diff = denom > 0 ? Math.abs(a.betAmount - b.betAmount) / denom : a.betAmount === b.betAmount ? 0 : 1;
         if (diff <= config.game.matchmakingBetTolerance) {
@@ -85,20 +120,27 @@ function tryMatch(mode: string) {
     }
   }
 
-  // For 2v2: group 4 players with similar bets
+  // For 2v2: group 4 players with similar bets and same variant
   if (playersNeeded === 4 && queue.length >= 4) {
     const sorted = [...queue].sort((a, b) => a.betAmount - b.betAmount);
-    const group = sorted.slice(0, 4);
-    group.forEach((entry) => {
-      const idx = queue.findIndex((e) => e.userId === entry.userId);
-      if (idx !== -1) queue.splice(idx, 1);
-    });
-    createMatch(group, mode as any);
+    // Find first group of 4 with same variant
+    for (let i = 0; i <= sorted.length - 4; i++) {
+      const candidate = sorted[i].variant;
+      const group = sorted.slice(i).filter((e) => e.variant === candidate).slice(0, 4);
+      if (group.length < 4) continue;
+      group.forEach((entry) => {
+        const idx = queue.findIndex((e) => e.userId === entry.userId);
+        if (idx !== -1) queue.splice(idx, 1);
+      });
+      createMatch(group, mode as any);
+      return;
+    }
   }
 }
 
 async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' | 'TOURNAMENT_2V2' | 'RECREATIONAL_2V2') {
   const betAmount = Math.min(...players.map((p) => p.betAmount));
+  const variant = players[0].variant;
   const gameId = uuidv4();
 
   // Anti-collusion: shuffle team assignments in 2v2
@@ -116,6 +158,7 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
       data: {
         id: gameId,
         mode,
+        variant,
         bet_amount: betAmount,
         prize_pool: betAmount * players.length * (1 - config.game.houseEdgePercent / 100),
         house_fee: betAmount * players.length * (config.game.houseEdgePercent / 100),
@@ -131,7 +174,7 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
       },
     });
 
-    logger.info('Match created', { gameId, mode, players: playerData.map((p) => p.userId) });
+    logger.info('Match created', { gameId, mode, variant, players: playerData.map((p) => p.userId) });
     matchmakingEvents.emit('match_created', { gameId, players: playerData, betAmount, mode });
   } catch (err) {
     logger.error('Failed to create match', { err });
@@ -168,6 +211,7 @@ export function startBotInjectionTimer(entry: QueueEntry) {
         userId: bot.id,
         socketId: `bot_socket_${uuidv4()}`,
         betAmount: entry.betAmount,
+        variant: entry.variant,
         mode: entry.mode,
         joinedAt: Date.now(),
         isBot: true,

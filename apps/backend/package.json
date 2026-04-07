@@ -13,7 +13,8 @@
     "db:seed": "ts-node src/seed.ts",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:multiplayer": "ts-node scripts/test-multiplayer.ts"
   },
   "dependencies": {
     "express": "^4.18.2",
