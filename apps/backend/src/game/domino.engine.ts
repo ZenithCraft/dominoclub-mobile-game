@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────
 // DominoClub — Brazilian Domino Engine
 // Supports: Carroça, L e L, Cruzada
+// Scoring: Simples=1, Carroça=2, Lá e Lô=3, Cruzada=4 — first to 7 pts wins
 // ─────────────────────────────────────────────────────────────────
 
 export type Tile = [number, number]; // [left, right] pips
@@ -13,15 +14,27 @@ export interface PlacedTile {
 
 export type DominoVariant = 'CARROCA' | 'L_E_L' | 'CRUZADA';
 
+export type WinType = 'simples' | 'carroca' | 'lelo' | 'cruzada';
+
+// Points awarded per win type
+export const WIN_POINTS: Record<WinType, number> = {
+  simples: 1,
+  carroca: 2,
+  lelo:    3,
+  cruzada: 4,
+};
+
+export const TARGET_SCORE = 7;
+
 export interface GameState {
   id: string;
   variant: DominoVariant;
   players: PlayerState[];
   board: PlacedTile[];
   boneyard: Tile[];
-  leftOpen: number;   // pip value open on the left end
-  rightOpen: number;  // pip value open on the right end
-  topOpen?: number;   // only for CRUZADA
+  leftOpen: number;    // pip value open on the left end
+  rightOpen: number;   // pip value open on the right end
+  topOpen?: number;    // only for CRUZADA
   bottomOpen?: number; // only for CRUZADA
   currentPlayerIndex: number;
   turnCount: number;
@@ -29,8 +42,15 @@ export interface GameState {
   status: 'waiting' | 'playing' | 'finished';
   winnerId?: string;
   winnerTeam?: number;
-  turnStartedAt?: number; // timestamp for timeout
+  winType?: WinType;       // type of win for the current round
+  turnStartedAt?: number;  // timestamp for timeout
   firstPlayMade: boolean;
+
+  // Match tracking — persists across rounds
+  matchScores: Record<number, number>; // { 1: pts, 2: pts }
+  roundNumber: number;                 // 1-based
+  targetScore: number;                 // default 7
+  matchWinnerTeam?: number;            // set when match is over
 }
 
 export interface PlayerState {
@@ -70,7 +90,7 @@ export function initGame(
   players: { userId: string; team: number; seat: number; isBot: boolean }[]
 ): GameState {
   const allTiles = shuffle(generateTiles());
-  const tilesPerPlayer = players.length === 2 ? 7 : 7;
+  const tilesPerPlayer = 7;
   const playerStates: PlayerState[] = players.map((p, i) => ({
     ...p,
     hand: allTiles.slice(i * tilesPerPlayer, (i + 1) * tilesPerPlayer),
@@ -79,18 +99,7 @@ export function initGame(
   }));
 
   const boneyard = allTiles.slice(players.length * tilesPerPlayer);
-
-  // Determine who goes first: player with the highest double
-  let firstPlayerIndex = 0;
-  let highestDouble = -1;
-  playerStates.forEach((p, idx) => {
-    p.hand.forEach((tile) => {
-      if (tile[0] === tile[1] && tile[0] > highestDouble) {
-        highestDouble = tile[0];
-        firstPlayerIndex = idx;
-      }
-    });
-  });
+  const firstPlayerIndex = findFirstPlayer(playerStates);
 
   return {
     id: gameId,
@@ -106,7 +115,86 @@ export function initGame(
     status: 'playing',
     turnStartedAt: Date.now(),
     firstPlayMade: false,
+    matchScores: { 1: 0, 2: 0 },
+    roundNumber: 1,
+    targetScore: TARGET_SCORE,
   };
+}
+
+// Find player with highest double (goes first)
+function findFirstPlayer(players: PlayerState[]): number {
+  let firstPlayerIndex = 0;
+  let highestDouble = -1;
+  players.forEach((p, idx) => {
+    p.hand.forEach((tile) => {
+      if (tile[0] === tile[1] && tile[0] > highestDouble) {
+        highestDouble = tile[0];
+        firstPlayerIndex = idx;
+      }
+    });
+  });
+  return firstPlayerIndex;
+}
+
+/**
+ * Start a fresh round within an ongoing match.
+ * Keeps matchScores, roundNumber+1, players list.
+ */
+export function initNextRound(state: GameState): GameState {
+  const allTiles = shuffle(generateTiles());
+  const tilesPerPlayer = 7;
+
+  const players: PlayerState[] = state.players.map((p, i) => ({
+    ...p,
+    hand: allTiles.slice(i * tilesPerPlayer, (i + 1) * tilesPerPlayer),
+    connected: p.connected,
+    passedLastTurn: false,
+  }));
+
+  const boneyard = allTiles.slice(players.length * tilesPerPlayer);
+  const firstPlayerIndex = findFirstPlayer(players);
+
+  return {
+    id: state.id,
+    variant: state.variant,
+    players,
+    board: [],
+    boneyard,
+    leftOpen: -1,
+    rightOpen: -1,
+    currentPlayerIndex: firstPlayerIndex,
+    turnCount: 0,
+    consecutivePasses: 0,
+    status: 'playing',
+    turnStartedAt: Date.now(),
+    firstPlayMade: false,
+    matchScores: { ...state.matchScores },
+    roundNumber: state.roundNumber + 1,
+    targetScore: state.targetScore,
+    winType: undefined,
+    winnerId: undefined,
+    winnerTeam: undefined,
+    matchWinnerTeam: undefined,
+  };
+}
+
+/**
+ * Detect the win type based on the last tile played.
+ *
+ * Rules (Brazilian domino scoring):
+ *  - Cruzada  (4 pts): last tile is a double AND both ends had equal pips (tile fits either end)
+ *  - Lá e Lô  (3 pts): last tile is NOT a double AND both ends had equal pips (tile fits either end)
+ *  - Carroça  (2 pts): last tile is a double
+ *  - Simples  (1 pt) : plain win
+ */
+function detectWinType(tile: Tile, leftOpen: number, rightOpen: number, firstPlayMade: boolean): WinType {
+  if (!firstPlayMade) return 'simples'; // very first tile of the game
+  const isDouble = tile[0] === tile[1];
+  const bothEndsEqual = leftOpen === rightOpen;
+  if (isDouble && bothEndsEqual) return 'cruzada';
+  if (isDouble) return 'carroca';
+  if (bothEndsEqual) return 'lelo';
+  return 'simples';
 }
 
 export function canPlayTile(state: GameState, tile: Tile): { side: 'left' | 'right' | 'top' | 'bottom'; flipped: boolean }[] {
@@ -162,6 +250,11 @@ export function applyMove(
     }
   }
 
+  // Capture open ends BEFORE placing (needed for win type detection)
+  const prevLeftOpen  = s.leftOpen;
+  const prevRightOpen = s.rightOpen;
+  const wasFirstPlay  = s.firstPlayMade;
+
   // Remove tile from hand
   const idx = player.hand.findIndex((t) => t[0] === tile[0] && t[1] === tile[1]);
   if (idx === -1) throw new Error('Tile not in hand');
@@ -186,23 +279,15 @@ export function applyMove(
   } else {
     s.board.push(placed);
     switch (side) {
-      case 'left':
-        s.leftOpen = effectiveTile[0];
-        break;
-      case 'right':
-        s.rightOpen = effectiveTile[1];
-        break;
-      case 'top':
-        s.topOpen = effectiveTile[0];
-        break;
-      case 'bottom':
-        s.bottomOpen = effectiveTile[1];
-        break;
+      case 'left':  s.leftOpen   = effectiveTile[0]; break;
+      case 'right': s.rightOpen  = effectiveTile[1]; break;
+      case 'top':   s.topOpen    = effectiveTile[0]; break;
+      case 'bottom':s.bottomOpen = effectiveTile[1]; break;
     }
 
     // Cruzada: first double played opens perpendicular sides
     if (s.variant === 'CRUZADA' && tile[0] === tile[1] && s.topOpen === undefined) {
-      s.topOpen = tile[0];
+      s.topOpen    = tile[0];
       s.bottomOpen = tile[0];
     }
   }
@@ -212,9 +297,20 @@ export function applyMove(
 
   // Check win condition: player emptied hand
   if (player.hand.length === 0) {
-    s.status = 'finished';
-    s.winnerId = player.userId;
+    const winType = detectWinType(tile, prevLeftOpen, prevRightOpen, wasFirstPlay);
+    const points  = WIN_POINTS[winType];
+    s.status    = 'finished';
+    s.winnerId  = player.userId;
     s.winnerTeam = player.team;
+    s.winType   = winType;
+    s.matchScores = {
+      ...s.matchScores,
+      [player.team]: (s.matchScores[player.team] ?? 0) + points,
+    };
+    // Check if match is over
+    if (s.matchScores[player.team] >= s.targetScore) {
+      s.matchWinnerTeam = player.team;
+    }
     return s;
   }
 
@@ -233,6 +329,7 @@ export function applyPass(state: GameState, playerIndex: number): GameState {
   // All players passed — game is blocked
   if (s.consecutivePasses >= s.players.length) {
     s.status = 'finished';
+    s.winType = 'simples';
     resolveBlockedGame(s);
   }
 
@@ -265,16 +362,25 @@ function resolveBlockedGame(state: GameState): void {
   });
 
   const teams = Object.keys(teamPips).map(Number);
-  const winner = teams.sort((a, b) => teamPips[a] - teamPips[b])[0];
+  const [lower, higher] = teams.sort((a, b) => teamPips[a] - teamPips[b]);
 
-  if (teamPips[teams[0]] === teamPips[teams[1]]) {
-    // Tie — no winner
-    state.winnerId = undefined;
+  if (teamPips[lower] === teamPips[higher]) {
+    // Tie — no winner, no points awarded
+    state.winnerId   = undefined;
     state.winnerTeam = undefined;
+    state.winType    = undefined;
   } else {
-    state.winnerTeam = winner;
-    const winningPlayer = state.players.find((p) => p.team === winner);
+    state.winnerTeam = lower;
+    const winningPlayer = state.players.find((p) => p.team === lower);
     state.winnerId = winningPlayer?.userId;
+    // Blocked game always scores simples (1 pt)
+    state.matchScores = {
+      ...state.matchScores,
+      [lower]: (state.matchScores[lower] ?? 0) + 1,
+    };
+    if (state.matchScores[lower] >= state.targetScore) {
+      state.matchWinnerTeam = lower;
+    }
   }
 }
 
@@ -291,7 +397,7 @@ export function getBotMove(state: GameState, playerIndex: number): {
     return { action: 'pass' };
   }
 
-  // Simple AI: prefer to play the tile that blocks opponent (highest pip tile first)
+  // Simple AI: prefer highest-pip tile first
   const sorted = validMoves.sort((a, b) => {
     const aMax = Math.max(a.tile[0], a.tile[1]);
     const bMax = Math.max(b.tile[0], b.tile[1]);

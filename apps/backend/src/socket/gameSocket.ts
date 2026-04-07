@@ -7,12 +7,14 @@ import { logger } from '../utils/logger';
 import {
   GameState,
   initGame,
+  initNextRound,
   applyMove,
   applyPass,
   drawFromBoneyard,
   getValidMoves,
   getBotMove,
   DominoVariant,
+  WIN_POINTS,
 } from '../game/domino.engine';
 
 export const activeGames = new Map<string, GameState>();
@@ -423,16 +425,74 @@ async function handleGameEnd(
   opts?: { status?: 'FINISHED' | 'ABANDONED' }
 ) {
   clearTurnTimer(gameId);
-  activeGames.delete(gameId);
 
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) return;
 
+  // ── Forfeit / Abandoned — end match immediately ──────────────────────────
+  if (opts?.status === 'ABANDONED') {
+    activeGames.delete(gameId);
+    await finalizeMatch(gameId, state, game, io, 'ABANDONED');
+    return;
+  }
+
+  // ── Round ended — check if match is over ─────────────────────────────────
+  const winType   = state.winType ?? 'simples';
+  const points    = state.winnerTeam ? (WIN_POINTS[winType] ?? 1) : 0;
+  const matchOver = !!state.matchWinnerTeam;
+
+  // Notify clients of round result
+  io.to(`game:${gameId}`).emit('game:round_ended', {
+    roundNumber:  state.roundNumber,
+    winnerTeam:   state.winnerTeam ?? null,
+    winnerId:     state.winnerId ?? null,
+    winType,
+    points,
+    matchScores:  state.matchScores,
+    targetScore:  state.targetScore,
+    matchOver,
+    matchWinnerTeam: state.matchWinnerTeam ?? null,
+  });
+
+  logger.info('Round ended', {
+    gameId,
+    round: state.roundNumber,
+    winType,
+    points,
+    matchScores: state.matchScores,
+    matchOver,
+  });
+
+  if (matchOver) {
+    // Match is over — pay out and close the DB game
+    activeGames.delete(gameId);
+    await finalizeMatch(gameId, state, game, io, 'FINISHED');
+  } else {
+    // Start next round after a 4-second pause (client shows round banner)
+    setTimeout(() => {
+      const nextState = initNextRound(state);
+      activeGames.set(gameId, nextState);
+      broadcastGameState(gameId, nextState, io);
+      startTurnTimer(gameId, nextState, io);
+      scheduleBotTurn(gameId, nextState, io);
+      logger.info('Next round started', { gameId, round: nextState.roundNumber });
+    }, 4000);
+  }
+}
+
+async function finalizeMatch(
+  gameId: string,
+  state: GameState,
+  game: { prize_pool: number; mode: string; bet_amount: number; tournamentId: string | null },
+  io: SocketServer,
+  status: 'FINISHED' | 'ABANDONED'
+) {
   const prizePool = game.prize_pool;
 
-  // Determine winning players
-  const winningPlayers = state.winnerTeam
-    ? state.players.filter((p) => p.team === state.winnerTeam && !p.isBot)
+  // The overall match winner is whoever reached 7 pts (or team that didn't forfeit)
+  const matchWinnerTeam = state.matchWinnerTeam ?? state.winnerTeam;
+  const winningPlayers  = matchWinnerTeam
+    ? state.players.filter((p) => p.team === matchWinnerTeam && !p.isBot)
     : [];
 
   const prizePerWinner = winningPlayers.length > 0 ? prizePool / winningPlayers.length : 0;
@@ -448,15 +508,14 @@ async function handleGameEnd(
   await prisma.game.update({
     where: { id: gameId },
     data: {
-      status: opts?.status ?? 'FINISHED',
-      winner_id: state.winnerId || null,
-      winning_team: state.winnerTeam || null,
-      finished_at: new Date(),
-      replay_data: replay as any,
+      status,
+      winner_id:    state.winnerId    || null,
+      winning_team: matchWinnerTeam   || null,
+      finished_at:  new Date(),
+      replay_data:  replay as any,
     },
   });
 
-  // Update player scores
   for (const player of state.players) {
     const pips = player.hand.reduce((s, t) => s + t[0] + t[1], 0);
     await prisma.gamePlayer.updateMany({
@@ -466,26 +525,26 @@ async function handleGameEnd(
   }
 
   io.to(`game:${gameId}`).emit('game:ended', {
-    status: opts?.status ?? 'FINISHED',
-    mode: game.mode,
-    betAmount: game.bet_amount,
-    winnerId: state.winnerId,
-    winnerTeam: state.winnerTeam,
+    status,
+    mode:          game.mode,
+    betAmount:     game.bet_amount,
+    winnerId:      state.winnerId,
+    winnerTeam:    matchWinnerTeam,
+    matchScores:   state.matchScores,
     prizePool,
     prizePerWinner,
     players: state.players.map((p) => ({
       userId: p.userId,
-      team: p.team,
+      team:   p.team,
       finalHand: p.hand,
       pips: p.hand.reduce((s, t) => s + t[0] + t[1], 0),
     })),
   });
 
-  logger.info('Game ended', { gameId, winnerId: state.winnerId, winnerTeam: state.winnerTeam });
+  logger.info('Match ended', { gameId, matchWinnerTeam, prizePerWinner, matchScores: state.matchScores });
 
-  // If this was a tournament game, advance the bracket
   if (game.tournamentId) {
-    advanceTournamentBracket(game.tournamentId, gameId, state.winnerId, state.winnerTeam).catch((err) => {
+    advanceTournamentBracket(game.tournamentId, gameId, state.winnerId, matchWinnerTeam).catch((err) => {
       logger.error('[Tournament] Failed to advance bracket', { tournamentId: game.tournamentId, gameId, err: err.message });
     });
   }
