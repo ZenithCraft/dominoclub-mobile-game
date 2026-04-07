@@ -26,3 +26,16 @@ export const logger = winston.createLogger({
       : []),
   ],
 });
+
+// Dedicated structured logger for match events — always written to logs/matches.log
+// Each line is a JSON object: { timestamp, event, matchId, ...details }
+export const matchLogger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.File({ filename: 'logs/matches.log' }),
+  ],
+});
