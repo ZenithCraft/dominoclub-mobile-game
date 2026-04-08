@@ -1,11 +1,11 @@
 'use client';
-import { useState, useEffect, useCallback, FormEvent } from 'react';
+import React, { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { adminApi } from '../lib/api';
 import logo from '../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
 
-type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments';
+type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments' | 'fraud' | 'config';
 
 type IconProps = { className?: string };
 
@@ -118,6 +118,26 @@ function IconWarning({ className }: IconProps) {
   );
 }
 
+function IconShield({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11 4.5-.85 8-5.75 8-11V6l-8-4Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconSliders({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="8" cy="6" r="2" fill="currentColor" />
+      <circle cx="16" cy="12" r="2" fill="currentColor" />
+      <circle cx="10" cy="18" r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
 function IconChevronLeft({ className }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -203,11 +223,13 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
 
   const NAV = [
-    { id: 'overview', label: 'Visão geral', Icon: IconChart },
-    { id: 'users', label: 'Usuários', Icon: IconUsers },
-    { id: 'games', label: 'Partidas', Icon: IconDice },
-    { id: 'financial', label: 'Financeiro', Icon: IconWallet },
-    { id: 'tournaments', label: 'Torneios', Icon: IconTrophy },
+    { id: 'overview',    label: 'Visão geral', Icon: IconChart },
+    { id: 'users',       label: 'Usuários',    Icon: IconUsers },
+    { id: 'games',       label: 'Partidas',    Icon: IconDice },
+    { id: 'financial',   label: 'Financeiro',  Icon: IconWallet },
+    { id: 'tournaments', label: 'Torneios',    Icon: IconTrophy },
+    { id: 'fraud',       label: 'Fraudes',     Icon: IconShield },
+    { id: 'config',      label: 'Configurações', Icon: IconSliders },
   ] as const;
 
   return (
@@ -255,11 +277,13 @@ export default function AdminDashboard() {
 
       {/* Main */}
       <div className="ml-60 p-6">
-        {tab === 'overview'  && <OverviewTab />}
-        {tab === 'users'     && <UsersTab />}
-        {tab === 'games'     && <GamesTab />}
-        {tab === 'financial' && <FinancialTab />}
-        {tab === 'tournaments' && <TournamentsTab />}
+        {tab === 'overview'     && <OverviewTab />}
+        {tab === 'users'        && <UsersTab />}
+        {tab === 'games'        && <GamesTab />}
+        {tab === 'financial'    && <FinancialTab />}
+        {tab === 'tournaments'  && <TournamentsTab />}
+        {tab === 'fraud'        && <FraudTab />}
+        {tab === 'config'       && <ConfigTab />}
       </div>
     </div>
   );
@@ -1008,6 +1032,236 @@ function TournamentsTab() {
           </div>
           <Pagination page={page} pages={data?.pages ?? 1} onChange={setPage} />
         </>
+      )}
+    </div>
+  );
+}
+
+// ─── Fraud Tab ────────────────────────────────────────────────────────────────
+
+const FRAUD_TYPE_PT: Record<string, string> = {
+  MULTI_ACCOUNT_DEVICE: 'Multi-conta (dispositivo)',
+  MULTI_ACCOUNT_IP: 'Multi-conta (IP)',
+  SUSPICIOUS_GPS: 'GPS suspeito',
+  GEOLOCATION_OUTSIDE_BRAZIL: 'Fora do Brasil',
+  RAPID_FIRE_BETS: 'Apostas rápidas',
+  BOT_PATTERN: 'Padrão de bot',
+  COLLUSION_SUSPECTED: 'Conluio suspeito',
+  UNUSUAL_WIN_RATE: 'Taxa de vitória anormal',
+};
+
+const FRAUD_COLOR: Record<string, string> = {
+  BOT_PATTERN: 'bg-orange-900/50 text-orange-300',
+  MULTI_ACCOUNT_DEVICE: 'bg-red-900/50 text-red-300',
+  MULTI_ACCOUNT_IP: 'bg-red-900/50 text-red-300',
+  COLLUSION_SUSPECTED: 'bg-purple-900/50 text-purple-300',
+  GEOLOCATION_OUTSIDE_BRAZIL: 'bg-yellow-900/50 text-yellow-300',
+};
+
+function FraudTab() {
+  const [page, setPage] = useState(1);
+  const [typeFilter, setTypeFilter] = useState('');
+  const [resolvedFilter, setResolvedFilter] = useState('false');
+  const [actioning, setActioning] = useState<string | null>(null);
+
+  const url = `/fraud-logs?page=${page}${typeFilter ? `&type=${typeFilter}` : ''}${resolvedFilter !== '' ? `&resolved=${resolvedFilter}` : ''}`;
+  const { data, loading, error, reload } = useData<any>(url, [page, typeFilter, resolvedFilter]);
+
+  const resolve = async (id: string) => {
+    setActioning(id);
+    try {
+      await adminApi.patch(`/fraud-logs/${id}/resolve`);
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao resolver');
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-black text-white">Registros de fraude</h1>
+        <div className="flex gap-3 items-center">
+          <select
+            value={typeFilter}
+            onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
+            className="bg-[var(--bg-card)] border border-white/10 rounded-xl px-3 py-2 text-white text-sm focus:outline-none"
+          >
+            <option value="">Todos os tipos</option>
+            {Object.entries(FRAUD_TYPE_PT).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+          <select
+            value={resolvedFilter}
+            onChange={e => { setResolvedFilter(e.target.value); setPage(1); }}
+            className="bg-[var(--bg-card)] border border-white/10 rounded-xl px-3 py-2 text-white text-sm focus:outline-none"
+          >
+            <option value="false">Pendentes</option>
+            <option value="true">Resolvidos</option>
+            <option value="">Todos</option>
+          </select>
+          <button onClick={reload} className="text-green-600 hover:text-white transition-colors p-2 rounded-xl bg-white/5 border border-white/10">
+            <IconRefresh className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {error ? <ErrorBox msg={error} onRetry={reload} /> : loading ? <Skeleton /> : (
+        <>
+          <div className="rounded-2xl border border-white/10 bg-[var(--bg-card)] backdrop-blur shadow-[0_18px_50px_rgba(0,0,0,0.45)] overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/10">
+                  {['Tipo', 'Usuário', 'Detalhes', 'IP', 'Device', 'Criado em', 'Status', 'Ações'].map(h => (
+                    <th key={h} className="text-left p-4 text-green-600 uppercase text-xs font-semibold tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.logs ?? []).map((log: any) => (
+                  <tr key={log.id} className="border-b border-white/5 hover:bg-white/5">
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${FRAUD_COLOR[log.type] || 'bg-gray-900/50 text-gray-300'}`}>
+                        {FRAUD_TYPE_PT[log.type] || log.type}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <p className="text-white font-medium">{log.user?.name || '?'}</p>
+                      <p className="text-green-700 text-xs font-mono">{log.user?.phone}</p>
+                    </td>
+                    <td className="p-4 text-green-600 text-xs font-mono max-w-xs truncate" title={JSON.stringify(log.details)}>
+                      {JSON.stringify(log.details).slice(0, 60)}{JSON.stringify(log.details).length > 60 ? '…' : ''}
+                    </td>
+                    <td className="p-4 text-green-700 text-xs font-mono">{log.ip_address || '—'}</td>
+                    <td className="p-4 text-green-700 text-xs font-mono">{log.device_id?.slice(0, 10) || '—'}</td>
+                    <td className="p-4 text-green-600 text-xs">{new Date(log.created_at).toLocaleString('pt-BR')}</td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${log.resolved ? 'bg-green-900/50 text-[#4ade80]' : 'bg-yellow-900/50 text-yellow-400'}`}>
+                        {log.resolved ? 'Resolvido' : 'Pendente'}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      {!log.resolved && (
+                        <button
+                          disabled={actioning === log.id}
+                          onClick={() => resolve(log.id)}
+                          className="text-xs text-[#4ade80] hover:underline font-semibold disabled:opacity-40"
+                        >
+                          {actioning === log.id ? '...' : 'Resolver'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {(data?.logs ?? []).length === 0 && (
+                  <tr><td colSpan={8} className="p-8 text-center text-green-800">Nenhum registro encontrado</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} pages={data?.pages ?? 1} onChange={setPage} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Config Tab ───────────────────────────────────────────────────────────────
+
+const CONFIG_META: { key: string; label: string; description: string; unit: string; min: number; max: number; step: number }[] = [
+  { key: 'houseEdgePercent',        label: 'House Edge (%)',              description: 'Percentual da casa em cada aposta. Ex: 10 = 10%.',                    unit: '%',  min: 0,    max: 50,   step: 0.5  },
+  { key: 'matchmakingBetTolerance', label: 'Tolerância de aposta',        description: 'Diferença máxima entre apostas de jogadores. 0.10 = 10%.',           unit: '',   min: 0,    max: 1,    step: 0.01 },
+  { key: 'botInjectWaitSeconds',    label: 'Espera para injetar bot (s)', description: 'Segundos sem par antes de criar um bot adversário.',                  unit: 's',  min: 5,    max: 300,  step: 5    },
+  { key: 'turnTimeoutSeconds',      label: 'Timeout por jogada (s)',       description: 'Tempo máximo por jogada antes de pular o turno automaticamente.',    unit: 's',  min: 5,    max: 120,  step: 5    },
+  { key: 'disconnectGraceSeconds',  label: 'Graça de desconexão (s)',      description: 'Janela de reconexão antes de considerar abandono.',                   unit: 's',  min: 5,    max: 120,  step: 5    },
+];
+
+function ConfigTab() {
+  const { data, loading, error, reload } = useData<Record<string, number>>('/config');
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const prevDataRef = React.useRef<Record<string, number> | null>(null);
+
+  React.useEffect(() => {
+    if (data && data !== prevDataRef.current) {
+      prevDataRef.current = data;
+      const initial: Record<string, string> = {};
+      for (const { key } of CONFIG_META) initial[key] = String((data as any)[key] ?? '');
+      setDraft(initial);
+    }
+  }, [data]);
+
+  const handleSave = async (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setSaved(false);
+    try {
+      const payload: Record<string, number> = {};
+      for (const [k, v] of Object.entries(draft)) payload[k] = parseFloat(v);
+      await adminApi.patch('/config', payload);
+      setSaved(true);
+      reload();
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao salvar configurações');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-black text-white">Configurações do jogo</h1>
+          <p className="text-green-600 text-sm mt-1">Alterações entram em vigor em até 60 segundos (cache TTL).</p>
+        </div>
+        <button onClick={reload} className="text-green-600 hover:text-white transition-colors p-2 rounded-xl bg-white/5 border border-white/10">
+          <IconRefresh className="w-4 h-4" />
+        </button>
+      </div>
+
+      {error ? <ErrorBox msg={error} onRetry={reload} /> : loading ? <Skeleton rows={5} /> : (
+        <form onSubmit={handleSave}>
+          <div className="rounded-2xl border border-white/10 bg-[var(--bg-card)] backdrop-blur shadow-[0_18px_50px_rgba(0,0,0,0.45)] divide-y divide-white/5">
+            {CONFIG_META.map(({ key, label, description, unit, min, max, step }) => (
+              <div key={key} className="p-5 flex items-center justify-between gap-6">
+                <div className="flex-1">
+                  <p className="text-white font-semibold">{label}</p>
+                  <p className="text-green-700 text-xs mt-0.5">{description}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={draft[key] ?? ''}
+                    onChange={e => setDraft(p => ({ ...p, [key]: e.target.value }))}
+                    min={min}
+                    max={max}
+                    step={step}
+                    className="w-28 bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-sm text-right focus:outline-none focus:border-white/30 tabular-nums"
+                    required
+                  />
+                  {unit && <span className="text-green-600 text-sm w-6">{unit}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex items-center gap-4">
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-[#4ade80] text-black font-bold px-6 py-2.5 rounded-xl text-sm disabled:opacity-50"
+            >
+              {saving ? 'Salvando...' : 'Salvar configurações'}
+            </button>
+            {saved && <span className="text-[#4ade80] text-sm font-semibold">Salvo com sucesso!</span>}
+          </div>
+        </form>
       )}
     </div>
   );
