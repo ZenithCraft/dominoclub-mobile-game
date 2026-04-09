@@ -152,9 +152,9 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
         <View style={styles.centered}>
 
           {/* Trophy */}
-          <Animated.View style={{ transform: [{ scale: trophyScale }], opacity: trophyOpacity, marginBottom: spacing.xl }}>
+          <Animated.View style={{ transform: [{ scale: trophyScale }], opacity: trophyOpacity, marginBottom: spacing.lg }}>
             <View style={styles.trophyCircle}>
-              <IconTrophy size={48} color="#fbbf24" accessibilityLabel="Torneio" />
+              <IconTrophy size={40} color="#fbbf24" accessibilityLabel="Torneio" />
             </View>
           </Animated.View>
 
@@ -231,22 +231,22 @@ const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl },
 
   trophyCircle: {
-    width: 100, height: 100, borderRadius: 50,
+    width: 80, height: 80, borderRadius: 40,
     backgroundColor: 'rgba(251,191,36,0.15)',
     borderWidth: 2, borderColor: 'rgba(251,191,36,0.4)',
     alignItems: 'center', justifyContent: 'center',
   },
 
   title: {
-    color: '#fff', fontSize: fonts.sizes.xxl, fontWeight: '900',
-    textAlign: 'center', marginBottom: spacing.sm,
+    color: '#fff', fontSize: fonts.sizes.xl, fontWeight: '900',
+    textAlign: 'center', marginBottom: spacing.xs,
   },
   statusPill: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: 'rgba(74,222,128,0.15)',
-    borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: 6,
+    borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: 5,
     borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   statusDot: {
     width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ade80',
@@ -254,15 +254,15 @@ const styles = StyleSheet.create({
   statusText: { color: '#4ade80', fontSize: fonts.sizes.sm, fontWeight: '700' },
 
   countdownCard: {
-    width: '100%', maxWidth: 380,
-    borderRadius: radius.xl, padding: spacing.xl,
+    width: '100%', maxWidth: 300,
+    borderRadius: radius.xl, padding: spacing.lg,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', gap: spacing.lg,
-    marginBottom: spacing.xl,
+    alignItems: 'center', gap: spacing.md,
+    marginBottom: spacing.lg,
   },
-  countdownLabel: { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.md, fontWeight: '600' },
+  countdownLabel: { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.sm, fontWeight: '600' },
   countdown: {
-    color: '#fff', fontSize: 56, fontWeight: '900', letterSpacing: 2,
+    color: '#fff', fontSize: 44, fontWeight: '900', letterSpacing: 2,
     ...(Platform.OS === 'web' ? ({ fontVariantNumeric: 'tabular-nums' } as any) : null),
   },
   cancelledText: {

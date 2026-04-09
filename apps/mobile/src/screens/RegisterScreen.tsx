@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
-  panelWeb: Platform.OS === 'web' ? ({ width: 980 } as any) : {},
+  panelWeb: Platform.OS === 'web' ? ({ width: 720 } as any) : {},
 
   left: {
     flex: 1,
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   formInner: {
-    width: 320,
+    width: 260,
     alignItems: 'center',
     gap: spacing.md,
   },
