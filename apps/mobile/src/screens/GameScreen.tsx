@@ -206,6 +206,10 @@ function normalizeGameState(raw: any): GameState {
     turnStartedAt: raw?.turnStartedAt,
     boneyard: Array.isArray(raw?.boneyard) ? raw.boneyard : [],
     firstPlayMade: !!raw?.firstPlayMade,
+    matchScores: (raw?.matchScores && typeof raw.matchScores === 'object') ? raw.matchScores : { 1: 0, 2: 0 },
+    roundNumber: asNumber(raw?.roundNumber, 1),
+    targetScore: asNumber(raw?.targetScore, 7),
+    matchWinnerTeam: raw?.matchWinnerTeam,
   };
 }
 
@@ -938,6 +942,9 @@ export function GameScreen({ navigation, route }: Props) {
         { userId: 'p3',  name: 'Ana',     team: 1, seat: 2, hand: Array(3).fill(null) as null[],         isBot: false, connected: true },
         { userId: 'p4',  name: 'Pedro',   team: 2, seat: 3, hand: Array(3).fill(null) as null[],         isBot: false, connected: true },
       ],
+      matchScores: { 1: 3, 2: 2 },
+      roundNumber: 4,
+      targetScore: 7,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1295,10 +1302,24 @@ export function GameScreen({ navigation, route }: Props) {
   const doLeave = () => {
     setLeaveConfirmVisible(false);
     setSettingsVisible(false);
-    // Explicitly emit game:leave so the backend forfeit runs before unmount cleanup
+    // Tell the backend — it will run forfeitGame → ABANDONED, deduct bet
     socketRef.current?.emit('game:leave', { gameId });
-    clearGame();
-    navigation.replace('Main');
+    // Show the "you lost" result screen immediately so the player sees the penalty
+    const game = useGameStore.getState().currentGame;
+    const opponent = game?.players.find((p) => p.userId !== myEffectiveUserId && !p.isBot)
+      ?? game?.players.find((p) => p.userId !== myEffectiveUserId);
+    const bet = lastQueue?.betAmount ?? 0;
+    setGameResult({
+      status: 'ABANDONED',
+      mode: game?.mode,
+      betAmount: bet,
+      winnerId: opponent?.userId ?? '',
+      winnerTeam: opponent?.team,
+      matchScores: game?.matchScores,
+      prizePool: 0,
+      prizePerWinner: 0,
+    });
+    setResultModal(true);
   };
 
   const handleLeaveGame = () => {
@@ -1443,6 +1464,24 @@ export function GameScreen({ navigation, route }: Props) {
     }
     return segments;
   })();
+
+  // ── Board scale: shrink tiles so they always fit inside the oval ─────────
+  const boardScale = (() => {
+    const rowCount = snakeRows.length;
+    if (rowCount === 0 || !feltWidth) return 1;
+    const cornerCount = snakeRows.filter((r) => r.cornerTile !== null).length;
+    const ROW_H    = boardTilePreset.short + SNAKE_GAP;
+    const CORNER_H = boardTilePreset.long  + 6; // marginVertical 3 top + 3 bottom
+    const estimatedH = rowCount * ROW_H + cornerCount * CORNER_H;
+    // Usable area inside the oval (oval clips ~12% width, ~28% height from each edge)
+    const availW = feltWidth  * 0.86;
+    const availH = tableHeight * 0.70;
+    const scaleW = snakeBoardWidth > availW ? availW / snakeBoardWidth : 1;
+    const scaleH = estimatedH    > availH ? availH / estimatedH    : 1;
+    return Math.max(0.40, Math.min(1, scaleW, scaleH));
+  })();
+  const scaledBoardWidth = Math.round(snakeBoardWidth * boardScale);
+  const scaledGap        = Math.round(SNAKE_GAP * boardScale);
 
   const renderPlayerFx = (userId: string, placement: 'top' | 'bottom' | 'left' | 'right') => {
     const emoji = emojiByUser[userId];
@@ -1597,28 +1636,31 @@ export function GameScreen({ navigation, route }: Props) {
                 )}
 
                 {currentGame.board.length > 0 && (
-                  <View style={[styles.snakeBoard, { width: snakeBoardWidth }]}>
+                  <View style={[styles.snakeBoard, { width: scaledBoardWidth }]}>
                     {snakeRows.map(({ tiles, cornerTile, isRtl }, rowIdx) => (
                       <React.Fragment key={rowIdx}>
-                        <View style={[styles.snakeRow, { flexDirection: isRtl ? 'row-reverse' : 'row' }]}>
+                        <View style={[styles.snakeRow, { flexDirection: isRtl ? 'row-reverse' : 'row', gap: scaledGap }]}>
                           {tiles.map((tile, i) => {
-                            const displayTile = isRtl ? [tile[1], tile[0]] as Tile : tile;
+                            const isDouble = tile[0] === tile[1];
+                            const displayTile = (!isDouble && isRtl) ? [tile[1], tile[0]] as Tile : tile;
                             return (
                               <DominoTile
                                 key={i}
                                 tile={displayTile}
                                 size={boardTileSize}
-                                horizontal={true}
+                                tileScale={boardScale}
+                                horizontal={!isDouble}
                               />
                             );
                           })}
                         </View>
                         {/* Corner tile below the row at the turn edge, above the next row */}
                         {cornerTile && (
-                          <View style={{ alignSelf: !isRtl ? 'flex-end' : 'flex-start', marginVertical: 3 }}>
+                          <View style={{ alignSelf: !isRtl ? 'flex-end' : 'flex-start', marginVertical: Math.round(3 * boardScale) }}>
                             <DominoTile
                               tile={cornerTile}
                               size={boardTileSize}
+                              tileScale={boardScale}
                               horizontal={false}
                             />
                           </View>

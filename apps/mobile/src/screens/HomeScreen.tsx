@@ -36,7 +36,7 @@ function LevelStarBadge({ level, size = 24 }: { level: string; size?: number }) 
   );
 }
 
-function GradientToggle({
+export function GradientToggle({
   value,
   onValueChange,
   pressableTestID,

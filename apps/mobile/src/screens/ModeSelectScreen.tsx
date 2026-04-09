@@ -16,7 +16,9 @@ import { useAuthStore } from '../store/auth.store';
 import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
 import { toast } from '../store/toast.store';
-import { GameTopBar } from './HomeScreen';
+import { GameTopBar, GradientToggle } from './HomeScreen';
+import { IconX, IconVolumeUp, IconMusic } from '../components/Icons';
+import { Pressable, Image } from 'react-native';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -236,6 +238,9 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const [confirmRoom, setConfirmRoom]   = useState<{ room: RoomOption; section: '1v1' | '2v2' } | null>(null);
   const [joining, setJoining]           = useState(false);
   const [searching, setSearching]       = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [soundOn, setSoundOn]           = useState(true);
+  const [musicOn, setMusicOn]           = useState(true);
   const searchPulseAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -432,7 +437,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       <GameTopBar
         user={user}
         onWallet={() => navigation.navigate('Wallet')}
-        onSettings={() => navigation.replace('Main')}
+        onSettings={() => setSettingsVisible(true)}
         onProfile={() => navigation.replace('Main')}
         exitVariant="back"
         onExit={() => (navigation.canGoBack?.() ? navigation.goBack() : navigation.replace('Main'))}
@@ -695,10 +700,52 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           </View>
         </TouchableOpacity>
       </Modal>
+      {/* ── Settings modal ── */}
+      <Modal visible={settingsVisible} transparent animationType="fade">
+        <Pressable style={settingsStyles.overlay} onPress={() => setSettingsVisible(false)}>
+          <Pressable style={settingsStyles.card} onPress={() => {}} onStartShouldSetResponder={() => true}>
+            <Image
+              source={require('../../assets/e27c2e8e377e60057010a8431706b96b0152436f.png')}
+              style={settingsStyles.texture}
+              resizeMode="cover"
+            />
+            <View style={settingsStyles.header}>
+              <View style={{ width: 26 }} />
+              <Text style={settingsStyles.title}>Configurações</Text>
+              <TouchableOpacity onPress={() => setSettingsVisible(false)}>
+                <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
+              </TouchableOpacity>
+            </View>
+            <View style={settingsStyles.row}>
+              <Text style={settingsStyles.label}>Som:</Text>
+              <GradientToggle value={soundOn} onValueChange={setSoundOn} kind="sound" />
+            </View>
+            <View style={settingsStyles.row}>
+              <Text style={settingsStyles.label}>Música:</Text>
+              <GradientToggle value={musicOn} onValueChange={setMusicOn} kind="music" />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       </SafeAreaView>
     </ImageBackground>
   );
 }
+
+const settingsStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
+  card: {
+    width: Platform.OS === 'web' ? 640 : 520, backgroundColor: '#1a2e1a',
+    borderRadius: 20, padding: 28, gap: 20, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)',
+  },
+  texture: { ...StyleSheet.absoluteFillObject, opacity: 0.12 } as any,
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  title: { color: '#fff', fontSize: 22, fontWeight: '900' },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  label: { color: '#d1fae5', fontSize: 16, fontWeight: '600' },
+});
 
 const LIME = '#4ade80';
 

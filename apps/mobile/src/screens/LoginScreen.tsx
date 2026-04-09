@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
-  panelWeb: Platform.OS === 'web' ? ({ width: 980 } as any) : {},
+  panelWeb: Platform.OS === 'web' ? ({ width: 720 } as any) : {},
   left: {
     flex: 1,
     justifyContent: 'center',
@@ -228,8 +228,8 @@ const styles = StyleSheet.create({
   },
   vertGrad: { width: 3, height: 230, borderRadius: 2 },
   right: {
-    width: 360,
-    padding: spacing.xl,
+    width: 300,
+    padding: spacing.lg,
     justifyContent: 'center',
   },
   formInner: {

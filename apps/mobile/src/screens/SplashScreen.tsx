@@ -112,6 +112,19 @@ export function SplashScreen({ navigation }: Props) {
             return;
           }
         } catch {}
+        // Check for an active tournament enrollment
+        try {
+          const { data } = await api.get('/game/tournaments/my-active');
+          if (data.enrollment) {
+            navigation.replace('TournamentWaiting', {
+              tournamentId: data.enrollment.tournamentId,
+              tournamentName: data.enrollment.tournamentName,
+              startsAt: data.enrollment.startsAt,
+              entryFee: data.enrollment.entryFee,
+            });
+            return;
+          }
+        } catch {}
         navigation.replace('Main');
       }, 2400);
     });

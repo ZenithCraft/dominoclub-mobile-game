@@ -100,6 +100,13 @@ export async function joinTournamentHandler(req: Request, res: Response) {
     if (tournament.status !== 'OPEN') return res.status(400).json({ error: 'Tournament not open' });
     if (tournament.current_players >= tournament.max_players) return res.status(400).json({ error: 'Tournament is full' });
 
+    // Already enrolled? Return success idempotently
+    const existing = await prisma.tournamentPlayer.findFirst({ where: { tournamentId: id, userId } });
+    if (existing) {
+      const wallet = await prisma.wallet.findUnique({ where: { userId } });
+      return res.json({ message: 'Already enrolled', starting: false, balance: wallet?.real_balance ?? 0, tournament });
+    }
+
     // Check wallet
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet || wallet.real_balance < tournament.entry_fee) {
@@ -146,7 +153,41 @@ export async function joinTournamentHandler(req: Request, res: Response) {
       tournament: updatedTournament,
     });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    // P2002 = unique constraint violation → player already enrolled (race condition)
+    if (err?.code === 'P2002') {
+      const userId = (req as any).user?.userId;
+      const { id } = req.params;
+      const wallet   = await prisma.wallet.findUnique({ where: { userId } }).catch(() => null);
+      const tournament = await prisma.tournament.findUnique({ where: { id } }).catch(() => null);
+      return res.json({ message: 'Already enrolled', starting: false, balance: wallet?.real_balance ?? 0, tournament });
+    }
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function getMyActiveTournamentHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const enrollment = await prisma.tournamentPlayer.findFirst({
+      where: {
+        userId,
+        eliminated_at: null,
+        tournament: { status: { in: ['OPEN', 'FULL'] } },
+      },
+      include: { tournament: true },
+    });
+    res.json({
+      enrollment: enrollment
+        ? {
+            tournamentId: enrollment.tournament.id,
+            tournamentName: enrollment.tournament.name,
+            startsAt: enrollment.tournament.starts_at,
+            entryFee: enrollment.tournament.entry_fee,
+          }
+        : null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 }
 
