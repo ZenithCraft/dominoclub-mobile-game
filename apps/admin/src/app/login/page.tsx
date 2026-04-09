@@ -1,9 +1,13 @@
 'use client';
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { Loader2, AlertCircle, Lock } from 'lucide-react';
 import { adminApi } from '../../lib/api';
-import background from '../../../../mobile/assets/background.png';
 import logo from '../../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Card, CardContent } from '../../components/ui/card';
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -28,70 +32,62 @@ export default function AdminLogin() {
   };
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center"
-      style={{
-        backgroundImage: `linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url(${background.src})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      }}
-    >
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="flex items-center gap-3 justify-center mb-8">
-          <img src={logo.src} alt="DominoClub" className="h-14 w-auto" />
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="w-full max-w-[360px] space-y-6">
+        <div className="flex flex-col items-center gap-3">
+          <img src={logo.src} alt="DominoClub" className="h-12 w-auto" />
+          <div className="text-center">
+            <p className="text-sm font-semibold text-foreground">Admin Dashboard</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Acesso restrito</p>
+          </div>
         </div>
 
-        <form
-          onSubmit={handleLogin}
-          className="bg-[var(--bg-card)] backdrop-blur border border-white/10 rounded-2xl p-8 space-y-5 shadow-[0_18px_50px_rgba(0,0,0,0.55)]"
-        >
-          <div>
-            <p className="text-white font-black text-xl mb-1">Admin Dashboard</p>
-            <p className="text-green-600 text-sm">Acesso restrito</p>
-          </div>
+        <Card>
+          <CardContent className="pt-5">
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="username">Usuário</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  placeholder="admin"
+                  autoComplete="username"
+                  required
+                />
+              </div>
 
-          <div className="space-y-1">
-            <label className="text-green-600 text-xs uppercase font-semibold tracking-wide">Usuário</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-green-800 focus:outline-none focus:border-white/20"
-              placeholder="admin"
-              autoComplete="username"
-              required
-            />
-          </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="password">Senha</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
 
-          <div className="space-y-1">
-            <label className="text-green-600 text-xs uppercase font-semibold tracking-wide">Senha</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-green-800 focus:outline-none focus:border-white/20"
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-            />
-          </div>
+              {error && (
+                <div className="flex items-center gap-2 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                  <p className="text-xs text-red-400">{error}</p>
+                </div>
+              )}
 
-          {error && (
-            <div className="bg-red-900/30 border border-red-900/50 rounded-lg px-4 py-3">
-              <p className="text-red-400 text-sm">{error}</p>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#4ade80] hover:bg-[#86efac] disabled:opacity-50 text-black font-bold py-3 rounded-lg transition-colors"
-          >
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
+              <Button type="submit" disabled={loading} className="w-full">
+                {loading ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" />Entrando...</>
+                ) : (
+                  <><Lock className="w-3.5 h-3.5" />Entrar</>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
