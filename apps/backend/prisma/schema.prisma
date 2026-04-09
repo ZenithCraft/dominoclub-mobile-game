@@ -246,5 +246,13 @@ model FraudLog {
 
   @@index([userId])
   @@index([type])
+  @@index([resolved])
   @@index([created_at])
+}
+
+// ─── Dynamic system configuration (admin-editable at runtime) ────────────────
+model SystemConfig {
+  key        String   @id
+  value      String
+  updated_at DateTime @updatedAt
 }

@@ -5,6 +5,7 @@ import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
 import { activeGames } from '../socket/gameSocket';
 import { createTournament, startTournament } from '../services/tournament.service';
+import { getRuntimeConfig, invalidateRuntimeConfigCache } from '../services/runtime-config.service';
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -440,6 +441,110 @@ export async function cancelTournamentAdminHandler(req: Request, res: Response) 
 
     logger.info('[Admin] Tournament cancelled — fees refunded', { tournamentId: id, players: tournament.players.length });
     res.json({ message: 'Tournament cancelled and entry fees refunded' });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+// ─── Runtime Config ───────────────────────────────────────────────────────────
+
+const EDITABLE_KEYS = new Set([
+  'houseEdgePercent',
+  'matchmakingBetTolerance',
+  'botInjectWaitSeconds',
+  'turnTimeoutSeconds',
+  'disconnectGraceSeconds',
+]);
+
+export async function getConfigHandler(_req: Request, res: Response) {
+  try {
+    const cfg = await getRuntimeConfig();
+    res.json(cfg);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function updateConfigHandler(req: Request, res: Response) {
+  try {
+    const updates = req.body as Record<string, unknown>;
+    const unknown = Object.keys(updates).filter((k) => !EDITABLE_KEYS.has(k));
+    if (unknown.length > 0) {
+      return res.status(400).json({ error: `Unknown config keys: ${unknown.join(', ')}` });
+    }
+
+    for (const [key, value] of Object.entries(updates)) {
+      const parsed = Number(value);
+      if (isNaN(parsed) || parsed < 0) {
+        return res.status(400).json({ error: `Invalid value for ${key}: must be a non-negative number` });
+      }
+      if (key === 'houseEdgePercent' && parsed > 50) {
+        return res.status(400).json({ error: 'houseEdgePercent cannot exceed 50%' });
+      }
+    }
+
+    await Promise.all(
+      Object.entries(updates).map(([key, value]) =>
+        prisma.systemConfig.upsert({
+          where: { key },
+          update: { value: String(value) },
+          create: { key, value: String(value) },
+        })
+      )
+    );
+
+    invalidateRuntimeConfigCache();
+
+    const newCfg = await getRuntimeConfig();
+    logger.info('[Admin] Runtime config updated', { updates });
+    res.json(newCfg);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─── Fraud Logs ───────────────────────────────────────────────────────────────
+
+export async function getFraudLogsHandler(req: Request, res: Response) {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = 20;
+    const type = req.query.type as string | undefined;
+    const resolved = req.query.resolved as string | undefined;
+
+    const where: any = {};
+    if (type) where.type = type;
+    if (resolved !== undefined) where.resolved = resolved === 'true';
+
+    const [logs, total] = await Promise.all([
+      prisma.fraudLog.findMany({
+        where,
+        include: {
+          user: { select: { id: true, name: true, phone: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.fraudLog.count({ where }),
+    ]);
+
+    res.json({ logs, total, page, pages: Math.ceil(total / limit) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function resolveFraudLogHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const log = await prisma.fraudLog.update({
+      where: { id },
+      data: { resolved: true },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    logger.info('[Admin] Fraud log resolved', { logId: id, type: log.type, userId: log.userId });
+    res.json(log);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

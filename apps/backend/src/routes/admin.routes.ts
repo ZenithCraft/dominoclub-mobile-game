@@ -14,6 +14,10 @@ import {
   createTournamentAdminHandler,
   startTournamentAdminHandler,
   cancelTournamentAdminHandler,
+  getConfigHandler,
+  updateConfigHandler,
+  getFraudLogsHandler,
+  resolveFraudLogHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -40,5 +44,11 @@ router.get('/tournaments', getTournamentsAdminHandler);
 router.post('/tournaments', createTournamentAdminHandler);
 router.post('/tournaments/:id/start', startTournamentAdminHandler);
 router.post('/tournaments/:id/cancel', cancelTournamentAdminHandler);
+
+router.get('/config', getConfigHandler);
+router.patch('/config', updateConfigHandler);
+
+router.get('/fraud-logs', getFraudLogsHandler);
+router.patch('/fraud-logs/:id/resolve', resolveFraudLogHandler);
 
 export default router;
