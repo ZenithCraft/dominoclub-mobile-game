@@ -18,11 +18,11 @@ import axios from 'axios';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const API_URL    = process.env.API_URL    || 'http://localhost:3000/api/v1';
-const SOCKET_URL = process.env.SOCKET_URL || 'http://localhost:3000';
+const API_URL    = process.env.API_URL    || 'http://localhost:3001/api/v1';
+const SOCKET_URL = process.env.SOCKET_URL || 'http://localhost:3001';
 const BET_AMOUNT = Number(process.env.BET_AMOUNT ?? 0);
 const VARIANT    = process.env.VARIANT    || 'CARROCA';
-const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 120_000); // 2 minutes max
+const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 300_000); // 5 minutes max
 
 // ─── Types (mirror the engine) ────────────────────────────────────────────────
 
@@ -61,8 +61,10 @@ function log(prefix: string, msg: string, data?: any) {
   console.log(`[${time}] [${prefix}] ${msg}${extra}`);
 }
 
-async function devLogin(label: string): Promise<{ token: string; userId: string; name: string }> {
-  const res = await axios.post(`${API_URL}/auth/dev/login`, {});
+async function devLogin(label: string, index: number): Promise<{ token: string; userId: string; name: string }> {
+  // Use distinct phone numbers per player so they get distinct user records
+  const phone = `+5599000000${String(index).padStart(2, '0')}`;
+  const res = await axios.post(`${API_URL}/auth/dev/login`, { phone, name: `Test Player ${index}` });
   const { accessToken, user } = res.data;
   log(label, `Logged in as ${user.name} (${user.id.slice(0, 8)}…)`);
   return { token: accessToken, userId: user.id, name: user.name };
@@ -110,8 +112,15 @@ function pickMove(
 
   for (const tile of hand) {
     for (const end of openEnds) {
-      if (tile[0] === end.value) return { type: 'play', tile, side: end.side, flipped: false };
-      if (tile[1] === end.value) return { type: 'play', tile, side: end.side, flipped: true };
+      // Mirror the engine's canPlayTile logic (side-dependent flipping)
+      const isLeftLike = end.side === 'left' || end.side === 'top';
+      if (isLeftLike) {
+        if (tile[1] === end.value) return { type: 'play', tile, side: end.side, flipped: false };
+        if (tile[0] === end.value && tile[0] !== tile[1]) return { type: 'play', tile, side: end.side, flipped: true };
+      } else {
+        if (tile[0] === end.value) return { type: 'play', tile, side: end.side, flipped: false };
+        if (tile[1] === end.value && tile[0] !== tile[1]) return { type: 'play', tile, side: end.side, flipped: true };
+      }
     }
   }
 
@@ -184,8 +193,8 @@ async function main() {
 
   // 1. Login both players
   const [p1data, p2data] = await Promise.all([
-    devLogin('P1'),
-    devLogin('P2'),
+    devLogin('P1', 1),
+    devLogin('P2', 2),
   ]);
 
   // 2. Connect sockets
