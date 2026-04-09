@@ -4,6 +4,7 @@ import { deductBet, creditWin } from '../services/wallet.service';
 import { advanceTournamentBracket, setTournamentIo, cancelAndRefundTournament } from '../services/tournament.service';
 import { config } from '../config';
 import { logger, matchLogger } from '../utils/logger';
+import { checkGpsProximity, updateBotScore } from '../middleware/antifraud.middleware';
 import {
   GameState,
   initGame,
@@ -24,6 +25,40 @@ const disconnectTimers = new Map<string, NodeJS.Timeout>();
 // Per-game monotonically increasing sequence counter.
 // Included in every game:state emission so clients can discard stale events.
 const gameStateSeq = new Map<string, number>();
+
+// ─── Bot timing tracking ──────────────────────────────────────────────────────
+// Key: `${gameId}:${userId}` — stores the timestamp of the player's last move
+// and an array of elapsed intervals (ms) between consecutive moves.
+const playerLastMoveAt  = new Map<string, number>();
+const playerMoveIntervals = new Map<string, number[]>();
+
+function recordMoveTime(gameId: string, userId: string) {
+  const key = `${gameId}:${userId}`;
+  const lastAt = playerLastMoveAt.get(key);
+  const now = Date.now();
+
+  if (lastAt !== undefined) {
+    const intervals = playerMoveIntervals.get(key) ?? [];
+    intervals.push(now - lastAt);
+    // Keep a rolling window of the last 30 intervals
+    playerMoveIntervals.set(key, intervals.length > 30 ? intervals.slice(-30) : intervals);
+  }
+
+  playerLastMoveAt.set(key, now);
+}
+
+function flushMoveTimings(gameId: string): Map<string, number[]> {
+  const result = new Map<string, number[]>();
+  const prefix = `${gameId}:`;
+  for (const [key, intervals] of playerMoveIntervals) {
+    if (key.startsWith(prefix)) {
+      result.set(key.slice(prefix.length), intervals);
+      playerMoveIntervals.delete(key);
+      playerLastMoveAt.delete(key);
+    }
+  }
+  return result;
+}
 
 // ─── Tournament auto-cancel scheduler ────────────────────────────────────────
 
@@ -187,6 +222,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       activeGames.set(gameId, newState);
       clearTurnTimer(gameId);
 
+      recordMoveTime(gameId, user.id);
       recordMove(gameId, {
         type: 'play',
         userId: user.id,
@@ -221,6 +257,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     const newState = drawFromBoneyard(state, playerIndex);
     activeGames.set(gameId, newState);
 
+    recordMoveTime(gameId, user.id);
     recordMove(gameId, {
       type: 'draw',
       userId: user.id,
@@ -252,6 +289,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     activeGames.set(gameId, newState);
     clearTurnTimer(gameId);
 
+    recordMoveTime(gameId, user.id);
     recordMove(gameId, {
       type: 'pass',
       userId: user.id,
@@ -349,6 +387,14 @@ async function startGame(gameId: string, variant: DominoVariant, players: any[],
 
   const playerIds = playerData.map((p) => p.userId);
   logger.info('Game started', { gameId, players: playerIds });
+
+  // GPS proximity check — flag matched players who are physically co-located
+  const humanIds = playerData.filter((p) => !p.isBot).map((p) => p.userId);
+  if (humanIds.length >= 2) {
+    checkGpsProximity(humanIds, gameId).catch((err) =>
+      logger.error('[AntifrAud] GPS proximity check failed', { gameId, err: err.message })
+    );
+  }
 
   matchLogger.info('match_start', {
     event: 'match_start',
@@ -602,6 +648,14 @@ async function finalizeMatch(
 
   const totalMoves = replay?.moves.length ?? 0;
   logger.info('Match ended', { gameId, matchWinnerTeam, prizePerWinner, matchScores: state.matchScores });
+
+  // Flush move-timing data and update bot scores for all human players
+  const timings = flushMoveTimings(gameId);
+  for (const [userId, intervals] of timings) {
+    updateBotScore(gameId, userId, intervals).catch((err) =>
+      logger.error('[AntifrAud] Bot score update failed', { gameId, userId, err: err.message })
+    );
+  }
 
   matchLogger.info('match_end', {
     event: 'match_end',
