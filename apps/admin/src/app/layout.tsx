@@ -13,7 +13,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        {/* Blocking script: reads localStorage before React hydrates to avoid sidebar flash */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(localStorage.getItem('admin_sidebar_collapsed')==='true')document.documentElement.classList.add('sidebar-collapsed')}catch(e){}})();` }} />
+      </head>
       <body>{children}</body>
     </html>
   );
