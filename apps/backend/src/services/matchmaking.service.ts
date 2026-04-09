@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { prisma } from './prisma.service';
 import { config } from '../config';
+import { getHouseEdgePercent } from './runtime-config.service';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -143,6 +144,9 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
   const variant = players[0].variant;
   const gameId = uuidv4();
 
+  // Read house edge from DB (with cache fallback) so admin can change it live
+  const houseEdge = await getHouseEdgePercent();
+
   // Anti-collusion: shuffle team assignments in 2v2
   const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
   const playerData = shuffledPlayers.map((p, i) => ({
@@ -160,8 +164,8 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
         mode,
         variant,
         bet_amount: betAmount,
-        prize_pool: betAmount * players.length * (1 - config.game.houseEdgePercent / 100),
-        house_fee: betAmount * players.length * (config.game.houseEdgePercent / 100),
+        prize_pool: betAmount * players.length * (1 - houseEdge / 100),
+        house_fee: betAmount * players.length * (houseEdge / 100),
         status: 'PLAYING',
         players: {
           create: playerData.map((p) => ({

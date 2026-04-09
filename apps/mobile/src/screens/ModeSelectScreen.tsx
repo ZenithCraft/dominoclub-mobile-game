@@ -33,20 +33,28 @@ interface RoomOption {
   prize: number;
 }
 
+// Prize = buyIn × players × (1 − houseEdge).
+// Default house edge is 10% (matches HOUSE_EDGE_PERCENT env var default).
+// The backend applies the live value from SystemConfig; these display figures
+// match that default so the lobby is consistent with what players actually win.
+const HOUSE_EDGE = 0.10;
+function prize1v1(buyIn: number) { return buyIn * 2 * (1 - HOUSE_EDGE); }
+function prize2v2(buyIn: number) { return buyIn * 4 * (1 - HOUSE_EDGE) / 2; } // per-team prize
+
 const LIVRE_1V1: RoomOption[] = [
   { id: 'l1', buyIn: null, prize: 0 },
-  { id: 'l2', buyIn: 2,    prize: 3.8 },
-  { id: 'l3', buyIn: 10,   prize: 19 },
-  { id: 'l4', buyIn: 25,   prize: 47.5 },
-  { id: 'l5', buyIn: 50,   prize: 95 },
+  { id: 'l2', buyIn: 2,    prize: prize1v1(2)  },
+  { id: 'l3', buyIn: 10,   prize: prize1v1(10) },
+  { id: 'l4', buyIn: 25,   prize: prize1v1(25) },
+  { id: 'l5', buyIn: 50,   prize: prize1v1(50) },
 ];
 
 const LIVRE_2V2: RoomOption[] = [
   { id: 'd1', buyIn: null, prize: 0 },
-  { id: 'd2', buyIn: 2,    prize: 3.8 },
-  { id: 'd3', buyIn: 10,   prize: 19 },
-  { id: 'd4', buyIn: 25,   prize: 47.5 },
-  { id: 'd5', buyIn: 50,   prize: 95 },
+  { id: 'd2', buyIn: 2,    prize: prize2v2(2)  },
+  { id: 'd3', buyIn: 10,   prize: prize2v2(10) },
+  { id: 'd4', buyIn: 25,   prize: prize2v2(25) },
+  { id: 'd5', buyIn: 50,   prize: prize2v2(50) },
 ];
 
 // ── Tournament data type ────────────────────────────────────────────────────
