@@ -17,6 +17,8 @@ import {
   MatchmakingVariant,
 } from '../services/matchmaking.service';
 import { getRedisClient, getRedisSubscriber, isRedisAvailable } from '../services/redis.service';
+import { verifyIntegrityToken } from '../services/integrity.service';
+import { validateGpsBounds, updateUserGps, GpsCoords } from '../middleware/antifraud.middleware';
 
 const VALID_MODES = ['ARENA_1V1', 'CUP_1V1', 'TOURNAMENT_2V2', 'RECREATIONAL_2V2'] as const;
 const VALID_VARIANTS = ['CARROCA', 'L_E_L', 'CRUZADA'] as const;
@@ -83,7 +85,14 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
     socket.emit('queue:stats', getQueueStats());
 
     // ── Matchmaking ──────────────────────────────────────────
-    socket.on('queue:join', async (data: { mode: string; betAmount: number; variant?: string }) => {
+    socket.on('queue:join', async (data: {
+      mode: string;
+      betAmount: number;
+      variant?: string;
+      platform?: 'android' | 'ios';
+      integrityToken?: string;
+      gps?: { lat: number; lng: number; accuracy?: number };
+    }) => {
       // Validate mode
       if (!VALID_MODES.includes(data.mode as any)) {
         socket.emit('queue:error', { message: 'Modo de jogo inválido' });
@@ -101,6 +110,35 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
         data.variant && VALID_VARIANTS.includes(data.variant as any)
           ? (data.variant as MatchmakingVariant)
           : 'CARROCA';
+
+      const isPaidGame = data.betAmount > 0;
+
+      // ── Device integrity check (paid games only) ────────────────────────────
+      if (isPaidGame && config.integrity.requireForPaidGames) {
+        if (!data.integrityToken || !data.platform) {
+          socket.emit('queue:error', { message: 'Verificação do dispositivo necessária' });
+          return;
+        }
+        const integrityResult = await verifyIntegrityToken(data.integrityToken, data.platform);
+        if (!integrityResult.valid) {
+          logger.warn('[Socket] Integrity check failed', { userId: user.id, verdict: integrityResult.verdict });
+          socket.emit('queue:error', { message: 'Falha na verificação do dispositivo. Use a versão oficial do app.' });
+          return;
+        }
+      }
+
+      // ── GPS validation (paid games: required if enabled; always validated if sent) ─
+      if (data.gps) {
+        const gpsCheck = validateGpsBounds(data.gps);
+        if (!gpsCheck.valid) {
+          socket.emit('queue:error', { message: gpsCheck.reason ?? 'Localização inválida' });
+          return;
+        }
+        await updateUserGps(user.id, data.gps);
+      } else if (isPaidGame && config.antifraud.gpsRequiredForPaidGames) {
+        socket.emit('queue:error', { message: 'Localização necessária para jogos pagos' });
+        return;
+      }
 
       // Check wallet balance
       const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } });

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import * as Location from 'expo-location';
+import { getIntegrityToken } from '../services/integrity';
 import {
   View, Text, StyleSheet, ImageBackground, ScrollView, useWindowDimensions,
   TouchableOpacity, Modal, ActivityIndicator, RefreshControl,
@@ -339,6 +341,14 @@ export function ModeSelectScreen({ navigation, route }: Props) {
         toast.error(message);
       });
 
+      socket.once('queue:expired', ({ message }: { message: string }) => {
+        if (timeout) clearTimeout(timeout);
+        cleanup();
+        setSearching(false);
+        setQueueStatus('idle');
+        toast.warning(message);
+      });
+
       socket.once('queue:joined', ({ botWaitSeconds }: { botWaitSeconds?: number }) => {
         if (typeof botWaitSeconds === 'number' && Number.isFinite(botWaitSeconds)) {
           setServerBotWaitSeconds(botWaitSeconds);
@@ -347,7 +357,30 @@ export function ModeSelectScreen({ navigation, route }: Props) {
         }
       });
 
-      socket.emit('queue:join', { mode: gameMode, betAmount });
+      // Gather integrity token and GPS in parallel — non-fatal if unavailable
+      const isPaidGame = betAmount > 0;
+      const [integrityPayload, gpsPosition] = await Promise.allSettled([
+        isPaidGame ? getIntegrityToken() : Promise.resolve(null),
+        isPaidGame
+          ? Location.requestForegroundPermissionsAsync()
+              .then(({ status }) =>
+                status === 'granted'
+                  ? Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+                  : null
+              )
+              .catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      const integrity = integrityPayload.status === 'fulfilled' ? integrityPayload.value : null;
+      const position  = gpsPosition.status  === 'fulfilled' ? gpsPosition.value   : null;
+
+      socket.emit('queue:join', {
+        mode: gameMode,
+        betAmount,
+        ...(integrity ? { platform: integrity.platform, integrityToken: integrity.token } : {}),
+        ...(position  ? { gps: { lat: position.coords.latitude, lng: position.coords.longitude, accuracy: position.coords.accuracy ?? undefined } } : {}),
+      });
     } catch (err: any) {
       setSearching(false);
       setQueueStatus('idle');

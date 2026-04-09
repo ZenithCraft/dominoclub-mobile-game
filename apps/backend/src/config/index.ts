@@ -79,6 +79,42 @@ export const config = {
   redis: {
     url: process.env.REDIS_URL || '',
   },
+
+  integrity: {
+    // Set to true in dev to accept any token without hitting Google/Apple APIs
+    mockMode: process.env.INTEGRITY_MOCK_MODE === 'true' || process.env.NODE_ENV !== 'production',
+    // Token value accepted in mock mode — must match what the mobile sends
+    mockToken: process.env.INTEGRITY_MOCK_TOKEN || 'dev-integrity-token',
+    // Whether a valid token is required before entering a paid queue
+    requireForPaidGames: process.env.INTEGRITY_REQUIRE_FOR_PAID_GAMES !== 'false',
+
+    // Android — Play Integrity
+    androidPackageName: process.env.ANDROID_PACKAGE_NAME || 'com.dominoclub.app',
+    // Full JSON of the Google service account (used to get OAuth2 token for Play Integrity API)
+    googleServiceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '',
+
+    // iOS — Apple DeviceCheck
+    appleBundleId: process.env.APPLE_BUNDLE_ID || 'com.dominoclub.app',
+    appleTeamId:   process.env.APPLE_TEAM_ID   || '',
+    appleKeyId:    process.env.APPLE_KEY_ID     || '',
+    // PEM private key for signing DeviceCheck JWTs
+    applePrivateKey: (process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+  },
+
+  antifraud: {
+    // Require GPS for any game with betAmount > 0
+    gpsRequiredForPaidGames: process.env.GPS_REQUIRED_FOR_PAID_GAMES === 'true',
+    // Maximum distance in metres between two matched players before a collusion flag is raised
+    gpsCollusionDistanceM: parseInt(process.env.GPS_COLLUSION_DISTANCE_M || '100', 10),
+    // A move completed faster than this (ms) counts as suspiciously fast
+    botMinMoveMs: parseInt(process.env.BOT_MIN_MOVE_MS || '800', 10),
+    // If ≥ this fraction of moves are suspiciously fast, flag the player
+    botSuspiciousRatio: parseFloat(process.env.BOT_SUSPICIOUS_RATIO || '0.5'),
+    // Minimum consecutive fast moves before the heuristic is applied
+    botMinSampleSize: parseInt(process.env.BOT_MIN_SAMPLE_SIZE || '5', 10),
+    // bot_score at or above this threshold triggers a FraudLog write
+    botScoreLogThreshold: parseFloat(process.env.BOT_SCORE_LOG_THRESHOLD || '0.65'),
+  },
 };
 
 // ── Production secret validation ────────────────────────────────────────────
