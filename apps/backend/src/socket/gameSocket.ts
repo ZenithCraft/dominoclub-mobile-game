@@ -415,20 +415,75 @@ function startTurnTimer(gameId: string, state: GameState, io: SocketServer) {
     const currentState = activeGames.get(gameId);
     if (!currentState || currentState.status !== 'playing') return;
 
-    // Auto-pass on timeout
     const timedOutIndex = currentState.currentPlayerIndex;
-    const newState = applyPass(currentState, timedOutIndex);
+    const timedOutPlayer = currentState.players[timedOutIndex];
+
+    const pickOpeningTile = (hand: [number, number][]) => {
+      const doubles = hand.filter((t) => t[0] === t[1]).sort((a, b) => b[0] - a[0]);
+      if (doubles.length) return doubles[0];
+      const sorted = [...hand].sort((a, b) => {
+        const aMax = Math.max(a[0], a[1]);
+        const bMax = Math.max(b[0], b[1]);
+        if (aMax !== bMax) return bMax - aMax;
+        const aMin = Math.min(a[0], a[1]);
+        const bMin = Math.min(b[0], b[1]);
+        if (aMin !== bMin) return bMin - aMin;
+        return 0;
+      });
+      return sorted[0] ?? null;
+    };
+
+    const moves = getValidMoves(currentState, timedOutIndex);
+    let newState: GameState;
+
+    if (!currentState.firstPlayMade) {
+      const opening = pickOpeningTile(timedOutPlayer.hand);
+      if (!opening) return;
+      newState = applyMove(currentState, timedOutIndex, opening, 'left', false);
+      recordMove(gameId, {
+        type: 'play',
+        userId: timedOutPlayer.userId,
+        playerIndex: timedOutIndex,
+        timestamp: Date.now(),
+        tile: opening,
+        side: 'left',
+        flipped: false,
+      });
+    } else if (moves.length > 0) {
+      const choice = moves[Math.floor(Math.random() * moves.length)];
+      const play = choice.plays[Math.floor(Math.random() * choice.plays.length)] ?? choice.plays[0];
+      newState = applyMove(currentState, timedOutIndex, choice.tile, play.side, play.flipped);
+      recordMove(gameId, {
+        type: 'play',
+        userId: timedOutPlayer.userId,
+        playerIndex: timedOutIndex,
+        timestamp: Date.now(),
+        tile: choice.tile,
+        side: play.side,
+        flipped: play.flipped,
+      });
+    } else if (currentState.boneyard.length > 0) {
+      newState = drawFromBoneyard(currentState, timedOutIndex);
+      recordMove(gameId, {
+        type: 'draw',
+        userId: timedOutPlayer.userId,
+        playerIndex: timedOutIndex,
+        timestamp: Date.now(),
+      });
+    } else {
+      newState = applyPass(currentState, timedOutIndex);
+      recordMove(gameId, {
+        type: 'pass',
+        userId: timedOutPlayer.userId,
+        playerIndex: timedOutIndex,
+        timestamp: Date.now(),
+      });
+    }
+
     activeGames.set(gameId, newState);
 
-    recordMove(gameId, {
-      type: 'timeout',
-      userId: currentPlayer.userId,
-      playerIndex: timedOutIndex,
-      timestamp: Date.now(),
-    });
-
     broadcastGameState(gameId, newState, io);
-    io.to(`game:${gameId}`).emit('game:timeout', { userId: currentPlayer.userId });
+    io.to(`game:${gameId}`).emit('game:timeout', { userId: timedOutPlayer.userId });
 
     if (newState.status === 'finished') {
       handleGameEnd(gameId, newState, io);
@@ -594,7 +649,7 @@ async function finalizeMatch(
 ) {
   const prizePool = game.prize_pool;
 
-  // The overall match winner is whoever reached 7 pts (or team that didn't forfeit)
+  // The overall match winner is whoever reached the target score (or team that didn't forfeit)
   const matchWinnerTeam = state.matchWinnerTeam ?? state.winnerTeam;
   const winningPlayers  = matchWinnerTeam
     ? state.players.filter((p) => p.team === matchWinnerTeam && !p.isBot)

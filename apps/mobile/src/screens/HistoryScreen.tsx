@@ -5,6 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
 import { api } from '../services/api';
 import { IconChevronLeft, IconTrophy } from '../components/Icons';
+import { useAuthStore } from '../store/auth.store';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -22,9 +23,11 @@ type GameItem = {
 };
 
 export function HistoryScreen({ navigation }: Props) {
+  const myUserId = useAuthStore((s) => s.user?.id) ?? '';
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [items, setItems] = useState<GameItem[]>([]);
+  const [pairStats, setPairStats] = useState<Array<{ userId: string; name: string; games: number; wins: number; winRate: number; alert: boolean }>>([]);
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
@@ -37,6 +40,39 @@ export function HistoryScreen({ navigation }: Props) {
         if (list.length < 10) break;
       }
       setItems(all);
+      if (myUserId) {
+        const byOpp = new Map<string, { userId: string; name: string; games: number; wins: number }>();
+        for (const g of all) {
+          const mode = g.mode ?? '';
+          const bet = g.bet_amount ?? 0;
+          if (!(mode === 'ARENA_1V1' || mode === 'CUP_1V1')) continue;
+          if (bet <= 0) continue;
+          const winner = g.winner_id ?? g.winnerId;
+          if (!winner) continue;
+          const players = g.players ?? [];
+          const ids = players.map((p) => p.user?.id).filter(Boolean) as string[];
+          if (!ids.includes(myUserId)) continue;
+          const opp = players.find((p) => p.user?.id && p.user.id !== myUserId)?.user;
+          if (!opp?.id) continue;
+          const entry = byOpp.get(opp.id) ?? { userId: opp.id, name: opp.name || '—', games: 0, wins: 0 };
+          entry.games += 1;
+          if (winner === myUserId) entry.wins += 1;
+          if (!entry.name || entry.name === '—') entry.name = opp.name || '—';
+          byOpp.set(opp.id, entry);
+        }
+        const list = [...byOpp.values()]
+          .map((s) => {
+            const winRate = s.games > 0 ? s.wins / s.games : 0;
+            const skew = Math.max(winRate, 1 - winRate);
+            const alert = s.games >= 10 && skew >= 0.9;
+            return { ...s, winRate, alert };
+          })
+          .sort((a, b) => (b.games - a.games) || (b.winRate - a.winRate))
+          .slice(0, 10);
+        setPairStats(list);
+      } else {
+        setPairStats([]);
+      }
     } catch {
       const now = Date.now();
       const fallback: GameItem[] = Array.from({ length: 8 }).map((_, i) => ({
@@ -50,11 +86,12 @@ export function HistoryScreen({ navigation }: Props) {
         tournamentId: i % 4 === 0 ? `T-${100 + i}` : null,
       }));
       setItems(fallback);
+      setPairStats([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [myUserId]);
 
   useEffect(() => {
     fetchHistory();
@@ -112,6 +149,23 @@ export function HistoryScreen({ navigation }: Props) {
             renderItem={renderItem}
             contentContainerStyle={{ padding: spacing.lg }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4ade80" />}
+            ListHeaderComponent={pairStats.length > 0 ? (
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryTitle}>Confrontos (1v1 pago)</Text>
+                {pairStats.map((s) => (
+                  <View key={s.userId} style={styles.summaryRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.summaryName} numberOfLines={1}>{s.name}</Text>
+                      <Text style={styles.summarySub}>
+                        {s.wins}/{s.games} vitórias • {(s.winRate * 100).toFixed(0)}%
+                      </Text>
+                    </View>
+                    {s.alert ? <Text style={styles.alert}>ALERTA</Text> : null}
+                  </View>
+                ))}
+                <Text style={styles.summaryHint}>Taxa muito alta pode indicar conluio. O sistema evita parear estes jogadores novamente.</Text>
+              </View>
+            ) : null}
             ListEmptyComponent={<Text style={styles.empty}>Nenhuma partida finalizada encontrada.</Text>}
           />
         )}
@@ -158,4 +212,26 @@ const styles = StyleSheet.create({
   },
   result: { marginTop: spacing.sm, fontWeight: '700' },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl },
+  summaryCard: {
+    backgroundColor: 'rgba(8, 18, 8, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 212, 0, 0.28)',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  summaryTitle: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md, marginBottom: spacing.sm },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+  summaryName: { color: '#fff', fontWeight: '700' },
+  summarySub: { color: colors.textMuted, marginTop: 2, fontSize: fonts.sizes.xs },
+  alert: {
+    marginLeft: spacing.md,
+    color: '#0a1f0a',
+    fontWeight: '900',
+    backgroundColor: '#FFD400',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  summaryHint: { color: colors.textMuted, fontSize: fonts.sizes.xs, marginTop: spacing.sm },
 });

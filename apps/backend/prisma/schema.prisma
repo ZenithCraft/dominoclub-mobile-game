@@ -98,6 +98,7 @@ model User {
   gamePlayers       GamePlayer[]
   tournamentPlayers TournamentPlayer[]
   fraudLogs         FraudLog[]
+  couponRedemptions CouponRedemption[]
   wonGames          Game[]             @relation("GameWinner")
 
   @@index([phone])
@@ -255,4 +256,36 @@ model SystemConfig {
   key        String   @id
   value      String
   updated_at DateTime @updatedAt
+}
+
+model Coupon {
+  id                 String   @id @default(uuid())
+  code               String   @unique
+  bonus_amount       Float
+  rollover_multiplier Int     @default(0)
+  max_uses           Int?
+  uses               Int      @default(0)
+  active             Boolean  @default(true)
+  starts_at          DateTime?
+  expires_at         DateTime?
+  created_at         DateTime @default(now())
+
+  redemptions CouponRedemption[]
+
+  @@index([active])
+  @@index([created_at])
+}
+
+model CouponRedemption {
+  id          String   @id @default(uuid())
+  couponId    String
+  userId      String
+  redeemed_at DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, userId])
+  @@index([userId])
+  @@index([redeemed_at])
 }

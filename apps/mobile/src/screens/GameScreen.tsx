@@ -2,12 +2,13 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ImageBackground, Image,
   TouchableOpacity, Modal, Alert, Animated, Pressable, ActivityIndicator,
-  Platform, useWindowDimensions, Easing,
+  Platform, useWindowDimensions, Easing, PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Defs, Pattern, Rect, Circle } from 'react-native-svg';
 import {
   IconTrophy, IconSettings, IconAlert, IconX, IconFrown,
   IconVolumeUp, IconMusic,
@@ -24,6 +25,52 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 
 const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
 const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
+
+function computeOpeningTile(hand: (Tile | null)[]): Tile | null {
+  const tiles = hand.filter((t): t is Tile => !!t);
+  if (!tiles.length) return null;
+  const doubles = tiles.filter((t) => t[0] === t[1]).sort((a, b) => b[0] - a[0]);
+  if (doubles.length) return doubles[0];
+  const sorted = [...tiles].sort((a, b) => {
+    const aMax = Math.max(a[0], a[1]);
+    const bMax = Math.max(b[0], b[1]);
+    if (aMax !== bMax) return bMax - aMax;
+    const aMin = Math.min(a[0], a[1]);
+    const bMin = Math.min(b[0], b[1]);
+    if (aMin !== bMin) return bMin - aMin;
+    return 0;
+  });
+  return sorted[0];
+}
+
+function FeltTexture() {
+  return (
+    <Svg style={StyleSheet.absoluteFillObject as any} width="100%" height="100%" pointerEvents="none">
+      <Defs>
+        <Pattern id="felt" patternUnits="userSpaceOnUse" width="84" height="84">
+          <Rect width="84" height="84" fill="transparent" />
+          <Circle cx="8"  cy="14" r="1.2" fill="#000" opacity={0.10} />
+          <Circle cx="22" cy="9"  r="0.9" fill="#000" opacity={0.10} />
+          <Circle cx="38" cy="18" r="1.4" fill="#000" opacity={0.09} />
+          <Circle cx="61" cy="12" r="1.0" fill="#000" opacity={0.10} />
+          <Circle cx="76" cy="22" r="1.2" fill="#000" opacity={0.10} />
+          <Circle cx="14" cy="35" r="1.1" fill="#fff" opacity={0.07} />
+          <Circle cx="33" cy="42" r="0.9" fill="#fff" opacity={0.06} />
+          <Circle cx="52" cy="33" r="1.3" fill="#fff" opacity={0.06} />
+          <Circle cx="72" cy="44" r="1.0" fill="#fff" opacity={0.06} />
+          <Circle cx="9"  cy="62" r="1.3" fill="#000" opacity={0.10} />
+          <Circle cx="27" cy="71" r="1.0" fill="#000" opacity={0.10} />
+          <Circle cx="45" cy="63" r="1.2" fill="#000" opacity={0.09} />
+          <Circle cx="63" cy="72" r="1.1" fill="#000" opacity={0.10} />
+          <Circle cx="79" cy="60" r="0.9" fill="#000" opacity={0.10} />
+          <Circle cx="18" cy="55" r="1.0" fill="#fff" opacity={0.06} />
+          <Circle cx="58" cy="54" r="0.9" fill="#fff" opacity={0.06} />
+        </Pattern>
+      </Defs>
+      <Rect width="100%" height="100%" fill="url(#felt)" opacity={0.55} />
+    </Svg>
+  );
+}
 
 function MiniPips({ value }: { value: number }) {
   const pos = [
@@ -208,7 +255,7 @@ function normalizeGameState(raw: any): GameState {
     firstPlayMade: !!raw?.firstPlayMade,
     matchScores: (raw?.matchScores && typeof raw.matchScores === 'object') ? raw.matchScores : { 1: 0, 2: 0 },
     roundNumber: asNumber(raw?.roundNumber, 1),
-    targetScore: asNumber(raw?.targetScore, 7),
+    targetScore: asNumber(raw?.targetScore, 6),
     matchWinnerTeam: raw?.matchWinnerTeam,
   };
 }
@@ -874,7 +921,8 @@ export function GameScreen({ navigation, route }: Props) {
   const { width: viewportWidth } = useWindowDimensions();
   const [feltWidth, setFeltWidth] = useState(0);
 
-  const [turnTimer, setTurnTimer]       = useState(30);
+  const [turnTimer, setTurnTimer]       = useState(15);
+  const [feltRect, setFeltRect]         = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [resultModal, setResultModal]   = useState(false);
   const [playAgainSearching, setPlayAgainSearching] = useState(false);
   const [gameError, setGameError]       = useState<string | null>(null);
@@ -897,6 +945,13 @@ export function GameScreen({ navigation, route }: Props) {
   const sideAnimRef    = useRef<Map<string, Animated.Value>>(new Map());
   const drawAnimRef    = useRef<Map<string, Animated.Value>>(new Map());
   const drawPulseAnim  = useRef(new Animated.Value(0)).current;
+
+  const feltRef = useRef<View | null>(null);
+  const tileWrapRefs = useRef<Record<number, any>>({});
+  const [dragging, setDragging] = useState<{ tile: Tile; handIndex: number; w: number; h: number } | null>(null);
+  const dragXY = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const dragScale = useRef(new Animated.Value(1)).current;
+  const dragOpacity = useRef(new Animated.Value(0)).current;
 
   // ── Dev mock: inject a 2v2 game so the board can be screenshotted ────────────
   useEffect(() => {
@@ -944,7 +999,7 @@ export function GameScreen({ navigation, route }: Props) {
       ],
       matchScores: { 1: 3, 2: 2 },
       roundNumber: 4,
-      targetScore: 7,
+      targetScore: 6,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -987,8 +1042,15 @@ export function GameScreen({ navigation, route }: Props) {
   const turnUserId    = currentGame?.players[currentGame?.currentPlayerIndex ?? 0]?.userId ?? '';
   const myHand        = (currentGame?.players[myPlayerIndex]?.hand || []) as (Tile | null)[];
 
+  const openingTile = currentGame && isMyTurn && !currentGame.firstPlayMade ? computeOpeningTile(myHand) : null;
   const validMovesMap: Map<string, PlayOption[]> = currentGame && isMyTurn
-    ? getValidMovesForHand(myHand, currentGame)
+    ? (() => {
+        const map = getValidMovesForHand(myHand, currentGame);
+        if (!openingTile) return map;
+        const k = tileKey(openingTile);
+        const plays = map.get(k) ?? [{ side: 'left' as const, flipped: false }];
+        return new Map([[k, plays]]);
+      })()
     : new Map();
 
   const hasValidMoves = validMovesMap.size > 0;
@@ -998,6 +1060,12 @@ export function GameScreen({ navigation, route }: Props) {
     ? (validMovesMap.get(tileKey(selectedTile.tile)) ?? [])
     : [];
   const uniqueSides = [...new Set(validPlaysForSelected.map((p) => p.side))];
+
+  const dropTile = dragging?.tile ?? selectedTile?.tile ?? null;
+  const dropPlays: PlayOption[] = dropTile ? (validMovesMap.get(tileKey(dropTile)) ?? []) : [];
+  const showDropZones = isMyTurn && !!dropTile;
+  const canDropLeft = dropPlays.some((p) => p.side === 'left');
+  const canDropRight = dropPlays.some((p) => p.side === 'right');
 
   const is4Player = (currentGame?.mode?.includes('2V2') ?? false) || (currentGame?.players.length ?? 0) >= 4;
 
@@ -1021,12 +1089,12 @@ export function GameScreen({ navigation, route }: Props) {
   const oppTeam      = myTeam === 1 ? 2 : 1;
   const myMatchScore  = currentGame?.matchScores?.[myTeam]  ?? 0;
   const oppMatchScore = currentGame?.matchScores?.[oppTeam] ?? 0;
-  const targetScore   = currentGame?.targetScore ?? 7;
+  const targetScore   = currentGame?.targetScore ?? 6;
 
   // ── Timer ──────────────────────────────────────────────────────────────────
   const resetTurnTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    setTurnTimer(30);
+    setTurnTimer(15);
     timerRef.current = setInterval(() => {
       setTurnTimer((t) => {
         if (t <= 1) { clearInterval(timerRef.current!); return 0; }
@@ -1035,7 +1103,6 @@ export function GameScreen({ navigation, route }: Props) {
     }, 1000);
   }, []);
 
-  useEffect(() => { if (turnTimer === 0 && isMyTurn) handlePass(); }, [turnTimer, isMyTurn]);
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
   // ── Error toast ────────────────────────────────────────────────────────────
@@ -1183,7 +1250,7 @@ export function GameScreen({ navigation, route }: Props) {
           setTimeout(() => setRoundBanner(null), 3500);
         };
         const onGameError = ({ message }: { message: string }) => showError(message);
-        const onTimeout = ({ userId }: { userId: string }) => { if (String(userId) === myUserId) showError('Tempo esgotado — sua vez foi pulada'); };
+        const onTimeout = ({ userId }: { userId: string }) => { if (String(userId) === myUserId) showError('Tempo esgotado — jogada automática'); };
         const onEmoji = ({ userId, emoji }: { userId: string; emoji: string }) => triggerEmojiFx(String(userId), String(emoji));
         const onDisconnect = () => setDisconnected(true);
         const onConnect = () => { setDisconnected(false); socket.emit('game:join', { gameId }); };
@@ -1245,6 +1312,88 @@ export function GameScreen({ navigation, route }: Props) {
     const isSame = selectedTile?.handIndex === handIndex;
     setSelectedTile(isSame ? null : { tile, handIndex });
   };
+
+  const updateFeltRect = useCallback(() => {
+    const node = feltRef.current as any;
+    if (!node?.measureInWindow) return;
+    node.measureInWindow((x: number, y: number, width: number, height: number) => {
+      if (!width || !height) return;
+      setFeltRect({ x, y, width, height });
+    });
+  }, []);
+
+  const startDrag = useCallback((tile: Tile, handIndex: number) => {
+    if (!isMyTurn) return;
+    const key = tileKey(tile);
+    if (!validMovesMap.has(key)) return;
+    setSelectedTile({ tile, handIndex });
+    updateFeltRect();
+
+    const node = tileWrapRefs.current[handIndex] as any;
+    if (!node?.measureInWindow) return;
+    node.measureInWindow((x: number, y: number, w: number, h: number) => {
+      dragXY.setValue({ x, y });
+      dragScale.setValue(1);
+      dragOpacity.setValue(0);
+      setDragging({ tile, handIndex, w, h });
+      Animated.timing(dragOpacity, { toValue: 1, duration: 90, useNativeDriver: false }).start();
+    });
+  }, [isMyTurn, validMovesMap, dragXY, dragScale, dragOpacity, updateFeltRect, setSelectedTile]);
+
+  const endDrag = useCallback(async (moveX: number, moveY: number) => {
+    if (!dragging) return;
+    const { tile, w, h } = dragging;
+    const plays = (validMovesMap.get(tileKey(tile)) ?? []) as PlayOption[];
+    const rect = feltRect;
+
+    const clear = () => {
+      setDragging(null);
+      dragOpacity.setValue(0);
+    };
+
+    if (!rect || !plays.length) { clear(); return; }
+
+    const inside =
+      moveX >= rect.x &&
+      moveX <= rect.x + rect.width &&
+      moveY >= rect.y &&
+      moveY <= rect.y + rect.height;
+
+    if (!inside) { clear(); return; }
+
+    const desiredSide: PlaySide = moveX < rect.x + rect.width / 2 ? 'left' : 'right';
+    const choice = plays.find((p) => p.side === desiredSide) ?? plays[0];
+    const targetX =
+      (!currentGame?.firstPlayMade ? rect.x + rect.width / 2 : (desiredSide === 'left' ? rect.x + rect.width * 0.28 : rect.x + rect.width * 0.72))
+      - w / 2;
+    const targetY = (rect.y + rect.height / 2) - h / 2;
+
+    Animated.parallel([
+      Animated.timing(dragXY, { toValue: { x: targetX, y: targetY }, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      Animated.timing(dragScale, { toValue: 0.92, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+    ]).start(async () => {
+      try {
+        const socket = socketRef.current ?? await connectSocket();
+        socket.emit('game:move', { gameId, tile, side: choice.side, flipped: choice.flipped });
+        setSelectedTile(null);
+      } catch (err: any) {
+        showError(err?.message || 'Falha ao jogar');
+      } finally {
+        clear();
+      }
+    });
+  }, [dragging, validMovesMap, feltRect, currentGame?.firstPlayMade, dragXY, dragScale, dragOpacity, gameId, showError]);
+
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => !!dragging,
+    onMoveShouldSetPanResponder: () => !!dragging,
+    onPanResponderMove: (_evt, gesture) => {
+      if (!dragging) return;
+      dragXY.setValue({ x: gesture.moveX - dragging.w / 2, y: gesture.moveY - dragging.h / 2 });
+    },
+    onPanResponderRelease: (_evt, gesture) => { void endDrag(gesture.moveX, gesture.moveY); },
+    onPanResponderTerminate: (_evt, gesture) => { void endDrag(gesture.moveX, gesture.moveY); },
+  })).current;
 
   const handlePlayTile = useCallback(async (side: PlaySide) => {
     if (!selectedTile) return;
@@ -1474,7 +1623,7 @@ export function GameScreen({ navigation, route }: Props) {
     const CORNER_H = boardTilePreset.long  + 6; // marginVertical 3 top + 3 bottom
     const estimatedH = rowCount * ROW_H + cornerCount * CORNER_H;
     // Usable area inside the oval (oval clips ~12% width, ~28% height from each edge)
-    const availW = feltWidth  * 0.86;
+    const availW = feltWidth  * 0.62;
     const availH = tableHeight * 0.70;
     const scaleW = snakeBoardWidth > availW ? availW / snakeBoardWidth : 1;
     const scaleH = estimatedH    > availH ? availH / estimatedH    : 1;
@@ -1624,8 +1773,53 @@ export function GameScreen({ navigation, route }: Props) {
 
               <View
                 style={styles.tableFelt}
-                onLayout={(e) => setFeltWidth(Math.round(e.nativeEvent.layout.width))}
+                ref={feltRef}
+                onLayout={(e) => { setFeltWidth(Math.round(e.nativeEvent.layout.width)); updateFeltRect(); }}
               >
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(255,255,255,0.10)', 'rgba(255,255,255,0)']}
+                  start={{ x: 0.05, y: 0.0 }}
+                  end={{ x: 0.8, y: 1.0 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+                <FeltTexture />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(0,0,0,0.35)', 'rgba(0,0,0,0)']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 52 }}
+                />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.28)']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 56 }}
+                />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(0,0,0,0.26)', 'rgba(0,0,0,0)']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 56 }}
+                />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.26)']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: 56 }}
+                />
+
+                {showDropZones && (
+                  <View pointerEvents="none" style={styles.dropZones}>
+                    <View style={[styles.dropZone, styles.dropZoneLeft, canDropLeft && styles.dropZoneActive]} />
+                    <View style={[styles.dropZone, styles.dropZoneRight, canDropRight && styles.dropZoneActive]} />
+                  </View>
+                )}
+
                 {/* Watermark */}
                 {currentGame.board.length === 0 && (
                   <Image
@@ -1735,14 +1929,25 @@ export function GameScreen({ navigation, route }: Props) {
                   const key = tileKey(tile);
                   const isPlayable = isMyTurn && validMovesMap.has(key);
                   const isSelected = selectedTile?.handIndex === i;
+                  const isDragging = dragging?.handIndex === i;
                   return (
-                    <View key={`${key}-${i}`} style={[styles.handTileWrap, isSelected && styles.handTileSelected]}>
-                      <TileHandImage
-                        tile={tile}
-                        selected={isSelected}
-                        playable={!isMyTurn || isPlayable}
+                    <View
+                      key={`${key}-${i}`}
+                      ref={(r) => { tileWrapRefs.current[i] = r; }}
+                      style={[styles.handTileWrap, isSelected && styles.handTileSelected, isDragging && { opacity: 0 }]}
+                    >
+                      <Pressable
                         onPress={() => handleTileSelect(tile, i)}
-                      />
+                        onLongPress={() => startDrag(tile, i)}
+                        delayLongPress={120}
+                        disabled={!isMyTurn || !isPlayable}
+                      >
+                        <TileHandImage
+                          tile={tile}
+                          selected={isSelected}
+                          playable={!isMyTurn || isPlayable}
+                        />
+                      </Pressable>
                       {isMyTurn && isPlayable && !isSelected && <View style={styles.playIndicator} />}
                     </View>
                   );
@@ -1750,8 +1955,8 @@ export function GameScreen({ navigation, route }: Props) {
               </ScrollView>
               <View style={styles.playerCardWithTimer}>
                 {currentGame?.status === 'playing' && (
-                  <View style={[styles.timerBadge, turnTimer <= 10 && styles.timerBadgeUrgent]}>
-                    <Text style={[styles.timerText, turnTimer <= 10 && styles.timerTextUrgent]}>
+                  <View style={[styles.timerBadge, turnTimer <= 5 && styles.timerBadgeUrgent]}>
+                    <Text style={[styles.timerText, turnTimer <= 5 && styles.timerTextUrgent]}>
                       {turnTimer}
                     </Text>
                   </View>
@@ -1773,6 +1978,25 @@ export function GameScreen({ navigation, route }: Props) {
         </View>
 
       </View>
+
+      {dragging && (
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+          <Animated.View
+            {...panResponder.panHandlers}
+            style={[
+              {
+                position: 'absolute',
+                left: dragXY.x,
+                top: dragXY.y,
+                opacity: dragOpacity,
+                transform: [{ scale: dragScale }],
+              } as any,
+            ]}
+          >
+            <DominoTile tile={dragging.tile} size="hand" selected />
+          </Animated.View>
+        </View>
+      )}
 
 
       {/* ── Settings modal (HomeScreen-style card) ── */}
@@ -2105,6 +2329,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  dropZones: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
+  dropZone: {
+    position: 'absolute',
+    top: '18%',
+    bottom: '18%',
+    width: '22%',
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(0,0,0,0.10)',
+  },
+  dropZoneLeft: { left: '8%' },
+  dropZoneRight: { right: '8%' },
+  dropZoneActive: {
+    borderColor: 'rgba(190,243,17,0.75)',
+    backgroundColor: 'rgba(190,243,17,0.08)',
+  },
 
   watermarkImage: {
     width: 130,
@@ -2115,7 +2356,7 @@ const styles = StyleSheet.create({
   boardMultiWrap: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: spacing.md },
   boardRow: { flexDirection: 'row', alignItems: 'center' },
   snakeBoard: { alignSelf: 'center', gap: 0 },
-  snakeRow: { alignItems: 'center', gap: 5 },
+  snakeRow: { alignItems: 'center', justifyContent: 'center', gap: 5 },
   snakeCorner: { borderRadius: 4, backgroundColor: '#d4cfc6' },
   playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   playerCardFxWrap: { position: 'relative', alignSelf: 'center' },

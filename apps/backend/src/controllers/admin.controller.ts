@@ -400,20 +400,67 @@ export async function startTournamentAdminHandler(req: Request, res: Response) {
   }
 }
 
+export async function getTournamentBracketAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const tournament = await prisma.tournament.findUnique({
+      where: { id },
+      include: {
+        players: {
+          include: { user: { select: { id: true, name: true, avatar: true } } },
+          orderBy: { joined_at: 'asc' },
+        },
+        games: {
+          orderBy: [{ tournament_round: 'asc' }, { created_at: 'asc' }],
+          include: {
+            players: {
+              include: { user: { select: { id: true, name: true, avatar: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    res.json({
+      tournament: {
+        id: tournament.id,
+        name: tournament.name,
+        status: tournament.status,
+        current_round: tournament.current_round,
+        max_players: tournament.max_players,
+        current_players: tournament.current_players,
+        entry_fee: tournament.entry_fee,
+        prize_pool: tournament.prize_pool,
+        starts_at: tournament.starts_at,
+        finished_at: tournament.finished_at,
+      },
+      players: tournament.players,
+      games: tournament.games,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 export async function cancelTournamentAdminHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
 
     const tournament = await prisma.tournament.findUnique({
       where: { id },
-      include: { players: { select: { userId: true } } },
+      include: { players: { select: { userId: true, eliminated_at: true } } },
     });
 
     if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
     if (tournament.status === 'FINISHED') return res.status(400).json({ error: 'Cannot cancel a finished tournament' });
+    if (tournament.status === 'CANCELLED') return res.status(400).json({ error: 'Tournament already cancelled' });
 
-    // Refund entry fees to all enrolled players
-    for (const player of tournament.players) {
+    const activePlayers = tournament.players.filter((p) => !p.eliminated_at);
+
+    // Refund entry fees to all active players
+    for (const player of activePlayers) {
       const wallet = await prisma.wallet.findUnique({ where: { userId: player.userId } });
       if (wallet) {
         await prisma.$transaction([
@@ -434,13 +481,120 @@ export async function cancelTournamentAdminHandler(req: Request, res: Response) 
       }
     }
 
+    await prisma.game.updateMany({
+      where: { tournamentId: id, status: { in: ['WAITING', 'PLAYING'] } },
+      data: { status: 'CANCELLED', finished_at: new Date() },
+    });
+
     await prisma.tournament.update({
       where: { id },
       data: { status: 'CANCELLED', finished_at: new Date() },
     });
 
-    logger.info('[Admin] Tournament cancelled — fees refunded', { tournamentId: id, players: tournament.players.length });
-    res.json({ message: 'Tournament cancelled and entry fees refunded' });
+    logger.info('[Admin] Tournament cancelled — fees refunded', { tournamentId: id, activePlayers: activePlayers.length });
+    res.json({ message: 'Tournament cancelled and entry fees refunded', refundedPlayers: activePlayers.length });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function getCouponsAdminHandler(req: Request, res: Response) {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = 25;
+    const q = String(req.query.q ?? '').trim().toUpperCase();
+
+    const where: any = {};
+    if (q) where.code = { contains: q, mode: 'insensitive' };
+
+    const [coupons, total] = await Promise.all([
+      prisma.coupon.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.coupon.count({ where }),
+    ]);
+
+    res.json({ coupons, total, page, pages: Math.ceil(total / limit) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function createCouponAdminHandler(req: Request, res: Response) {
+  try {
+    const code = String(req.body?.code ?? '').trim().toUpperCase();
+    const bonusAmount = Number(req.body?.bonusAmount ?? req.body?.bonus_amount);
+    const rolloverMultiplier = Number(req.body?.rolloverMultiplier ?? req.body?.rollover_multiplier ?? 0);
+    const maxUsesRaw = req.body?.maxUses ?? req.body?.max_uses;
+    const maxUses = maxUsesRaw === null || maxUsesRaw === undefined || maxUsesRaw === '' ? null : Number(maxUsesRaw);
+    const active = req.body?.active !== false;
+    const startsAt = req.body?.startsAt ? new Date(req.body.startsAt) : null;
+    const expiresAt = req.body?.expiresAt ? new Date(req.body.expiresAt) : null;
+
+    if (!code || code.length < 3 || code.length > 32) return res.status(400).json({ error: 'Invalid code' });
+    if (!Number.isFinite(bonusAmount) || bonusAmount <= 0) return res.status(400).json({ error: 'Invalid bonusAmount' });
+    if (!Number.isFinite(rolloverMultiplier) || rolloverMultiplier < 0) return res.status(400).json({ error: 'Invalid rolloverMultiplier' });
+    if (maxUses !== null && (!Number.isFinite(maxUses) || maxUses <= 0)) return res.status(400).json({ error: 'Invalid maxUses' });
+
+    const coupon = await prisma.coupon.create({
+      data: {
+        code,
+        bonus_amount: bonusAmount,
+        rollover_multiplier: Math.floor(rolloverMultiplier),
+        max_uses: maxUses === null ? null : Math.floor(maxUses),
+        active,
+        starts_at: startsAt ?? undefined,
+        expires_at: expiresAt ?? undefined,
+      },
+    });
+
+    res.status(201).json(coupon);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function updateCouponAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const updates: any = {};
+
+    if (req.body?.code !== undefined) {
+      const code = String(req.body.code ?? '').trim().toUpperCase();
+      if (!code || code.length < 3 || code.length > 32) return res.status(400).json({ error: 'Invalid code' });
+      updates.code = code;
+    }
+    if (req.body?.bonusAmount !== undefined || req.body?.bonus_amount !== undefined) {
+      const bonusAmount = Number(req.body?.bonusAmount ?? req.body?.bonus_amount);
+      if (!Number.isFinite(bonusAmount) || bonusAmount <= 0) return res.status(400).json({ error: 'Invalid bonusAmount' });
+      updates.bonus_amount = bonusAmount;
+    }
+    if (req.body?.rolloverMultiplier !== undefined || req.body?.rollover_multiplier !== undefined) {
+      const rolloverMultiplier = Number(req.body?.rolloverMultiplier ?? req.body?.rollover_multiplier);
+      if (!Number.isFinite(rolloverMultiplier) || rolloverMultiplier < 0) return res.status(400).json({ error: 'Invalid rolloverMultiplier' });
+      updates.rollover_multiplier = Math.floor(rolloverMultiplier);
+    }
+    if (req.body?.maxUses !== undefined || req.body?.max_uses !== undefined) {
+      const raw = req.body?.maxUses ?? req.body?.max_uses;
+      const maxUses = raw === null || raw === '' ? null : Number(raw);
+      if (maxUses !== null && (!Number.isFinite(maxUses) || maxUses <= 0)) return res.status(400).json({ error: 'Invalid maxUses' });
+      updates.max_uses = maxUses === null ? null : Math.floor(maxUses);
+    }
+    if (req.body?.active !== undefined) {
+      updates.active = !!req.body.active;
+    }
+    if (req.body?.startsAt !== undefined) {
+      updates.starts_at = req.body.startsAt ? new Date(req.body.startsAt) : null;
+    }
+    if (req.body?.expiresAt !== undefined) {
+      updates.expires_at = req.body.expiresAt ? new Date(req.body.expiresAt) : null;
+    }
+
+    const coupon = await prisma.coupon.update({ where: { id }, data: updates });
+    res.json(coupon);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
@@ -450,7 +604,6 @@ export async function cancelTournamentAdminHandler(req: Request, res: Response) 
 
 const EDITABLE_KEYS = new Set([
   'houseEdgePercent',
-  'matchmakingBetTolerance',
   'botInjectWaitSeconds',
   'turnTimeoutSeconds',
   'disconnectGraceSeconds',

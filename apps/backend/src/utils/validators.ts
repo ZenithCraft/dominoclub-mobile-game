@@ -50,6 +50,10 @@ export const withdrawSchema = z.object({
   pixKey: pixKeySchema,
 });
 
+export const couponRedeemSchema = z.object({
+  code: z.string().min(3).max(32),
+});
+
 export const createGameSchema = z.object({
   mode: z.enum(['ARENA_1V1', 'CUP_1V1', 'TOURNAMENT_2V2', 'RECREATIONAL_2V2']),
   betAmount: z.number().min(1).max(1000),
