@@ -157,7 +157,7 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       };
 
       enqueue(entry);
-      const botTimer = startBotInjectionTimer(entry);
+      const botTimer = entry.betAmount === 0 ? startBotInjectionTimer(entry) : null;
       const position = getQueuePosition(user.id, data.mode);
 
       socket.emit('queue:joined', {
@@ -165,18 +165,18 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
         betAmount: data.betAmount,
         variant,
         position,
-        botWaitSeconds: config.game.botInjectWaitSeconds,
+        ...(entry.betAmount === 0 ? { botWaitSeconds: config.game.botInjectWaitSeconds } : {}),
       });
       emitQueueStats();
 
       socket.once('disconnect', () => {
-        clearTimeout(botTimer);
+        if (botTimer) clearTimeout(botTimer);
         dequeue(user.id);
         emitQueueStats();
       });
 
       socket.once('queue:leave', () => {
-        clearTimeout(botTimer);
+        if (botTimer) clearTimeout(botTimer);
         dequeue(user.id);
         socket.emit('queue:left');
         emitQueueStats();

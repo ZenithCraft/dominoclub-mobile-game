@@ -24,6 +24,14 @@ const queues = new Map<string, QueueEntry[]>();
 // Queue entries older than this are considered stale and removed
 const QUEUE_STALE_MS = 5 * 60 * 1000; // 5 minutes
 
+const BET_EPSILON = 1e-9;
+const COLLUSION_MIN_MATCHES = 10;
+const COLLUSION_WINRATE_THRESHOLD = 0.9;
+
+function sameBet(a: number, b: number) {
+  return Math.abs(a - b) <= BET_EPSILON;
+}
+
 function getQueueKey(mode: string) {
   return mode;
 }
@@ -40,7 +48,7 @@ export function enqueue(entry: QueueEntry) {
   queue.push(entry);
   logger.debug('Player enqueued', { userId: entry.userId, mode: entry.mode, betAmount: entry.betAmount, variant: entry.variant });
 
-  tryMatch(entry.mode);
+  void tryMatch(entry.mode);
 }
 
 export function dequeue(userId: string) {
@@ -94,7 +102,7 @@ export function startQueueCleanup(
   }, 30_000);
 }
 
-function tryMatch(mode: string) {
+async function tryMatch(mode: string) {
   const queue = queues.get(mode);
   if (!queue) return;
 
@@ -104,43 +112,82 @@ function tryMatch(mode: string) {
 
   // For 1v1: find two players with matching bet amounts AND same variant
   if (playersNeeded === 2) {
+    const pairBlockCache = new Map<string, boolean>();
     for (let i = 0; i < queue.length; i++) {
       for (let j = i + 1; j < queue.length; j++) {
         const a = queue[i];
         const b = queue[j];
         if (a.variant !== b.variant) continue;
-        const denom = Math.max(a.betAmount, b.betAmount);
-        const diff = denom > 0 ? Math.abs(a.betAmount - b.betAmount) / denom : a.betAmount === b.betAmount ? 0 : 1;
-        if (diff <= config.game.matchmakingBetTolerance) {
-          queue.splice(j, 1);
-          queue.splice(i, 1);
-          createMatch([a, b], mode as any);
-          return;
+        if (!sameBet(a.betAmount, b.betAmount)) continue;
+        if (a.betAmount > 0 && !a.isBot && !b.isBot) {
+          const key = a.userId < b.userId ? `${a.userId}:${b.userId}` : `${b.userId}:${a.userId}`;
+          let blocked = pairBlockCache.get(key);
+          if (blocked === undefined) {
+            blocked = await isPairBlocked(a.userId, b.userId).catch(() => false);
+            pairBlockCache.set(key, blocked);
+          }
+          if (blocked) continue;
         }
+        queue.splice(j, 1);
+        queue.splice(i, 1);
+        void createMatch([a, b], mode as any);
+        return;
       }
     }
   }
 
   // For 2v2: group 4 players with similar bets and same variant
   if (playersNeeded === 4 && queue.length >= 4) {
-    const sorted = [...queue].sort((a, b) => a.betAmount - b.betAmount);
-    // Find first group of 4 with same variant
-    for (let i = 0; i <= sorted.length - 4; i++) {
-      const candidate = sorted[i].variant;
-      const group = sorted.slice(i).filter((e) => e.variant === candidate).slice(0, 4);
+    const pairBlockCache = new Map<string, boolean>();
+    for (let i = 0; i < queue.length; i++) {
+      const seed = queue[i];
+      const group = queue.filter((e) => e.variant === seed.variant && sameBet(e.betAmount, seed.betAmount)).slice(0, 4);
       if (group.length < 4) continue;
+      if (seed.betAmount > 0 && group.some((p) => p.isBot)) continue;
+
+      let blocked = false;
+      if (seed.betAmount > 0) {
+        for (let a = 0; a < group.length && !blocked; a++) {
+          for (let b = a + 1; b < group.length; b++) {
+            const ua = group[a].userId;
+            const ub = group[b].userId;
+            const k = ua < ub ? `${ua}:${ub}` : `${ub}:${ua}`;
+            const cached = pairBlockCache.get(k);
+            if (cached === true) { blocked = true; break; }
+            if (cached === false) continue;
+            try {
+              const v = await isPairBlocked(ua, ub);
+              pairBlockCache.set(k, v);
+              if (v) { blocked = true; break; }
+            } catch {
+              pairBlockCache.set(k, false);
+            }
+          }
+        }
+      }
+
+      if (blocked) continue;
+
       group.forEach((entry) => {
         const idx = queue.findIndex((e) => e.userId === entry.userId);
         if (idx !== -1) queue.splice(idx, 1);
       });
-      createMatch(group, mode as any);
+      void createMatch(group, mode as any);
       return;
     }
   }
 }
 
 async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' | 'TOURNAMENT_2V2' | 'RECREATIONAL_2V2') {
-  const betAmount = Math.min(...players.map((p) => p.betAmount));
+  const betAmount = players[0]?.betAmount ?? 0;
+  if (!players.every((p) => sameBet(p.betAmount, betAmount))) {
+    logger.warn('Refusing to create match with mismatched bet amounts', {
+      mode,
+      bets: players.map((p) => p.betAmount),
+      users: players.map((p) => p.userId),
+    });
+    return;
+  }
   const variant = players[0].variant;
   const gameId = uuidv4();
 
@@ -225,4 +272,45 @@ export function startBotInjectionTimer(entry: QueueEntry) {
   }, config.game.botInjectWaitSeconds * 1000);
 
   return timeout;
+}
+
+async function isPairBlocked(aUserId: string, bUserId: string): Promise<boolean> {
+  if (aUserId === bUserId) return false;
+
+  const games = await prisma.game.findMany({
+    where: {
+      status: 'FINISHED',
+      bet_amount: { gt: 0 },
+      mode: { in: ['ARENA_1V1', 'CUP_1V1'] },
+      winner_id: { not: null },
+      AND: [
+        { players: { some: { userId: aUserId } } },
+        { players: { some: { userId: bUserId } } },
+      ],
+    },
+    select: { winner_id: true },
+    take: 200,
+  });
+
+  const total = games.length;
+  if (total < COLLUSION_MIN_MATCHES) return false;
+
+  let winsA = 0;
+  let winsB = 0;
+  for (const g of games) {
+    if (g.winner_id === aUserId) winsA++;
+    else if (g.winner_id === bUserId) winsB++;
+  }
+
+  const maxWins = Math.max(winsA, winsB);
+  const winRate = total > 0 ? maxWins / total : 0;
+  if (winRate < COLLUSION_WINRATE_THRESHOLD) return false;
+
+  const details = { aUserId, bUserId, total, winsA, winsB, winRate };
+  await Promise.allSettled([
+    prisma.fraudLog.create({ data: { userId: aUserId, type: 'COLLUSION_SUSPECTED', details } }),
+    prisma.fraudLog.create({ data: { userId: bUserId, type: 'COLLUSION_SUSPECTED', details } }),
+  ]);
+
+  return true;
 }

@@ -13,7 +13,11 @@ import {
   getTournamentsAdminHandler,
   createTournamentAdminHandler,
   startTournamentAdminHandler,
+  getTournamentBracketAdminHandler,
   cancelTournamentAdminHandler,
+  getCouponsAdminHandler,
+  createCouponAdminHandler,
+  updateCouponAdminHandler,
   getConfigHandler,
   updateConfigHandler,
   getFraudLogsHandler,
@@ -43,7 +47,12 @@ router.patch('/transactions/:id/reject', rejectWithdrawalHandler);
 router.get('/tournaments', getTournamentsAdminHandler);
 router.post('/tournaments', createTournamentAdminHandler);
 router.post('/tournaments/:id/start', startTournamentAdminHandler);
+router.get('/tournaments/:id/bracket', getTournamentBracketAdminHandler);
 router.post('/tournaments/:id/cancel', cancelTournamentAdminHandler);
+
+router.get('/coupons', getCouponsAdminHandler);
+router.post('/coupons', createCouponAdminHandler);
+router.patch('/coupons/:id', updateCouponAdminHandler);
 
 router.get('/config', getConfigHandler);
 router.patch('/config', updateConfigHandler);

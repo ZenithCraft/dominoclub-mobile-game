@@ -54,7 +54,7 @@ export interface GameState {
   // Match scoring
   matchScores: Record<number, number>;  // { 1: pts, 2: pts }
   roundNumber: number;
-  targetScore: number;                  // default 7
+  targetScore: number;                  // default 6
   matchWinnerTeam?: number;
 }
 

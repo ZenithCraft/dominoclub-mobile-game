@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────
 // DominoClub — Brazilian Domino Engine
 // Supports: Carroça, L e L, Cruzada
-// Scoring: Simples=1, Carroça=2, Lá e Lô=3, Cruzada=4 — first to 7 pts wins
+// Scoring: Simples=1, Carroça=2, Lá e Lô=3, Cruzada=4 — first to 6 pts wins
 // ─────────────────────────────────────────────────────────────────
 
 export type Tile = [number, number]; // [left, right] pips
@@ -24,7 +24,7 @@ export const WIN_POINTS: Record<WinType, number> = {
   cruzada: 4,
 };
 
-export const TARGET_SCORE = 7;
+export const TARGET_SCORE = 6;
 
 export interface GameState {
   id: string;
@@ -49,7 +49,7 @@ export interface GameState {
   // Match tracking — persists across rounds
   matchScores: Record<number, number>; // { 1: pts, 2: pts }
   roundNumber: number;                 // 1-based
-  targetScore: number;                 // default 7
+  targetScore: number;                 // default 6
   matchWinnerTeam?: number;            // set when match is over
 }
 
@@ -99,7 +99,7 @@ export function initGame(
   }));
 
   const boneyard = allTiles.slice(players.length * tilesPerPlayer);
-  const firstPlayerIndex = findFirstPlayer(playerStates);
+  const firstPlayerIndex = determineFirstMove(playerStates).playerIndex;
 
   return {
     id: gameId,
@@ -121,19 +121,36 @@ export function initGame(
   };
 }
 
-// Find player with highest double (goes first)
-function findFirstPlayer(players: PlayerState[]): number {
-  let firstPlayerIndex = 0;
-  let highestDouble = -1;
-  players.forEach((p, idx) => {
-    p.hand.forEach((tile) => {
-      if (tile[0] === tile[1] && tile[0] > highestDouble) {
-        highestDouble = tile[0];
-        firstPlayerIndex = idx;
+function tileEquals(a: Tile, b: Tile) {
+  return (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
+}
+
+function compareNonDouble(a: Tile, b: Tile) {
+  const aMax = Math.max(a[0], a[1]);
+  const bMax = Math.max(b[0], b[1]);
+  if (aMax !== bMax) return bMax - aMax;
+  const aMin = Math.min(a[0], a[1]);
+  const bMin = Math.min(b[0], b[1]);
+  if (aMin !== bMin) return bMin - aMin;
+  return 0;
+}
+
+function determineFirstMove(players: PlayerState[]): { playerIndex: number; tile: Tile } {
+  let bestDouble: { playerIndex: number; tile: Tile } | null = null;
+  let bestNonDouble: { playerIndex: number; tile: Tile } | null = null;
+
+  for (let idx = 0; idx < players.length; idx++) {
+    const p = players[idx];
+    for (const tile of p.hand) {
+      if (tile[0] === tile[1]) {
+        if (!bestDouble || tile[0] > bestDouble.tile[0]) bestDouble = { playerIndex: idx, tile };
+      } else {
+        if (!bestNonDouble || compareNonDouble(tile, bestNonDouble.tile) < 0) bestNonDouble = { playerIndex: idx, tile };
       }
-    });
-  });
-  return firstPlayerIndex;
+    }
+  }
+
+  return bestDouble ?? bestNonDouble ?? { playerIndex: 0, tile: [0, 0] };
 }
 
 /**
@@ -152,7 +169,7 @@ export function initNextRound(state: GameState): GameState {
   }));
 
   const boneyard = allTiles.slice(players.length * tilesPerPlayer);
-  const firstPlayerIndex = findFirstPlayer(players);
+  const firstPlayerIndex = determineFirstMove(players).playerIndex;
 
   return {
     id: state.id,
@@ -242,6 +259,13 @@ export function applyMove(
 ): GameState {
   const s = JSON.parse(JSON.stringify(state)) as GameState;
   const player = s.players[playerIndex];
+
+  if (!s.firstPlayMade) {
+    const required = determineFirstMove(s.players);
+    if (playerIndex !== required.playerIndex || !tileEquals(tile, required.tile)) {
+      throw new Error(`First move must be ${required.tile[0]}-${required.tile[1]}`);
+    }
+  }
 
   if (s.firstPlayMade) {
     const allowed = canPlayTile(s, tile);
