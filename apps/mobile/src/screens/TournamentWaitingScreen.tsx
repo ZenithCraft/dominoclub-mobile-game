@@ -17,6 +17,8 @@ import * as Notifications from 'expo-notifications';
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
@@ -35,7 +37,7 @@ async function scheduleTournamentNotification(startsAt: Date, tournamentName: st
         body: `${tournamentName} começa em 1 minuto. Entre agora!`,
         sound: true,
       },
-      trigger: { seconds: Math.floor(triggerMs / 1000) },
+      trigger: { type: 'timeInterval', seconds: Math.floor(triggerMs / 1000), repeats: false } as any,
     });
   } catch {}
 }
