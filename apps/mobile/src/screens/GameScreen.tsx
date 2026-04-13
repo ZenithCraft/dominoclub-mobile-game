@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ImageBackground, Image,
   TouchableOpacity, Modal, Alert, Animated, Pressable, ActivityIndicator,
@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Rect } from 'react-native-svg';
 import {
   IconTrophy, IconSettings, IconAlert, IconX, IconFrown,
   IconVolumeUp, IconMusic,
@@ -24,6 +25,41 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 
 const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
 const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
+
+type NoiseDot = { x: number; y: number; s: number; o: number };
+function makeNoise(seed: number) {
+  let x = seed | 0;
+  return () => {
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    return ((x >>> 0) % 1_000_000) / 1_000_000;
+  };
+}
+function FeltNoiseOverlay({ seed, dots, opacity }: { seed: number; dots: number; opacity: number }) {
+  const points = useMemo(() => {
+    const rnd = makeNoise(seed);
+    const out: NoiseDot[] = [];
+    for (let i = 0; i < dots; i++) {
+      const s = 0.6 + rnd() * 1.2;
+      out.push({
+        x: rnd() * 100,
+        y: rnd() * 100,
+        s,
+        o: Math.min(1, Math.max(0, opacity * (0.7 + rnd() * 0.8))),
+      });
+    }
+    return out;
+  }, [seed, dots, opacity]);
+
+  return (
+    <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+      {points.map((p, i) => (
+        <Rect key={i} x={p.x} y={p.y} width={p.s} height={p.s} fill="#000" opacity={p.o} />
+      ))}
+    </Svg>
+  );
+}
 
 function MiniPips({ value }: { value: number }) {
   const pos = [
@@ -347,7 +383,7 @@ type DominoTileProps = {
 
 const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
   icon: { short: 16, long: 28, pip: 2, corner: 2 },
-  hand: { short: 32, long: 56, pip: 5, corner: 6 },
+  hand: { short: 28, long: 50, pip: 4, corner: 6 },
   xs:   { short: 22, long: 44, pip: 3, corner: 4 },
   sm:   { short: 32, long: 64, pip: 5, corner: 6 },
   md:   { short: 44, long: 88, pip: 7, corner: 8 },
@@ -518,21 +554,21 @@ const scoreStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: radius.lg,
     paddingVertical: 14,
-    paddingLeft: 28,
-    paddingRight: 20,
+    paddingHorizontal: 22,
     gap: 10,
     borderWidth: 1,
     borderColor: 'rgba(181,228,85,0.30)',
     minWidth: 180,
+    alignItems: 'flex-start',
     ...(Platform.OS === 'web' ? ({
       backdropFilter: 'blur(12px)',
       backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.05))',
     } as any) : null),
   },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 12, width: '100%' },
   label: { color: '#fff', fontSize: fonts.sizes.md, fontWeight: '700' },
   scoreValue: { color: '#4ade80', fontWeight: '900', fontSize: fonts.sizes.lg },
-  pipsRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
+  pipsRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-start' },
   pip: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   pipFilled: { backgroundColor: '#4ade80', borderColor: '#4ade80' },
 });
@@ -874,7 +910,7 @@ export function GameScreen({ navigation, route }: Props) {
   const { width: viewportWidth } = useWindowDimensions();
   const [feltWidth, setFeltWidth] = useState(0);
 
-  const [turnTimer, setTurnTimer]       = useState(30);
+  const [turnTimer, setTurnTimer]       = useState(15);
   const [resultModal, setResultModal]   = useState(false);
   const [playAgainSearching, setPlayAgainSearching] = useState(false);
   const [gameError, setGameError]       = useState<string | null>(null);
@@ -944,7 +980,7 @@ export function GameScreen({ navigation, route }: Props) {
       ],
       matchScores: { 1: 3, 2: 2 },
       roundNumber: 4,
-      targetScore: 7,
+      targetScore: 6,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -969,9 +1005,9 @@ export function GameScreen({ navigation, route }: Props) {
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const is2v2 = currentGame?.mode?.includes('2V2') ?? false;
-  const boardTileSize: DominoTileSize = is2v2 ? 'xs' : 'sm';
+  const boardTileSize: DominoTileSize = 'xs';
   const boardTilePreset = TILE_DIMS[boardTileSize];
-  const tableHeight = Math.round(Math.min(viewportWidth * 0.82, 880) / (is2v2 ? 2.2 : 2.7));
+  const tableHeight = Math.round(Math.min(viewportWidth * 0.88, 940) / (is2v2 ? 2.1 : 2.6));
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
   const myPlayerIndex = (() => {
     const players = currentGame?.players ?? [];
@@ -1021,12 +1057,12 @@ export function GameScreen({ navigation, route }: Props) {
   const oppTeam      = myTeam === 1 ? 2 : 1;
   const myMatchScore  = currentGame?.matchScores?.[myTeam]  ?? 0;
   const oppMatchScore = currentGame?.matchScores?.[oppTeam] ?? 0;
-  const targetScore   = currentGame?.targetScore ?? 7;
+  const targetScore   = currentGame?.targetScore ?? 6;
 
   // ── Timer ──────────────────────────────────────────────────────────────────
   const resetTurnTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    setTurnTimer(30);
+    setTurnTimer(15);
     timerRef.current = setInterval(() => {
       setTurnTimer((t) => {
         if (t <= 1) { clearInterval(timerRef.current!); return 0; }
@@ -1440,7 +1476,11 @@ export function GameScreen({ navigation, route }: Props) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   const boardTilesLinear = buildLinearBoardTiles(currentGame.board ?? []);
-  const SNAKE_GAP = 5;
+  const SNAKE_GAP_BASE = 2;
+  const SNAKE_GAP = SNAKE_GAP_BASE;
+  const boardTileNoShadow = Platform.OS === 'web'
+    ? ({ boxShadow: 'none' } as any)
+    : { shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 };
 
   // 6 horizontal tiles per row; 7th tile becomes a vertical corner connector (between rows)
   const SNAKE_H_PER_ROW = 6;
@@ -1471,17 +1511,20 @@ export function GameScreen({ navigation, route }: Props) {
     if (rowCount === 0 || !feltWidth) return 1;
     const cornerCount = snakeRows.filter((r) => r.cornerTile !== null).length;
     const ROW_H    = boardTilePreset.short + SNAKE_GAP;
-    const CORNER_H = boardTilePreset.long  + 6; // marginVertical 3 top + 3 bottom
+    const CORNER_H = boardTilePreset.long;
     const estimatedH = rowCount * ROW_H + cornerCount * CORNER_H;
     // Usable area inside the oval (oval clips ~12% width, ~28% height from each edge)
-    const availW = feltWidth  * 0.86;
-    const availH = tableHeight * 0.70;
+    const boardPadBase = 10;
+    const availW = Math.max(0, feltWidth  * 0.86 - boardPadBase * 2);
+    const availH = Math.max(0, tableHeight * 0.70 - boardPadBase * 2);
     const scaleW = snakeBoardWidth > availW ? availW / snakeBoardWidth : 1;
     const scaleH = estimatedH    > availH ? availH / estimatedH    : 1;
     return Math.max(0.40, Math.min(1, scaleW, scaleH));
   })();
   const scaledBoardWidth = Math.round(snakeBoardWidth * boardScale);
-  const scaledGap        = Math.round(SNAKE_GAP * boardScale);
+  const scaledGap        = Math.max(1, Math.round(SNAKE_GAP * boardScale));
+  const boardPad         = Math.round(8 * boardScale);
+  const cornerOverlap    = Math.max(1, Math.round(2 * boardScale));
 
   const renderPlayerFx = (userId: string, placement: 'top' | 'bottom' | 'left' | 'right') => {
     const emoji = emojiByUser[userId];
@@ -1577,6 +1620,9 @@ export function GameScreen({ navigation, route }: Props) {
 
       {/* ── Top bar ── */}
       <View style={styles.topBar}>
+        <View style={styles.topLeft}>
+          <ScoreBox is4Player={is4Player} myScore={myMatchScore} oppScore={oppMatchScore} targetScore={targetScore} />
+        </View>
         <View style={styles.topCenter} />
         <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)}>
           <IconSettings size={24} color={colors.textPrimary} accessibilityLabel="Configurações" />
@@ -1588,13 +1634,7 @@ export function GameScreen({ navigation, route }: Props) {
         {/* Table */}
         <View style={styles.tableWrap}>
           <View style={styles.tableArea}>
-            {/* Score box — enlarged, anchored to the left edge of the table area */}
-            <View style={styles.scoreOverlay}>
-              <ScoreBox is4Player={is4Player} myScore={myMatchScore} oppScore={oppMatchScore} targetScore={targetScore} />
-            </View>
-
-            <View style={[styles.tableOuter, { height: tableHeight }]}>
-              {/* Top opponent card — centred on the oval's top rim */}
+            <View style={[styles.tableFrame, { height: tableHeight }]}>
               {topOpponent && (
                 <View style={styles.oppCardOverlay}>
                   <View style={styles.playerCardFxWrap}>
@@ -1604,7 +1644,6 @@ export function GameScreen({ navigation, route }: Props) {
                 </View>
               )}
 
-              {/* Side player cards — centred on the oval's left/right rims */}
               {is4Player && leftOpponent && (
                 <View style={styles.tableSideBadgeLeft}>
                   <View style={styles.playerCardFxWrap}>
@@ -1622,10 +1661,36 @@ export function GameScreen({ navigation, route }: Props) {
                 </View>
               )}
 
-              <View
-                style={styles.tableFelt}
-                onLayout={(e) => setFeltWidth(Math.round(e.nativeEvent.layout.width))}
-              >
+              <View style={styles.tableBg}>
+                <View pointerEvents="none" style={styles.tableBgNoise}>
+                  <FeltNoiseOverlay seed={1337} dots={520} opacity={0.08} />
+                </View>
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(0,0,0,0.30)', 'rgba(0,0,0,0.00)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.tableBgHighlight}
+                />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.10)', 'rgba(0,0,0,0.55)']}
+                  locations={[0, 0.52, 1]}
+                  style={styles.tableBgVignetteV}
+                />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(0,0,0,0.45)', 'rgba(0,0,0,0.06)', 'rgba(0,0,0,0.45)']}
+                  locations={[0, 0.5, 1]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.tableBgVignetteH}
+                />
+
+                <View
+                  style={styles.tableFelt}
+                  onLayout={(e) => setFeltWidth(Math.round(e.nativeEvent.layout.width))}
+                >
                 {/* Watermark */}
                 {currentGame.board.length === 0 && (
                   <Image
@@ -1636,40 +1701,43 @@ export function GameScreen({ navigation, route }: Props) {
                 )}
 
                 {currentGame.board.length > 0 && (
-                  <View style={[styles.snakeBoard, { width: scaledBoardWidth }]}>
-                    {snakeRows.map(({ tiles, cornerTile, isRtl }, rowIdx) => (
-                      <React.Fragment key={rowIdx}>
-                        <View style={[styles.snakeRow, { flexDirection: isRtl ? 'row-reverse' : 'row', gap: scaledGap }]}>
-                          {tiles.map((tile, i) => {
-                            const isDouble = tile[0] === tile[1];
-                            const displayTile = (!isDouble && isRtl) ? [tile[1], tile[0]] as Tile : tile;
-                            return (
+                  <View style={[styles.snakeBoardFrame, { padding: boardPad }]}>
+                    <View style={[styles.snakeBoard, { width: scaledBoardWidth }]}>
+                      {snakeRows.map(({ tiles, cornerTile, isRtl }, rowIdx) => (
+                        <React.Fragment key={rowIdx}>
+                          <View style={[styles.snakeRow, { flexDirection: isRtl ? 'row-reverse' : 'row', gap: scaledGap }]}>
+                            {tiles.map((tile, i) => {
+                              const displayTile = isRtl ? [tile[1], tile[0]] as Tile : tile;
+                              return (
+                                <DominoTile
+                                  key={i}
+                                  tile={displayTile}
+                                  size={boardTileSize}
+                                  tileScale={boardScale}
+                                  horizontal
+                                  style={boardTileNoShadow}
+                                />
+                              );
+                            })}
+                          </View>
+                          {cornerTile && (
+                            <View style={{ alignSelf: !isRtl ? 'flex-end' : 'flex-start', marginVertical: scaledGap }}>
                               <DominoTile
-                                key={i}
-                                tile={displayTile}
+                                tile={cornerTile}
                                 size={boardTileSize}
                                 tileScale={boardScale}
-                                horizontal={!isDouble}
+                                horizontal={false}
+                                style={boardTileNoShadow}
                               />
-                            );
-                          })}
-                        </View>
-                        {/* Corner tile below the row at the turn edge, above the next row */}
-                        {cornerTile && (
-                          <View style={{ alignSelf: !isRtl ? 'flex-end' : 'flex-start', marginVertical: Math.round(3 * boardScale) }}>
-                            <DominoTile
-                              tile={cornerTile}
-                              size={boardTileSize}
-                              tileScale={boardScale}
-                              horizontal={false}
-                            />
-                          </View>
-                        )}
-                      </React.Fragment>
-                    ))}
+                            </View>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </View>
                   </View>
                 )}
 
+              </View>
               </View>
             </View>
           </View>
@@ -1694,9 +1762,16 @@ export function GameScreen({ navigation, route }: Props) {
                 ))}
                 {!selectedTile && hasBoneyard && (
                   <Animated.View style={{ transform: [{ scale: drawPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }] }}>
-                    <TouchableOpacity style={styles.drawBtn} onPress={handleDraw} activeOpacity={0.9}>
-                      <Text style={styles.drawBtnText}>+ Comprar</Text>
-                    </TouchableOpacity>
+                    <LinearGradient
+                      colors={['#4ade80', '#22c55e']}
+                      start={{ x: 0, y: 0.5 }}
+                      end={{ x: 1, y: 0.5 }}
+                      style={styles.drawBtn}
+                    >
+                      <TouchableOpacity style={styles.drawBtnInner} onPress={handleDraw} activeOpacity={0.9}>
+                        <Text style={styles.drawBtnText}>+ Comprar</Text>
+                      </TouchableOpacity>
+                    </LinearGradient>
                   </Animated.View>
                 )}
                 {!selectedTile && !hasValidMoves && !hasBoneyard && (
@@ -2003,12 +2078,16 @@ const styles = StyleSheet.create({
   // ── Top bar ──
   topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xs,
     paddingBottom: spacing.xs,
     gap: spacing.sm,
     zIndex: 50,
+  },
+  topLeft: {
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
   },
   topCenter: {
     flex: 1,
@@ -2045,14 +2124,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   tableWrap: { flex: 1, position: 'relative' },
-  tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  scoreOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: spacing.sm,
-    zIndex: 20,
-    transform: [{ translateY: -8 }],
-  },
+  tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative', paddingBottom: 130 },
   oppCardOverlay: {
     position: 'absolute',
     top: 0,
@@ -2077,29 +2149,40 @@ const styles = StyleSheet.create({
     transform: [{ translateY: -24 }, { translateX: 90 }],
   },
   tableOuter: {
-    width: '78%',
-    maxWidth: 820,
+    width: '86%',
+    maxWidth: 900,
+    alignSelf: 'center',
+    backgroundColor: 'transparent',
+    padding: 16,
+  },
+  tableFrame: {
+    width: '86%',
+    maxWidth: 900,
     alignSelf: 'center',
     backgroundColor: '#060e06',
     borderRadius: 999,
-    padding: 4,
+    padding: 6,
     borderWidth: 8,
     borderColor: '#0d1a0d',
+    position: 'relative',
     ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: '0 0 10px 2px rgba(57,255,106,0.10), 0 0 24px 6px rgba(57,255,106,0.05)',
-        } as any)
-      : {
-          shadowColor: '#39ff6a',
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.15,
-          shadowRadius: 12,
-          elevation: 10,
-        }),
+      ? ({ boxShadow: '0px 12px 40px rgba(0,0,0,0.45)' } as any)
+      : { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.45, shadowRadius: 18, elevation: 14 }),
   },
-  tableFelt: {
+  tableBg: {
     flex: 1,
     backgroundColor: '#2C760F',
+    borderRadius: 999,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  tableBgNoise: { ...StyleSheet.absoluteFillObject },
+  tableBgHighlight: { ...StyleSheet.absoluteFillObject },
+  tableBgVignetteV: { ...StyleSheet.absoluteFillObject },
+  tableBgVignetteH: { ...StyleSheet.absoluteFillObject },
+  tableFelt: {
+    flex: 1,
+    backgroundColor: 'transparent',
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2114,8 +2197,9 @@ const styles = StyleSheet.create({
   boardTiles: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md },
   boardMultiWrap: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: spacing.md },
   boardRow: { flexDirection: 'row', alignItems: 'center' },
+  snakeBoardFrame: { alignSelf: 'center' },
   snakeBoard: { alignSelf: 'center', gap: 0 },
-  snakeRow: { alignItems: 'center', gap: 5 },
+  snakeRow: { alignItems: 'center', gap: 0 },
   snakeCorner: { borderRadius: 4, backgroundColor: '#d4cfc6' },
   playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   playerCardFxWrap: { position: 'relative', alignSelf: 'center' },
@@ -2173,13 +2257,20 @@ const styles = StyleSheet.create({
   },
   sideBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
   drawBtn: {
-    backgroundColor: '#22c55e',
     borderRadius: radius.full,
-    paddingVertical: 11, paddingHorizontal: 22,
-    borderWidth: 1, borderColor: '#86efac',
+    padding: 2,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 0 16px rgba(34,197,94,0.55)' } as any)
-      : { shadowColor: '#22c55e', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 12, elevation: 10 }),
+      ? ({ boxShadow: '0 10px 22px rgba(0,0,0,0.35), 0 0 18px rgba(74,222,128,0.30)' } as any)
+      : { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 10 }),
+  },
+  drawBtnInner: {
+    borderRadius: radius.full,
+    paddingVertical: 11,
+    paddingHorizontal: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   drawBtnText: { color: '#052e16', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.3 },
   passBtn: {
@@ -2197,8 +2288,9 @@ const styles = StyleSheet.create({
   },
   handRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: spacing.sm,
+    justifyContent: 'space-between',
   },
   handScroll: {
     flex: 1,
@@ -2215,7 +2307,7 @@ const styles = StyleSheet.create({
   },
   handContent: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: 4,
     paddingHorizontal: spacing.xs,
     paddingTop: 14,

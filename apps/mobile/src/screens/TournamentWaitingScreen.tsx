@@ -19,6 +19,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -35,7 +37,7 @@ async function scheduleTournamentNotification(startsAt: Date, tournamentName: st
         body: `${tournamentName} começa em 1 minuto. Entre agora!`,
         sound: true,
       },
-      trigger: { seconds: Math.floor(triggerMs / 1000) },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.floor(triggerMs / 1000), repeats: false },
     });
   } catch {}
 }

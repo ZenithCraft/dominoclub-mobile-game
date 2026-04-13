@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────
 // DominoClub — Brazilian Domino Engine
 // Supports: Carroça, L e L, Cruzada
-// Scoring: Simples=1, Carroça=2, Lá e Lô=3, Cruzada=4 — first to 7 pts wins
+// Scoring: Simples=1, Carroça=2, Lá e Lô=3, Cruzada=4 — first to 6 pts wins
 // ─────────────────────────────────────────────────────────────────
 
 export type Tile = [number, number]; // [left, right] pips
@@ -24,7 +24,7 @@ export const WIN_POINTS: Record<WinType, number> = {
   cruzada: 4,
 };
 
-export const TARGET_SCORE = 7;
+export const TARGET_SCORE = 6;
 
 export interface GameState {
   id: string;
@@ -49,7 +49,7 @@ export interface GameState {
   // Match tracking — persists across rounds
   matchScores: Record<number, number>; // { 1: pts, 2: pts }
   roundNumber: number;                 // 1-based
-  targetScore: number;                 // default 7
+  targetScore: number;                 // default 6
   matchWinnerTeam?: number;            // set when match is over
 }
 
