@@ -34,7 +34,11 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
   }, [resendTimer]);
 
   const handleChange = (text: string, i: number) => {
-    const next = [...otp]; next[i] = text.slice(-1); setOtp(next);
+    setOtp((prev) => {
+      const next = [...prev];
+      next[i] = text.slice(-1);
+      return next;
+    });
     if (text && i < 5) inputs.current[i + 1]?.focus();
     if (!text && i > 0) inputs.current[i - 1]?.focus();
     setError('');

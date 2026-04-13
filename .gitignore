@@ -22,6 +22,9 @@ logs/
 .DS_Store
 Thumbs.db
 .home/
+.localappdata/
+.user/
+AppData/
 
 # IDE
 .vscode/

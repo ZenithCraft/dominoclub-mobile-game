@@ -1181,6 +1181,7 @@ export function GameScreen({ navigation, route }: Props) {
   }, [ensureAnim]);
 
   useEffect(() => {
+    if (process.env.NODE_ENV === 'test') return;
     if (!selectedTile && hasBoneyard) {
       const loop = Animated.loop(
         Animated.sequence([
