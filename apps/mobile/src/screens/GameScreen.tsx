@@ -935,6 +935,10 @@ export function GameScreen({ navigation, route }: Props) {
   const [emojiByUser, setEmojiByUser] = useState<Record<string, { char: string; nonce: number }>>({});
   const [drawByUser, setDrawByUser] = useState<Record<string, { nonce: number }>>({});
 
+  const isMockGame =
+    process.env.EXPO_PUBLIC_MOCK_GAME === 'true' ||
+    (typeof globalThis !== 'undefined' && (globalThis as any).__MOCK_GAME__ === true);
+
   const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef      = useRef<Socket | null>(null);
   const errorFadeAnim  = useRef(new Animated.Value(0)).current;
@@ -952,10 +956,12 @@ export function GameScreen({ navigation, route }: Props) {
   const dragXY = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragScale = useRef(new Animated.Value(1)).current;
   const dragOpacity = useRef(new Animated.Value(0)).current;
+  const dragStartRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const dragOffsetRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
 
   // ── Dev mock: inject a 2v2 game so the board can be screenshotted ────────────
   useEffect(() => {
-    if (process.env.EXPO_PUBLIC_MOCK_GAME !== 'true') return;
+    if (!isMockGame) return;
     if (currentGame) return;
     const board: PlacedTile[] = [
       { tile: [6,6], side:'left',  flipped:false },
@@ -978,6 +984,16 @@ export function GameScreen({ navigation, route }: Props) {
       { tile: [5,2], side:'left',  flipped:true  },
       { tile: [5,1], side:'left',  flipped:true  },
       { tile: [5,0], side:'left',  flipped:true  },
+      { tile: [0,3], side:'right', flipped:false },
+      { tile: [3,3], side:'right', flipped:false },
+      { tile: [3,6], side:'right', flipped:false },
+      { tile: [6,1], side:'right', flipped:false },
+      { tile: [1,1], side:'right', flipped:false },
+      { tile: [1,4], side:'right', flipped:false },
+      { tile: [4,5], side:'right', flipped:false },
+      { tile: [5,5], side:'right', flipped:false },
+      { tile: [5,2], side:'right', flipped:false },
+      { tile: [2,6], side:'right', flipped:false },
     ];
     setGame({
       id: 'dev-mock-2v2',
@@ -1026,7 +1042,7 @@ export function GameScreen({ navigation, route }: Props) {
   const is2v2 = currentGame?.mode?.includes('2V2') ?? false;
   const boardTileSize: DominoTileSize = is2v2 ? 'xs' : 'sm';
   const boardTilePreset = TILE_DIMS[boardTileSize];
-  const tableHeight = Math.round(Math.min(viewportWidth * 0.82, 880) / (is2v2 ? 2.2 : 2.7));
+  const tableHeight = Math.round(Math.min(viewportWidth * 0.88, 920) / (is2v2 ? 2.05 : 2.3));
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
   const myPlayerIndex = (() => {
     const players = currentGame?.players ?? [];
@@ -1063,9 +1079,6 @@ export function GameScreen({ navigation, route }: Props) {
 
   const dropTile = dragging?.tile ?? selectedTile?.tile ?? null;
   const dropPlays: PlayOption[] = dropTile ? (validMovesMap.get(tileKey(dropTile)) ?? []) : [];
-  const showDropZones = isMyTurn && !!dropTile;
-  const canDropLeft = dropPlays.some((p) => p.side === 'left');
-  const canDropRight = dropPlays.some((p) => p.side === 'right');
 
   const is4Player = (currentGame?.mode?.includes('2V2') ?? false) || (currentGame?.players.length ?? 0) >= 4;
 
@@ -1092,15 +1105,25 @@ export function GameScreen({ navigation, route }: Props) {
   const targetScore   = currentGame?.targetScore ?? 6;
 
   // ── Timer ──────────────────────────────────────────────────────────────────
-  const resetTurnTimer = useCallback(() => {
+  const TURN_SECONDS = 15;
+  const resetTurnTimer = useCallback((turnStartedAt?: number | null, status?: GameState['status']) => {
     if (timerRef.current) clearInterval(timerRef.current);
-    setTurnTimer(15);
-    timerRef.current = setInterval(() => {
-      setTurnTimer((t) => {
-        if (t <= 1) { clearInterval(timerRef.current!); return 0; }
-        return t - 1;
-      });
-    }, 1000);
+    if (status && status !== 'playing') {
+      setTurnTimer(0);
+      return;
+    }
+    const startedAtMs = typeof turnStartedAt === 'number' && Number.isFinite(turnStartedAt) ? turnStartedAt : Date.now();
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - startedAtMs) / 1000);
+      const remaining = Math.max(0, TURN_SECONDS - elapsed);
+      setTurnTimer(remaining);
+      if (remaining === 0 && timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+    tick();
+    timerRef.current = setInterval(tick, 250);
   }, []);
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
@@ -1185,6 +1208,10 @@ export function GameScreen({ navigation, route }: Props) {
 
   // ── Socket ─────────────────────────────────────────────────────────────────
   useEffect(() => {
+    if (isMockGame) {
+      setDisconnected(false);
+      return;
+    }
     let mounted = true;
     let didReceiveState = false;
     let cleanup: (() => void) | null = null;
@@ -1202,7 +1229,7 @@ export function GameScreen({ navigation, route }: Props) {
           const normalized = normalizeGameState(state);
           const prev = prevStateRef.current;
           setGame(normalized);
-          resetTurnTimer();
+          resetTurnTimer(normalized.turnStartedAt as any, normalized.status as any);
           const me = normalized.players.find((p) => p.userId === myUserId) ?? normalized.players.find((p) => p.seat === 0);
           const newHand = me?.hand ?? [];
           const cur = useGameStore.getState().selectedTile;
@@ -1335,6 +1362,7 @@ export function GameScreen({ navigation, route }: Props) {
       dragXY.setValue({ x, y });
       dragScale.setValue(1);
       dragOpacity.setValue(0);
+      dragStartRectRef.current = { x, y, w, h };
       setDragging({ tile, handIndex, w, h });
       Animated.timing(dragOpacity, { toValue: 1, duration: 90, useNativeDriver: false }).start();
     });
@@ -1342,7 +1370,7 @@ export function GameScreen({ navigation, route }: Props) {
 
   const endDrag = useCallback(async (moveX: number, moveY: number) => {
     if (!dragging) return;
-    const { tile, w, h } = dragging;
+    const { tile, w, h, handIndex } = dragging;
     const plays = (validMovesMap.get(tileKey(tile)) ?? []) as PlayOption[];
     const rect = feltRect;
 
@@ -1362,9 +1390,18 @@ export function GameScreen({ navigation, route }: Props) {
     if (!inside) { clear(); return; }
 
     const desiredSide: PlaySide = moveX < rect.x + rect.width / 2 ? 'left' : 'right';
-    const choice = plays.find((p) => p.side === desiredSide) ?? plays[0];
+    const hasLeft = plays.some((p) => p.side === 'left');
+    const hasRight = plays.some((p) => p.side === 'right');
+    if (currentGame?.firstPlayMade && hasLeft && hasRight) {
+      setSelectedTile({ tile, handIndex });
+      clear();
+      return;
+    }
+    const choice = (!currentGame?.firstPlayMade)
+      ? (plays.find((p) => p.side === 'left') ?? plays[0])
+      : (plays.find((p) => p.side === desiredSide) ?? plays[0]);
     const targetX =
-      (!currentGame?.firstPlayMade ? rect.x + rect.width / 2 : (desiredSide === 'left' ? rect.x + rect.width * 0.28 : rect.x + rect.width * 0.72))
+      (!currentGame?.firstPlayMade ? rect.x + rect.width / 2 : (desiredSide === 'left' ? rect.x + rect.width * 0.14 : rect.x + rect.width * 0.86))
       - w / 2;
     const targetY = (rect.y + rect.height / 2) - h / 2;
 
@@ -1387,9 +1424,15 @@ export function GameScreen({ navigation, route }: Props) {
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => !!dragging,
     onMoveShouldSetPanResponder: () => !!dragging,
+    onPanResponderGrant: (_evt, gesture) => {
+      const r = dragStartRectRef.current;
+      if (!r) return;
+      dragOffsetRef.current = { dx: gesture.x0 - r.x, dy: gesture.y0 - r.y };
+    },
     onPanResponderMove: (_evt, gesture) => {
       if (!dragging) return;
-      dragXY.setValue({ x: gesture.moveX - dragging.w / 2, y: gesture.moveY - dragging.h / 2 });
+      const { dx, dy } = dragOffsetRef.current;
+      dragXY.setValue({ x: gesture.moveX - dx, y: gesture.moveY - dy });
     },
     onPanResponderRelease: (_evt, gesture) => { void endDrag(gesture.moveX, gesture.moveY); },
     onPanResponderTerminate: (_evt, gesture) => { void endDrag(gesture.moveX, gesture.moveY); },
@@ -1589,48 +1632,110 @@ export function GameScreen({ navigation, route }: Props) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   const boardTilesLinear = buildLinearBoardTiles(currentGame.board ?? []);
-  const SNAKE_GAP = 5;
+  const SNAKE_GAP_HH = 3; // horizontal-to-horizontal spacing
+  const SNAKE_GAP_MIXED = 2; // spacing when at least one piece is vertical (double)
+  const SNAKE_ROW_GAP = 1; // vertical spacing between rows/corners
 
   // 6 horizontal tiles per row; 7th tile becomes a vertical corner connector (between rows)
   const SNAKE_H_PER_ROW = 6;
   // Width = 6 horizontal tiles + 5 gaps only (corner is a separate element below the row)
-  const snakeBoardWidth = SNAKE_H_PER_ROW * (boardTilePreset.long + SNAKE_GAP) - SNAKE_GAP;
-
-  // Split: every group of 7 = 6 horizontal tiles + 1 vertical corner tile
-  const snakeRows = (() => {
-    if (!boardTilesLinear.length) return [] as { tiles: Tile[]; cornerTile: Tile | null; isRtl: boolean }[];
-    const segments: { tiles: Tile[]; cornerTile: Tile | null; isRtl: boolean }[] = [];
-    let idx = 0;
-    let rowNum = 0;
-    while (idx < boardTilesLinear.length) {
-      const isRtl = rowNum % 2 === 1;
-      const end = Math.min(idx + SNAKE_H_PER_ROW, boardTilesLinear.length);
-      const hTiles = boardTilesLinear.slice(idx, end);
-      idx = end;
-      const cornerTile = idx < boardTilesLinear.length ? boardTilesLinear[idx++] : null;
-      segments.push({ tiles: hTiles, cornerTile, isRtl });
-      rowNum++;
-    }
-    return segments;
-  })();
+  const snakeBoardWidth = SNAKE_H_PER_ROW * (boardTilePreset.long + SNAKE_GAP_HH) - SNAKE_GAP_HH;
 
   // ── Board scale: shrink tiles so they always fit inside the oval ─────────
   const boardScale = (() => {
-    const rowCount = snakeRows.length;
-    if (rowCount === 0 || !feltWidth) return 1;
-    const cornerCount = snakeRows.filter((r) => r.cornerTile !== null).length;
-    const ROW_H    = boardTilePreset.short + SNAKE_GAP;
+    if (!boardTilesLinear.length || !feltWidth) return 1;
+    const rowCount = Math.ceil(boardTilesLinear.length / (SNAKE_H_PER_ROW + 1));
+    const cornerCount = Math.floor(boardTilesLinear.length / (SNAKE_H_PER_ROW + 1));
+    const ROW_H    = boardTilePreset.short + SNAKE_ROW_GAP;
     const CORNER_H = boardTilePreset.long  + 6; // marginVertical 3 top + 3 bottom
     const estimatedH = rowCount * ROW_H + cornerCount * CORNER_H;
     // Usable area inside the oval (oval clips ~12% width, ~28% height from each edge)
-    const availW = feltWidth  * 0.62;
-    const availH = tableHeight * 0.70;
+    const availW = feltWidth  * 0.992;
+    const TOP_SAFE = 72;
+    const availH = Math.max(120, (tableHeight * 0.90) - TOP_SAFE);
     const scaleW = snakeBoardWidth > availW ? availW / snakeBoardWidth : 1;
     const scaleH = estimatedH    > availH ? availH / estimatedH    : 1;
     return Math.max(0.40, Math.min(1, scaleW, scaleH));
   })();
   const scaledBoardWidth = Math.round(snakeBoardWidth * boardScale);
-  const scaledGap        = Math.round(SNAKE_GAP * boardScale);
+  const scaledGapHH      = Math.max(1, Math.round(SNAKE_GAP_HH * boardScale));
+  const scaledGapMixed   = Math.max(2, Math.round(SNAKE_GAP_MIXED * boardScale));
+  const scaledRowGap     = Math.max(1, Math.round(SNAKE_ROW_GAP * boardScale));
+
+  const visualTiles: { displayTile: Tile; horizontal: boolean; x: number; y: number; w: number; h: number }[] = [];
+
+  if (boardTilesLinear.length > 0) {
+    const S = Math.round(boardTilePreset.short * boardScale);
+    const L = Math.round(boardTilePreset.long * boardScale);
+    const gapMixed = scaledGapMixed;
+    const gapHH = scaledGapHH;
+    const rowGap = scaledRowGap;
+
+    let cursorX = 0;
+    let cursorY = 0;
+    let direction = 1;
+    let lastTileDouble = false;
+
+    for (let i = 0; i < boardTilesLinear.length; i++) {
+      const t = boardTilesLinear[i];
+      const isDouble = t[0] === t[1];
+      const isCorner = i > 0 && i % (SNAKE_H_PER_ROW + 1) === SNAKE_H_PER_ROW;
+
+      if (isCorner) {
+        const w = S;
+        const h = L;
+        const x = direction === 1 ? cursorX - S : cursorX;
+        const prevBottom = lastTileDouble ? cursorY + Math.round((S + L) / 2) : cursorY + S;
+        const y = prevBottom + rowGap;
+
+        visualTiles.push({ displayTile: t, horizontal: false, x, y, w, h });
+
+        direction *= -1;
+        const nextTile = boardTilesLinear[i + 1];
+        const isNextDouble = nextTile ? nextTile[0] === nextTile[1] : false;
+        cursorY = y + h + rowGap + (isNextDouble ? Math.round((L - S) / 2) : 0);
+        cursorX = direction === -1 ? x + S : x;
+        lastTileDouble = true; 
+      } else {
+        const w = isDouble ? S : L;
+        const h = isDouble ? L : S;
+
+        let x: number;
+        if (direction === 1) {
+          x = cursorX;
+          const nextTile = boardTilesLinear[i + 1];
+          const isNextCorner = (i + 1) > 0 && (i + 1) % (SNAKE_H_PER_ROW + 1) === SNAKE_H_PER_ROW;
+          const isNextDouble = nextTile ? nextTile[0] === nextTile[1] : false;
+          const gapAfter = nextTile && !isNextCorner ? (!isDouble && !isNextDouble ? gapHH : gapMixed) : 0;
+          cursorX = x + w + gapAfter;
+        } else {
+          x = cursorX - w;
+          const nextTile = boardTilesLinear[i + 1];
+          const isNextCorner = (i + 1) > 0 && (i + 1) % (SNAKE_H_PER_ROW + 1) === SNAKE_H_PER_ROW;
+          const isNextDouble = nextTile ? nextTile[0] === nextTile[1] : false;
+          const gapAfter = nextTile && !isNextCorner ? (!isDouble && !isNextDouble ? gapHH : gapMixed) : 0;
+          cursorX = x - gapAfter;
+        }
+
+        const y = isDouble ? cursorY - Math.round((L - S) / 2) : cursorY;
+        const displayTile = (!isDouble && direction === -1) ? [t[1], t[0]] as Tile : t;
+
+        visualTiles.push({ displayTile, horizontal: !isDouble, x, y, w, h });
+        lastTileDouble = isDouble;
+      }
+    }
+  }
+
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  for (const vt of visualTiles) {
+    if (vt.x < minX) minX = vt.x;
+    if (vt.x + vt.w > maxX) maxX = vt.x + vt.w;
+    if (vt.y < minY) minY = vt.y;
+    if (vt.y + vt.h > maxY) maxY = vt.y + vt.h;
+  }
+  const snakeW = visualTiles.length > 0 ? maxX - minX : 0;
+  const snakeH = visualTiles.length > 0 ? maxY - minY : 0;
 
   const renderPlayerFx = (userId: string, placement: 'top' | 'bottom' | 'left' | 'right') => {
     const emoji = emojiByUser[userId];
@@ -1813,13 +1918,6 @@ export function GameScreen({ navigation, route }: Props) {
                   style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: 56 }}
                 />
 
-                {showDropZones && (
-                  <View pointerEvents="none" style={styles.dropZones}>
-                    <View style={[styles.dropZone, styles.dropZoneLeft, canDropLeft && styles.dropZoneActive]} />
-                    <View style={[styles.dropZone, styles.dropZoneRight, canDropRight && styles.dropZoneActive]} />
-                  </View>
-                )}
-
                 {/* Watermark */}
                 {currentGame.board.length === 0 && (
                   <Image
@@ -1829,38 +1927,20 @@ export function GameScreen({ navigation, route }: Props) {
                   />
                 )}
 
-                {currentGame.board.length > 0 && (
-                  <View style={[styles.snakeBoard, { width: scaledBoardWidth }]}>
-                    {snakeRows.map(({ tiles, cornerTile, isRtl }, rowIdx) => (
-                      <React.Fragment key={rowIdx}>
-                        <View style={[styles.snakeRow, { flexDirection: isRtl ? 'row-reverse' : 'row', gap: scaledGap }]}>
-                          {tiles.map((tile, i) => {
-                            const isDouble = tile[0] === tile[1];
-                            const displayTile = (!isDouble && isRtl) ? [tile[1], tile[0]] as Tile : tile;
-                            return (
-                              <DominoTile
-                                key={i}
-                                tile={displayTile}
-                                size={boardTileSize}
-                                tileScale={boardScale}
-                                horizontal={!isDouble}
-                              />
-                            );
-                          })}
+                {currentGame.board.length > 0 && visualTiles.length > 0 && (
+                  <View style={[styles.snakeBoard, { width: scaledBoardWidth, height: Math.max(snakeH, 100), alignItems: 'center', justifyContent: 'center' }]}>
+                    <View style={{ width: snakeW, height: snakeH, position: 'relative' }}>
+                      {visualTiles.map((vt, i) => (
+                        <View key={i} style={{ position: 'absolute', left: vt.x - minX, top: vt.y - minY }}>
+                          <DominoTile
+                            tile={vt.displayTile}
+                            size={boardTileSize}
+                            tileScale={boardScale}
+                            horizontal={vt.horizontal}
+                          />
                         </View>
-                        {/* Corner tile below the row at the turn edge, above the next row */}
-                        {cornerTile && (
-                          <View style={{ alignSelf: !isRtl ? 'flex-end' : 'flex-start', marginVertical: Math.round(3 * boardScale) }}>
-                            <DominoTile
-                              tile={cornerTile}
-                              size={boardTileSize}
-                              tileScale={boardScale}
-                              horizontal={false}
-                            />
-                          </View>
-                        )}
-                      </React.Fragment>
-                    ))}
+                      ))}
+                    </View>
                   </View>
                 )}
 
@@ -2269,7 +2349,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   tableWrap: { flex: 1, position: 'relative' },
-  tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative', paddingBottom: 40 },
   scoreOverlay: {
     position: 'absolute',
     top: 0,
@@ -2284,25 +2364,25 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 10,
-    transform: [{ translateY: -24 }],
+    transform: [{ translateY: -18 }],
   },
   tableSideBadgeLeft: {
     position: 'absolute',
     left: 0,
     top: '50%',
     zIndex: 15,
-    transform: [{ translateY: -24 }, { translateX: -90 }],
+    transform: [{ translateY: -24 }, { translateX: -48 }],
   },
   tableSideBadgeRight: {
     position: 'absolute',
     right: 0,
     top: '50%',
     zIndex: 15,
-    transform: [{ translateY: -24 }, { translateX: 90 }],
+    transform: [{ translateY: -24 }, { translateX: 48 }],
   },
   tableOuter: {
-    width: '78%',
-    maxWidth: 820,
+    width: '88%',
+    maxWidth: 920,
     alignSelf: 'center',
     backgroundColor: '#060e06',
     borderRadius: 999,
@@ -2329,23 +2409,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  dropZones: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
-  dropZone: {
-    position: 'absolute',
-    top: '18%',
-    bottom: '18%',
-    width: '22%',
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: 'rgba(0,0,0,0.10)',
-  },
-  dropZoneLeft: { left: '8%' },
-  dropZoneRight: { right: '8%' },
-  dropZoneActive: {
-    borderColor: 'rgba(190,243,17,0.75)',
-    backgroundColor: 'rgba(190,243,17,0.08)',
-  },
 
   watermarkImage: {
     width: 130,
@@ -2356,7 +2419,7 @@ const styles = StyleSheet.create({
   boardMultiWrap: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: spacing.md },
   boardRow: { flexDirection: 'row', alignItems: 'center' },
   snakeBoard: { alignSelf: 'center', gap: 0 },
-  snakeRow: { alignItems: 'center', justifyContent: 'center', gap: 5 },
+  snakeRow: { alignItems: 'center', justifyContent: 'flex-start', gap: 5 },
   snakeCorner: { borderRadius: 4, backgroundColor: '#d4cfc6' },
   playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   playerCardFxWrap: { position: 'relative', alignSelf: 'center' },
@@ -2385,9 +2448,12 @@ const styles = StyleSheet.create({
   // ── Hand section ──
   handSection: {
     position: 'absolute',
-    left: 0, right: 0, bottom: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: 'column',
     paddingHorizontal: spacing.sm,
+    paddingBottom: 2,
     zIndex: 30,
   },
   actionBar: {

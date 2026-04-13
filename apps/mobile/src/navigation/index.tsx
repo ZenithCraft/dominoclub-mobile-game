@@ -106,7 +106,21 @@ class ErrorBoundary extends React.Component<
 }
 
 export function AppNavigator() {
-  const initialRouteName: keyof RootStackParamList = 'Splash';
+  const url = typeof window !== 'undefined' ? new URL(window.location.href) : null;
+  const directGame = !!url && (url.searchParams.get('screen') === 'game' || url.searchParams.get('game') === '1');
+  const mockGame = !!url && (url.searchParams.get('mockGame') === '1' || url.searchParams.get('mock') === '1');
+  const gameIdFromUrl = url?.searchParams.get('gameId') || url?.searchParams.get('id') || null;
+
+  if (mockGame && typeof window !== 'undefined') {
+    (window as any).__MOCK_GAME__ = true;
+  }
+
+  const allowDirect = process.env.NODE_ENV !== 'production' || process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS === 'true';
+  const initialRouteName: keyof RootStackParamList =
+    allowDirect && (process.env.EXPO_PUBLIC_MOCK_GAME === 'true' || directGame || mockGame)
+      ? 'Game'
+      : 'Splash';
+  const initialGameId = gameIdFromUrl || 'demo-1';
 
   return (
     <NavigationContainer>
@@ -127,7 +141,7 @@ export function AppNavigator() {
           <Stack.Screen
             name="Game"
             component={GameScreen}
-            initialParams={{ gameId: 'demo-1' }}
+            initialParams={{ gameId: initialGameId }}
             options={{ gestureEnabled: false }}
           />
           <Stack.Screen name="History"              component={HistoryScreen} />
