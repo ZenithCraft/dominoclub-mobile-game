@@ -19,6 +19,7 @@ export interface QueueEntry {
 export const matchmakingEvents = new EventEmitter();
 
 const queues = new Map<string, QueueEntry[]>();
+export const volatileMatches = new Map<string, { gameId: string; betAmount: number; mode: QueueEntry['mode']; variant: MatchmakingVariant; players: any[] }>();
 
 // Queue entries older than this are considered stale and removed
 const QUEUE_STALE_MS = 5 * 60 * 1000; // 5 minutes
@@ -37,11 +38,16 @@ async function isPairBlocked(userId1: string, userId2: string): Promise<boolean>
   const cached = pairBlockCache.get(key);
   if (cached && Date.now() < cached.expiresAt) return cached.blocked;
 
-  const row = await prisma.pairBlock.findUnique({
-    where: { userAId_userBId: { userAId, userBId } },
-    select: { active: true },
-  });
-  const blocked = !!row?.active;
+  let blocked = false;
+  try {
+    const row = await prisma.pairBlock.findUnique({
+      where: { userAId_userBId: { userAId, userBId } },
+      select: { active: true },
+    });
+    blocked = !!row?.active;
+  } catch {
+    blocked = false;
+  }
   pairBlockCache.set(key, { blocked, expiresAt: Date.now() + PAIR_BLOCK_CACHE_MS });
   return blocked;
 }
@@ -188,7 +194,12 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
   const gameId = uuidv4();
 
   // Read house edge from DB (with cache fallback) so admin can change it live
-  const houseEdge = await getHouseEdgePercent();
+  let houseEdge = 0;
+  try {
+    houseEdge = await getHouseEdgePercent();
+  } catch {
+    houseEdge = 0;
+  }
 
   // Anti-collusion: shuffle team assignments in 2v2
   const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
@@ -199,6 +210,8 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
     socketId: p.socketId,
     isBot: !!p.isBot,
   }));
+
+  volatileMatches.set(gameId, { gameId, betAmount, mode, variant, players: playerData });
 
   try {
     const game = await prisma.game.create({
@@ -222,24 +235,29 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
     });
 
     logger.info('Match created', { gameId, mode, variant, players: playerData.map((p) => p.userId) });
-    matchmakingEvents.emit('match_created', { gameId, players: playerData, betAmount, mode });
+    matchmakingEvents.emit('match_created', { gameId, players: playerData, betAmount, mode, variant });
   } catch (err) {
     logger.error('Failed to create match', { err });
+    matchmakingEvents.emit('match_created', { gameId, players: playerData, betAmount, mode, variant });
   }
 }
 
 async function createBotUser() {
   const suffix = uuidv4().replace(/-/g, '').slice(0, 12);
   const phone = `+5599${suffix}`;
-  return prisma.user.create({
-    data: {
-      phone,
-      name: 'Bot',
-      cpf_verified: true,
-      phone_verified: true,
-    },
-    select: { id: true },
-  });
+  try {
+    return await prisma.user.create({
+      data: {
+        phone,
+        name: 'Bot',
+        cpf_verified: true,
+        phone_verified: true,
+      },
+      select: { id: true },
+    });
+  } catch {
+    return { id: `bot_${uuidv4()}` };
+  }
 }
 
 // Bot injection: if a player waits too long, inject a bot opponent

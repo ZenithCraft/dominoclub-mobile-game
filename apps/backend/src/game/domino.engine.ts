@@ -45,6 +45,7 @@ export interface GameState {
   winType?: WinType;       // type of win for the current round
   turnStartedAt?: number;  // timestamp for timeout
   firstPlayMade: boolean;
+  requiredFirstTile?: Tile; // the tile that MUST be played first
 
   // Match tracking — persists across rounds
   matchScores: Record<number, number>; // { 1: pts, 2: pts }
@@ -99,7 +100,7 @@ export function initGame(
   }));
 
   const boneyard = allTiles.slice(players.length * tilesPerPlayer);
-  const firstPlayerIndex = findFirstPlayer(playerStates);
+  const firstPlayInfo = findFirstPlayer(playerStates);
 
   return {
     id: gameId,
@@ -109,31 +110,48 @@ export function initGame(
     boneyard,
     leftOpen: -1,
     rightOpen: -1,
-    currentPlayerIndex: firstPlayerIndex,
+    currentPlayerIndex: firstPlayInfo.index,
     turnCount: 0,
     consecutivePasses: 0,
     status: 'playing',
     turnStartedAt: Date.now(),
     firstPlayMade: false,
+    requiredFirstTile: firstPlayInfo.tile,
     matchScores: { 1: 0, 2: 0 },
     roundNumber: 1,
     targetScore: TARGET_SCORE,
   };
 }
 
-// Find player with highest double (goes first)
-function findFirstPlayer(players: PlayerState[]): number {
+// Find player with highest double (goes first) or highest normal tile if no doubles
+function findFirstPlayer(players: PlayerState[]): { index: number; tile: Tile } {
   let firstPlayerIndex = 0;
   let highestDouble = -1;
+  let highestPips = -1;
+  let bestDouble: Tile | null = null;
+  let bestNormalTile: Tile | null = null;
+  let normalPlayerIndex = 0;
+
   players.forEach((p, idx) => {
     p.hand.forEach((tile) => {
+      const pips = tile[0] + tile[1];
       if (tile[0] === tile[1] && tile[0] > highestDouble) {
         highestDouble = tile[0];
         firstPlayerIndex = idx;
+        bestDouble = tile;
+      }
+      if (pips > highestPips) {
+        highestPips = pips;
+        normalPlayerIndex = idx;
+        bestNormalTile = tile;
       }
     });
   });
-  return firstPlayerIndex;
+
+  if (bestDouble) {
+    return { index: firstPlayerIndex, tile: bestDouble };
+  }
+  return { index: normalPlayerIndex, tile: bestNormalTile! };
 }
 
 /**
@@ -152,7 +170,7 @@ export function initNextRound(state: GameState): GameState {
   }));
 
   const boneyard = allTiles.slice(players.length * tilesPerPlayer);
-  const firstPlayerIndex = findFirstPlayer(players);
+  const firstPlayInfo = findFirstPlayer(players);
 
   return {
     id: state.id,
@@ -162,12 +180,13 @@ export function initNextRound(state: GameState): GameState {
     boneyard,
     leftOpen: -1,
     rightOpen: -1,
-    currentPlayerIndex: firstPlayerIndex,
+    currentPlayerIndex: firstPlayInfo.index,
     turnCount: 0,
     consecutivePasses: 0,
     status: 'playing',
     turnStartedAt: Date.now(),
     firstPlayMade: false,
+    requiredFirstTile: firstPlayInfo.tile,
     matchScores: { ...state.matchScores },
     roundNumber: state.roundNumber + 1,
     targetScore: state.targetScore,
@@ -199,7 +218,15 @@ function detectWinType(tile: Tile, leftOpen: number, rightOpen: number, firstPla
 
 export function canPlayTile(state: GameState, tile: Tile): { side: 'left' | 'right' | 'top' | 'bottom'; flipped: boolean }[] {
   if (!state.firstPlayMade) {
-    return [{ side: 'left', flipped: false }]; // first tile goes anywhere
+    // If there is a required first tile, only that tile can be played
+    if (state.requiredFirstTile) {
+      if ((tile[0] === state.requiredFirstTile[0] && tile[1] === state.requiredFirstTile[1]) ||
+          (tile[0] === state.requiredFirstTile[1] && tile[1] === state.requiredFirstTile[0])) {
+        return [{ side: 'left', flipped: false }]; // first tile goes anywhere, 'left' is default
+      }
+      return []; // Not the required tile
+    }
+    return [{ side: 'left', flipped: false }]; // fallback
   }
 
   const plays: { side: 'left' | 'right' | 'top' | 'bottom'; flipped: boolean }[] = [];
@@ -247,6 +274,12 @@ export function applyMove(
     const allowed = canPlayTile(s, tile);
     if (!allowed.some((p) => p.side === side && p.flipped === flipped)) {
       throw new Error('Illegal move');
+    }
+  } else {
+    // first play check
+    const allowed = canPlayTile(s, tile);
+    if (allowed.length === 0) {
+       throw new Error('Illegal first move');
     }
   }
 

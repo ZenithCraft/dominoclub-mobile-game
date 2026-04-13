@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ImageBackground, Image,
   TouchableOpacity, Modal, Alert, Animated, Pressable, ActivityIndicator,
-  Platform, useWindowDimensions, Easing,
+  Platform, useWindowDimensions, Easing, PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
@@ -327,9 +327,13 @@ function getValidMovesForHand(hand: (Tile | null)[], game: GameState): Map<strin
 
 function tileKey(tile: Tile): string { return `${tile[0]}-${tile[1]}`; }
 
-function buildLinearBoardTiles(board: PlacedTile[]): Tile[] {
+function buildLinearBoardTiles(
+  board: PlacedTile[],
+  opts?: { hPerRow?: number; rows?: number }
+): (Tile | null)[] {
   if (!board || board.length === 0) return [];
   const seq: Tile[] = [];
+  let leftCount = 0;
   for (let i = 0; i < board.length; i++) {
     const pt = board[i];
     const effective: Tile = pt.flipped ? [pt.tile[1], pt.tile[0]] : pt.tile;
@@ -337,10 +341,161 @@ function buildLinearBoardTiles(board: PlacedTile[]): Tile[] {
       seq.push(effective);
       continue;
     }
-    if (pt.side === 'left' || pt.side === 'top') seq.unshift(effective);
-    else seq.push(effective);
+    if (pt.side === 'left' || pt.side === 'top') {
+      seq.unshift(effective);
+      leftCount++;
+    } else {
+      seq.push(effective);
+    }
   }
-  return seq;
+
+  // We want the center piece (board[0]) to be at a fixed index so it stays centered on screen.
+  // A row has (hPerRow horizontal + 1 corner) cells. Use a bounded number of rows to keep layout stable.
+  const hPerRow = Math.max(6, Math.min(14, Math.floor(opts?.hPerRow ?? 6)));
+  const rowCells = hPerRow + 1;
+  const totalRows = Math.max(7, Math.min(21, Math.floor(opts?.rows ?? 13)));
+  const centerRow = Math.floor(totalRows / 2);
+  const centerIndex = centerRow * rowCells + Math.floor(hPerRow / 2);
+  const totalCells = totalRows * rowCells;
+
+  const padded: (Tile | null)[] = new Array(totalCells).fill(null);
+  const startIndex = centerIndex - leftCount;
+
+  for (let i = 0; i < seq.length; i++) {
+    if (startIndex + i < totalCells && startIndex + i >= 0) {
+      padded[startIndex + i] = seq[i];
+    }
+  }
+
+  return padded;
+}
+
+function buildPlacedSequence(board: PlacedTile[]): { seq: Tile[]; leftCount: number } {
+  if (!board || board.length === 0) return { seq: [], leftCount: 0 };
+  const seq: Tile[] = [];
+  let leftCount = 0;
+  for (let i = 0; i < board.length; i++) {
+    const pt = board[i];
+    const effective: Tile = pt.flipped ? [pt.tile[1], pt.tile[0]] : pt.tile;
+    if (i === 0) {
+      seq.push(effective);
+      continue;
+    }
+    if (pt.side === 'left' || pt.side === 'top') {
+      seq.unshift(effective);
+      leftCount++;
+    } else {
+      seq.push(effective);
+    }
+  }
+  return { seq, leftCount };
+}
+
+type SnakePlaced = { tile: Tile; x: number; y: number; horizontal: boolean };
+
+function buildSnakeLayout(
+  seq: (Tile | null)[],
+  hPerRow: number,
+  base: { short: number; long: number },
+  gap: number,
+  overlap: number,
+  scale: number
+): { placed: SnakePlaced[]; width: number; height: number } {
+  if (!seq.length) return { placed: [], width: 0, height: 0 };
+
+  const S = Math.round(base.short * scale);
+  const L = Math.round(base.long * scale);
+  const GH = Math.max(1, Math.round(gap * scale));
+  const GV = Math.max(1, Math.round((gap + 2) * scale));
+  const O = Math.max(0, Math.round(overlap * scale));
+
+  const placed: SnakePlaced[] = [];
+  let cursorY = 0;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let maxY = 0;
+
+  const rowCells = hPerRow + 1;
+  const rows = Math.ceil(seq.length / rowCells);
+  const attach = Math.min(Math.floor(S * 0.18), O);
+  const maxStep = Math.max(1, (L - attach) + GH);
+  const maxRowWidth = (hPerRow - 1) * maxStep + L;
+
+  for (let rowNum = 0; rowNum < rows; rowNum++) {
+    const rtl = rowNum % 2 === 1;
+    const baseIdx = rowNum * rowCells;
+    const rowTiles = seq.slice(baseIdx, baseIdx + hPerRow);
+    const cornerTile = seq[baseIdx + hPerRow] ?? null;
+
+    let first = -1;
+    let last = -1;
+    for (let i = 0; i < rowTiles.length; i++) {
+      if (rowTiles[i]) { first = i; break; }
+    }
+    for (let i = rowTiles.length - 1; i >= 0; i--) {
+      if (rowTiles[i]) { last = i; break; }
+    }
+    if (first === -1 && !cornerTile) continue;
+
+    const segment = first === -1 ? [] : (rowTiles.slice(first, last + 1).filter(Boolean) as Tile[]);
+    const dims = segment.map((t) => {
+      const isDouble = t[0] === t[1];
+      const horizontal = !isDouble;
+      const proj = horizontal ? L : S;
+      const w = proj;
+      const h = horizontal ? S : L;
+      return { t, w, h, proj, horizontal };
+    });
+
+    const rowHeight = dims.reduce((m, d) => Math.max(m, d.h), Math.max(S, L));
+
+    const starts: number[] = [];
+    let cum = 0;
+    for (let i = 0; i < dims.length; i++) {
+      starts.push(cum);
+      cum += Math.max(1, (dims[i].proj - attach) + GH);
+    }
+    const rowLenWidth = dims.length ? (starts[starts.length - 1] + dims[dims.length - 1].proj) : 0;
+    const origin = rtl ? (maxRowWidth - rowLenWidth) : 0;
+
+    for (let i = 0; i < dims.length; i++) {
+      const d = dims[i];
+      const left = rtl
+        ? (origin + (rowLenWidth - (starts[i] + d.w)))
+        : (origin + starts[i]);
+      const top = cursorY + Math.floor((rowHeight - d.h) / 2);
+      placed.push({
+        tile: rtl ? ([d.t[1], d.t[0]] as Tile) : d.t,
+        x: left,
+        y: top,
+        horizontal: d.horizontal,
+      });
+      minX = Math.min(minX, left);
+      maxX = Math.max(maxX, left + d.w);
+      maxY = Math.max(maxY, top + d.h);
+    }
+
+    if (cornerTile) {
+      const endX = rtl ? origin : (origin + rowLenWidth);
+      const cornerW = S;
+      const cornerH = L;
+      const cornerLeft = endX - Math.floor(cornerW / 2);
+      const cornerTop = cursorY + rowHeight - attach;
+      placed.push({ tile: cornerTile, x: cornerLeft, y: cornerTop, horizontal: false });
+      minX = Math.min(minX, cornerLeft);
+      maxX = Math.max(maxX, cornerLeft + cornerW);
+      maxY = Math.max(maxY, cornerTop + cornerH);
+      cursorY = cornerTop + cornerH - attach + GV;
+    } else {
+      cursorY = cursorY + rowHeight + GV;
+    }
+  }
+
+  if (!placed.length) return { placed: [], width: 0, height: 0 };
+  const contentW = Math.max(1, maxX - minX);
+  const shiftX = Math.floor((maxRowWidth - contentW) / 2) - minX;
+  for (const p of placed) p.x += shiftX;
+  return { placed, width: maxRowWidth, height: maxY };
 }
 
 // ─── Pip positions ────────────────────────────────────────────────────────────
@@ -366,6 +521,50 @@ function TileHandImage({ tile, selected, playable, onPress }: {
       style={!playable ? { opacity: 0.38 } : undefined}
       onPress={onPress}
     />
+  );
+}
+
+function DraggableTile({ tile, isPlayable, isSelected, onPress, onDragUp }: {
+  tile: Tile;
+  isPlayable: boolean;
+  isSelected: boolean;
+  onPress: () => void;
+  onDragUp: () => void;
+}) {
+  const pan = useRef(new Animated.ValueXY()).current;
+  
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => isPlayable && gestureState.dy < -10,
+      onPanResponderGrant: () => {
+        pan.setOffset({ x: (pan.x as any)._value, y: (pan.y as any)._value });
+        pan.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
+      onPanResponderRelease: (_, gestureState) => {
+        pan.flattenOffset();
+        if (gestureState.dy < -50) {
+          onDragUp();
+        }
+        Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
+      },
+    })
+  ).current;
+
+  return (
+    <Animated.View
+      {...(isPlayable ? panResponder.panHandlers : {})}
+      style={[
+        { transform: pan.getTranslateTransform(), zIndex: isSelected ? 10 : 1 }
+      ]}
+    >
+      <TileHandImage
+        tile={tile}
+        selected={isSelected}
+        playable={isPlayable}
+        onPress={onPress}
+      />
+    </Animated.View>
   );
 }
 
@@ -414,13 +613,13 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
     : { borderColor: TILE_LINE };
 
   const tileShadow = Platform.OS === 'web'
-    ? ({ boxShadow: '0px 2px 5px rgba(0,0,0,0.28)' } as any)
+    ? ({ boxShadow: '0px 1px 2px rgba(0,0,0,0.16)' } as any)
     : {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.22,
-        shadowRadius: 4,
-        elevation: 4,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.12,
+        shadowRadius: 2,
+        elevation: 2,
       };
 
   const content = (
@@ -1071,7 +1270,7 @@ export function GameScreen({ navigation, route }: Props) {
     }, 1000);
   }, []);
 
-  useEffect(() => { if (turnTimer === 0 && isMyTurn) handlePass(); }, [turnTimer, isMyTurn]);
+  // Removed frontend auto-pass on timer=0. Backend will now auto-play a valid piece on timeout.
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
   // ── Error toast ────────────────────────────────────────────────────────────
@@ -1474,57 +1673,36 @@ export function GameScreen({ navigation, route }: Props) {
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  const boardTilesLinear = buildLinearBoardTiles(currentGame.board ?? []);
-  const SNAKE_GAP_BASE = 2;
+  const SNAKE_GAP_BASE = 5;
   const SNAKE_GAP = SNAKE_GAP_BASE;
+  const snakeMaxW = feltWidth ? Math.max(0, feltWidth * 0.90) : Math.max(0, viewportWidth * 0.78);
+  const SNAKE_H_PER_ROW = Math.max(
+    6,
+    Math.min(11, Math.floor((snakeMaxW + SNAKE_GAP) / (boardTilePreset.long + SNAKE_GAP)))
+  );
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   const boardTileNoShadow = Platform.OS === 'web'
-    ? ({ boxShadow: 'none' } as any)
-    : { shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 };
+    ? ({ boxShadow: '0px 1px 2px rgba(0,0,0,0.16)' } as any)
+    : { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 2, elevation: 2 };
 
-  // 6 horizontal tiles per row; 7th tile becomes a vertical corner connector (between rows)
-  const SNAKE_H_PER_ROW = 6;
-  // Width = 6 horizontal tiles + 5 gaps only (corner is a separate element below the row)
-  const snakeBoardWidth = SNAKE_H_PER_ROW * (boardTilePreset.long + SNAKE_GAP) - SNAKE_GAP;
-
-  // Split: every group of 7 = 6 horizontal tiles + 1 vertical corner tile
-  const snakeRows = (() => {
-    if (!boardTilesLinear.length) return [] as { tiles: Tile[]; cornerTile: Tile | null; isRtl: boolean }[];
-    const segments: { tiles: Tile[]; cornerTile: Tile | null; isRtl: boolean }[] = [];
-    let idx = 0;
-    let rowNum = 0;
-    while (idx < boardTilesLinear.length) {
-      const isRtl = rowNum % 2 === 1;
-      const end = Math.min(idx + SNAKE_H_PER_ROW, boardTilesLinear.length);
-      const hTiles = boardTilesLinear.slice(idx, end);
-      idx = end;
-      const cornerTile = idx < boardTilesLinear.length ? boardTilesLinear[idx++] : null;
-      segments.push({ tiles: hTiles, cornerTile, isRtl });
-      rowNum++;
-    }
-    return segments;
-  })();
+  const boardTilesLinear = buildLinearBoardTiles(currentGame.board ?? [], { hPerRow: SNAKE_H_PER_ROW, rows: 13 });
+  const baseLayout = buildSnakeLayout(boardTilesLinear, SNAKE_H_PER_ROW, boardTilePreset, SNAKE_GAP, 3, 1);
 
   // ── Board scale: shrink tiles so they always fit inside the oval ─────────
   const boardScale = (() => {
-    const rowCount = snakeRows.length;
-    if (rowCount === 0 || !feltWidth) return 1;
-    const cornerCount = snakeRows.filter((r) => r.cornerTile !== null).length;
-    const ROW_H    = boardTilePreset.short + SNAKE_GAP;
-    const CORNER_H = boardTilePreset.long;
-    const estimatedH = rowCount * ROW_H + cornerCount * CORNER_H;
-    // Usable area inside the oval (oval clips ~12% width, ~28% height from each edge)
+    if (!feltWidth || baseLayout.width === 0 || baseLayout.height === 0) return 1;
     const boardPadBase = 10;
-    const availW = Math.max(0, feltWidth  * 0.86 - boardPadBase * 2);
+    const availW = Math.max(0, feltWidth  * 0.88 - boardPadBase * 2);
     const availH = Math.max(0, tableHeight * 0.70 - boardPadBase * 2);
-    const scaleW = snakeBoardWidth > availW ? availW / snakeBoardWidth : 1;
-    const scaleH = estimatedH    > availH ? availH / estimatedH    : 1;
-    return Math.max(0.40, Math.min(1, scaleW, scaleH));
+    const scaleW = baseLayout.width > availW ? availW / baseLayout.width : 1;
+    const scaleH = baseLayout.height > availH ? availH / baseLayout.height : 1;
+    return Math.max(0.60, Math.min(1, scaleW, scaleH));
   })();
-  const scaledBoardWidth = Math.round(snakeBoardWidth * boardScale);
-  const scaledGap        = Math.max(1, Math.round(SNAKE_GAP * boardScale));
-  const boardPad         = Math.round(8 * boardScale);
-  const cornerOverlap    = Math.max(1, Math.round(2 * boardScale));
+  const layout = baseLayout;
+  const boardPad         = Math.round(10 * boardScale);
+  const layoutW = Math.round(layout.width * boardScale);
+  const layoutH = Math.round(layout.height * boardScale);
 
   const renderPlayerFx = (userId: string, placement: 'top' | 'bottom' | 'left' | 'right') => {
     const emoji = emojiByUser[userId];
@@ -1663,24 +1841,24 @@ export function GameScreen({ navigation, route }: Props) {
 
               <View style={styles.tableBg}>
                 <View pointerEvents="none" style={styles.tableBgNoise}>
-                  <FeltNoiseOverlay seed={1337} dots={520} opacity={0.08} />
+                  <FeltNoiseOverlay seed={1337} dots={520} opacity={0.06} />
                 </View>
                 <LinearGradient
                   pointerEvents="none"
-                  colors={['rgba(0,0,0,0.30)', 'rgba(0,0,0,0.00)']}
+                  colors={['rgba(255,255,255,0.14)', 'rgba(0,0,0,0.00)']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.tableBgHighlight}
                 />
                 <LinearGradient
                   pointerEvents="none"
-                  colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.10)', 'rgba(0,0,0,0.55)']}
+                  colors={['rgba(0,0,0,0.32)', 'rgba(0,0,0,0.06)', 'rgba(0,0,0,0.32)']}
                   locations={[0, 0.52, 1]}
                   style={styles.tableBgVignetteV}
                 />
                 <LinearGradient
                   pointerEvents="none"
-                  colors={['rgba(0,0,0,0.45)', 'rgba(0,0,0,0.06)', 'rgba(0,0,0,0.45)']}
+                  colors={['rgba(0,0,0,0.28)', 'rgba(0,0,0,0.04)', 'rgba(0,0,0,0.28)']}
                   locations={[0, 0.5, 1]}
                   start={{ x: 0, y: 0.5 }}
                   end={{ x: 1, y: 0.5 }}
@@ -1702,36 +1880,17 @@ export function GameScreen({ navigation, route }: Props) {
 
                 {currentGame.board.length > 0 && (
                   <View style={[styles.snakeBoardFrame, { padding: boardPad }]}>
-                    <View style={[styles.snakeBoard, { width: scaledBoardWidth }]}>
-                      {snakeRows.map(({ tiles, cornerTile, isRtl }, rowIdx) => (
-                        <React.Fragment key={rowIdx}>
-                          <View style={[styles.snakeRow, { flexDirection: isRtl ? 'row-reverse' : 'row', gap: scaledGap }]}>
-                            {tiles.map((tile, i) => {
-                              const displayTile = isRtl ? [tile[1], tile[0]] as Tile : tile;
-                              return (
-                                <DominoTile
-                                  key={i}
-                                  tile={displayTile}
-                                  size={boardTileSize}
-                                  tileScale={boardScale}
-                                  horizontal
-                                  style={boardTileNoShadow}
-                                />
-                              );
-                            })}
-                          </View>
-                          {cornerTile && (
-                            <View style={{ alignSelf: !isRtl ? 'flex-end' : 'flex-start', marginVertical: scaledGap }}>
-                              <DominoTile
-                                tile={cornerTile}
-                                size={boardTileSize}
-                                tileScale={boardScale}
-                                horizontal={false}
-                                style={boardTileNoShadow}
-                              />
-                            </View>
-                          )}
-                        </React.Fragment>
+                    <View style={[styles.snakeBoard, { width: layoutW, height: layoutH }]}>
+                      {layout.placed.map((p, i) => (
+                        <View key={i} style={{ position: 'absolute', left: Math.round(p.x * boardScale), top: Math.round(p.y * boardScale) }}>
+                          <DominoTile
+                            tile={p.tile}
+                            size={boardTileSize}
+                            tileScale={boardScale}
+                            horizontal={p.horizontal}
+                            style={boardTileNoShadow}
+                          />
+                        </View>
                       ))}
                     </View>
                   </View>
@@ -1812,11 +1971,27 @@ export function GameScreen({ navigation, route }: Props) {
                   const isSelected = selectedTile?.handIndex === i;
                   return (
                     <View key={`${key}-${i}`} style={[styles.handTileWrap, isSelected && styles.handTileSelected]}>
-                      <TileHandImage
+                      <DraggableTile
                         tile={tile}
-                        selected={isSelected}
-                        playable={!isMyTurn || isPlayable}
+                        isSelected={isSelected}
+                        isPlayable={!isMyTurn || isPlayable}
                         onPress={() => handleTileSelect(tile, i)}
+                        onDragUp={() => {
+                          const plays = validMovesMap.get(tileKey(tile)) || [];
+                          if (plays.length === 1 || currentGame?.board?.length === 0) {
+                            handleTileSelect(tile, i);
+                            // We know there's only 1 play or it's the first move, just emit directly
+                            const side = plays[0]?.side || 'left';
+                            const flipped = plays[0]?.flipped || false;
+                            connectSocket().then(s => {
+                              s.emit('game:move', { gameId, tile, side, flipped });
+                              setSelectedTile(null);
+                            }).catch(() => showError('Falha ao jogar'));
+                          } else if (plays.length > 1) {
+                            // Multiple options, just select it so user can click left/right
+                            handleTileSelect(tile, i);
+                          }
+                        }}
                       />
                       {isMyTurn && isPlayable && !isSelected && <View style={styles.playIndicator} />}
                     </View>
@@ -2156,8 +2331,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   tableFrame: {
-    width: '86%',
-    maxWidth: 900,
+    width: '90%',
+    maxWidth: 1020,
     alignSelf: 'center',
     backgroundColor: '#060e06',
     borderRadius: 999,
@@ -2171,7 +2346,7 @@ const styles = StyleSheet.create({
   },
   tableBg: {
     flex: 1,
-    backgroundColor: '#2C760F',
+    backgroundColor: '#3aa61a',
     borderRadius: 999,
     overflow: 'hidden',
     position: 'relative',
