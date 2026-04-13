@@ -42,6 +42,7 @@ export async function deductBet(walletId: string, amount: number) {
   const useBonus = wallet.bonus_balance >= amount;
   const realDeduction = useBonus ? 0 : amount - Math.min(wallet.bonus_balance, amount);
   const bonusDeduction = useBonus ? amount : wallet.bonus_balance;
+  const rolloverDeduction = wallet.rollover_remaining > 0 ? Math.min(wallet.rollover_remaining, amount) : 0;
 
   if (wallet.real_balance < realDeduction) throw new Error('Insufficient balance');
 
@@ -50,6 +51,7 @@ export async function deductBet(walletId: string, amount: number) {
     data: {
       real_balance: { decrement: realDeduction },
       bonus_balance: { decrement: bonusDeduction },
+      ...(rolloverDeduction > 0 ? { rollover_remaining: { decrement: rolloverDeduction } } : {}),
     },
   });
 

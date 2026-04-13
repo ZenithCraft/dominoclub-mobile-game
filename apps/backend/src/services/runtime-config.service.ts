@@ -17,7 +17,6 @@ import { logger } from '../utils/logger';
 
 export interface RuntimeGameConfig {
   houseEdgePercent: number;
-  matchmakingBetTolerance: number;
   botInjectWaitSeconds: number;
   turnTimeoutSeconds: number;
   disconnectGraceSeconds: number;
@@ -32,7 +31,6 @@ let cacheExpiresAt = 0;
 function envDefaults(): RuntimeGameConfig {
   return {
     houseEdgePercent:        envConfig.game.houseEdgePercent,
-    matchmakingBetTolerance: envConfig.game.matchmakingBetTolerance,
     botInjectWaitSeconds:    envConfig.game.botInjectWaitSeconds,
     turnTimeoutSeconds:      envConfig.game.turnTimeoutSeconds,
     disconnectGraceSeconds:  envConfig.game.disconnectGraceSeconds,
@@ -54,7 +52,6 @@ export async function getRuntimeConfig(): Promise<RuntimeGameConfig> {
 
     cachedConfig = {
       houseEdgePercent:        parseFloat(map['houseEdgePercent']        ?? String(defaults.houseEdgePercent)),
-      matchmakingBetTolerance: parseFloat(map['matchmakingBetTolerance'] ?? String(defaults.matchmakingBetTolerance)),
       botInjectWaitSeconds:    parseInt(map['botInjectWaitSeconds']       ?? String(defaults.botInjectWaitSeconds), 10),
       turnTimeoutSeconds:      parseInt(map['turnTimeoutSeconds']         ?? String(defaults.turnTimeoutSeconds), 10),
       disconnectGraceSeconds:  parseInt(map['disconnectGraceSeconds']     ?? String(defaults.disconnectGraceSeconds), 10),

@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events';
 import { prisma } from './prisma.service';
-import { config } from '../config';
 import { getHouseEdgePercent } from './runtime-config.service';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
@@ -24,6 +23,29 @@ const queues = new Map<string, QueueEntry[]>();
 // Queue entries older than this are considered stale and removed
 const QUEUE_STALE_MS = 5 * 60 * 1000; // 5 minutes
 
+const PAIR_BLOCK_CACHE_MS = 30_000;
+const pairBlockCache = new Map<string, { blocked: boolean; expiresAt: number }>();
+
+function canonicalPair(userId1: string, userId2: string) {
+  return userId1 < userId2 ? [userId1, userId2] as const : [userId2, userId1] as const;
+}
+
+async function isPairBlocked(userId1: string, userId2: string): Promise<boolean> {
+  if (userId1 === userId2) return false;
+  const [userAId, userBId] = canonicalPair(userId1, userId2);
+  const key = `${userAId}:${userBId}`;
+  const cached = pairBlockCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) return cached.blocked;
+
+  const row = await prisma.pairBlock.findUnique({
+    where: { userAId_userBId: { userAId, userBId } },
+    select: { active: true },
+  });
+  const blocked = !!row?.active;
+  pairBlockCache.set(key, { blocked, expiresAt: Date.now() + PAIR_BLOCK_CACHE_MS });
+  return blocked;
+}
+
 function getQueueKey(mode: string) {
   return mode;
 }
@@ -40,7 +62,7 @@ export function enqueue(entry: QueueEntry) {
   queue.push(entry);
   logger.debug('Player enqueued', { userId: entry.userId, mode: entry.mode, betAmount: entry.betAmount, variant: entry.variant });
 
-  tryMatch(entry.mode);
+  void tryMatch(entry.mode);
 }
 
 export function dequeue(userId: string) {
@@ -94,7 +116,7 @@ export function startQueueCleanup(
   }, 30_000);
 }
 
-function tryMatch(mode: string) {
+async function tryMatch(mode: string) {
   const queue = queues.get(mode);
   if (!queue) return;
 
@@ -109,32 +131,53 @@ function tryMatch(mode: string) {
         const a = queue[i];
         const b = queue[j];
         if (a.variant !== b.variant) continue;
-        const denom = Math.max(a.betAmount, b.betAmount);
-        const diff = denom > 0 ? Math.abs(a.betAmount - b.betAmount) / denom : a.betAmount === b.betAmount ? 0 : 1;
-        if (diff <= config.game.matchmakingBetTolerance) {
-          queue.splice(j, 1);
-          queue.splice(i, 1);
-          createMatch([a, b], mode as any);
-          return;
-        }
+        if (a.betAmount !== b.betAmount) continue;
+        if (await isPairBlocked(a.userId, b.userId)) continue;
+        queue.splice(j, 1);
+        queue.splice(i, 1);
+        void createMatch([a, b], mode as any);
+        return;
       }
     }
   }
 
-  // For 2v2: group 4 players with similar bets and same variant
+  // For 2v2: group 4 players with same bet amount and same variant
   if (playersNeeded === 4 && queue.length >= 4) {
-    const sorted = [...queue].sort((a, b) => a.betAmount - b.betAmount);
-    // Find first group of 4 with same variant
-    for (let i = 0; i <= sorted.length - 4; i++) {
-      const candidate = sorted[i].variant;
-      const group = sorted.slice(i).filter((e) => e.variant === candidate).slice(0, 4);
-      if (group.length < 4) continue;
-      group.forEach((entry) => {
-        const idx = queue.findIndex((e) => e.userId === entry.userId);
-        if (idx !== -1) queue.splice(idx, 1);
-      });
-      createMatch(group, mode as any);
-      return;
+    const groups = new Map<string, QueueEntry[]>();
+    for (const entry of queue) {
+      const key = `${entry.variant}:${String(entry.betAmount ?? 0)}`;
+      const list = groups.get(key) ?? [];
+      list.push(entry);
+      groups.set(key, list);
+    }
+
+    for (const list of groups.values()) {
+      if (list.length < 4) continue;
+      const sorted = [...list].sort((a, b) => a.joinedAt - b.joinedAt);
+
+      for (let aIdx = 0; aIdx <= sorted.length - 4; aIdx++) {
+        for (let bIdx = aIdx + 1; bIdx <= sorted.length - 3; bIdx++) {
+          for (let cIdx = bIdx + 1; cIdx <= sorted.length - 2; cIdx++) {
+            for (let dIdx = cIdx + 1; dIdx <= sorted.length - 1; dIdx++) {
+              const group = [sorted[aIdx], sorted[bIdx], sorted[cIdx], sorted[dIdx]];
+              let blocked = false;
+              for (let i = 0; i < group.length && !blocked; i++) {
+                for (let j = i + 1; j < group.length && !blocked; j++) {
+                  if (await isPairBlocked(group[i].userId, group[j].userId)) blocked = true;
+                }
+              }
+              if (blocked) continue;
+
+              group.forEach((entry) => {
+                const idx = queue.findIndex((e) => e.userId === entry.userId);
+                if (idx !== -1) queue.splice(idx, 1);
+              });
+              void createMatch(group, mode as any);
+              return;
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -200,7 +243,8 @@ async function createBotUser() {
 }
 
 // Bot injection: if a player waits too long, inject a bot opponent
-export function startBotInjectionTimer(entry: QueueEntry) {
+export function startBotInjectionTimer(entry: QueueEntry, waitSeconds: number) {
+  if (!waitSeconds || waitSeconds <= 0) return null;
   const timeout = setTimeout(() => {
     void (async () => {
       const queue = queues.get(entry.mode);
@@ -222,7 +266,7 @@ export function startBotInjectionTimer(entry: QueueEntry) {
       };
       enqueue(botEntry);
     })();
-  }, config.game.botInjectWaitSeconds * 1000);
+  }, waitSeconds * 1000);
 
   return timeout;
 }

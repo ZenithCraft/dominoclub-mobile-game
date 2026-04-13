@@ -10,7 +10,7 @@ import {
   Settings2, LogOut, RefreshCw, ChevronLeft, ChevronRight,
   AlertTriangle, Circle, ArrowUpRight, ArrowDownRight,
   Activity, Ban, CheckCircle2, Clock, XCircle, PlayCircle,
-  Loader2, PanelLeftClose, PanelLeftOpen, TrendingUp,
+  Loader2, PanelLeftClose, PanelLeftOpen, TrendingUp, Gift, Link2,
 } from 'lucide-react';
 import { adminApi } from '../lib/api';
 import logo from '../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
@@ -24,7 +24,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '.
 import { DateTimePicker } from '../components/ui/date-time-picker';
 import { cn } from '../lib/utils';
 
-type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments' | 'fraud' | 'config';
+type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments' | 'fraud' | 'pairBlocks' | 'bonus' | 'config';
 
 const formatInt  = (v: number) => new Intl.NumberFormat('pt-BR').format(v);
 const formatMoney = (v: number) =>
@@ -105,6 +105,8 @@ export default function AdminDashboard() {
     { id: 'financial',   label: 'Financeiro',   Icon: Wallet },
     { id: 'tournaments', label: 'Torneios',     Icon: Trophy },
     { id: 'fraud',       label: 'Fraudes',      Icon: ShieldAlert },
+    { id: 'pairBlocks',  label: 'Bloqueios',    Icon: Link2 },
+    { id: 'bonus',       label: 'Bônus',        Icon: Gift },
     { id: 'config',      label: 'Config.',      Icon: Settings2 },
   ];
 
@@ -191,6 +193,8 @@ export default function AdminDashboard() {
           {tab === 'financial'    && <FinancialTab />}
           {tab === 'tournaments'  && <TournamentsTab />}
           {tab === 'fraud'        && <FraudTab />}
+          {tab === 'pairBlocks'   && <PairBlocksTab />}
+          {tab === 'bonus'        && <BonusTab />}
           {tab === 'config'       && <ConfigTab />}
         </div>
       </main>
@@ -390,6 +394,9 @@ function UsersTab() {
   const [query, setQuery] = useState('');
   const [actioning, setActioning] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [pairsUser, setPairsUser] = useState<any | null>(null);
+  const [pairsLoading, setPairsLoading] = useState(false);
+  const [pairsData, setPairsData] = useState<any | null>(null);
 
   const { data, loading, error, reload } = useData<any>(
     `/users?page=${page}&search=${encodeURIComponent(query)}`, [page, query]
@@ -408,6 +415,31 @@ function UsersTab() {
       reload();
     } catch (err: any) { alert(err.response?.data?.error || 'Erro'); }
     finally { setActioning(null); }
+  };
+
+  const loadPairs = async (user: any) => {
+    setPairsUser(user);
+    setPairsLoading(true);
+    setPairsData(null);
+    try {
+      const { data } = await adminApi.get(`/users/${user.id}/pair-stats?days=30&minGames=10`);
+      setPairsData(data);
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao carregar pares');
+    } finally {
+      setPairsLoading(false);
+    }
+  };
+
+  const blockPair = async (otherUserId: string) => {
+    if (!pairsUser) return;
+    if (!confirm('Bloquear estes jogadores de caírem na mesma partida?')) return;
+    try {
+      await adminApi.post('/pair-blocks', { userAId: pairsUser.id, userBId: otherUserId, reason: 'Winrate alta por par' });
+      alert('Bloqueio criado');
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao bloquear');
+    }
   };
 
   return (
@@ -455,14 +487,17 @@ function UsersTab() {
                         <Button size="sm" variant="ghost" onClick={() => setConfirmId(null)}>Não</Button>
                       </div>
                     ) : (
-                      <Button
-                        size="sm"
-                        variant={u.is_banned ? 'ghost' : 'destructive'}
-                        disabled={actioning === u.id}
-                        onClick={() => setConfirmId(u.id)}
-                      >
-                        {u.is_banned ? 'Desbanir' : 'Banir'}
-                      </Button>
+                      <div className="flex gap-1.5 justify-center">
+                        <Button
+                          size="sm"
+                          variant={u.is_banned ? 'ghost' : 'destructive'}
+                          disabled={actioning === u.id}
+                          onClick={() => setConfirmId(u.id)}
+                        >
+                          {u.is_banned ? 'Desbanir' : 'Banir'}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => loadPairs(u)}>Pares</Button>
+                      </div>
                     )}
                   </Td>
                 </tr>
@@ -471,6 +506,50 @@ function UsersTab() {
             </tbody>
           </TableWrapper>
           <Pagination page={page} pages={data?.pages ?? 1} onChange={setPage} />
+          {pairsUser && (
+            <Card className="mt-6 card-gradient">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Pares — {pairsUser.name || pairsUser.phone}
+                  </CardTitle>
+                  <Button size="sm" variant="ghost" onClick={() => { setPairsUser(null); setPairsData(null); }}>
+                    Fechar
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {pairsLoading ? (
+                  <TableSkeleton cols={6} />
+                ) : (
+                  <TableWrapper>
+                    <thead>
+                      <tr>{['Jogador', 'Telefone', 'Partidas', 'Vitórias', 'Winrate', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {(pairsData?.pairs ?? []).map((p: any) => (
+                        <tr key={p.otherUserId} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                          <Td><span className="text-xs text-foreground font-medium">{p.otherName || p.otherUserId.slice(0, 8)}</span></Td>
+                          <Td><span className="font-mono text-xs text-muted-foreground">{p.otherPhone || '—'}</span></Td>
+                          <Td><span className="tabular-nums text-xs">{p.games}</span></Td>
+                          <Td><span className="tabular-nums text-xs">{p.wins}</span></Td>
+                          <Td>
+                            <Badge variant={p.alert ? 'destructive' : 'muted'}>
+                              {(Number(p.winRate) * 100).toFixed(0)}%
+                            </Badge>
+                          </Td>
+                          <Td>
+                            <Button size="sm" variant="outline" onClick={() => blockPair(p.otherUserId)}>Bloquear</Button>
+                          </Td>
+                        </tr>
+                      ))}
+                      {(pairsData?.pairs ?? []).length === 0 && <EmptyRow cols={6} msg="Sem pares com volume suficiente" />}
+                    </tbody>
+                  </TableWrapper>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>
@@ -697,6 +776,9 @@ function TournamentsTab() {
   const [page, setPage]             = useState(1);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [creating, setCreating]     = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [details, setDetails] = useState<any | null>(null);
 
   const [form, setForm] = useState(() => ({
     name: '', mode: 'ARENA_1V1', variant: 'CARROCA',
@@ -733,6 +815,34 @@ function TournamentsTab() {
     if (!confirm('Cancelar este torneio e reembolsar as inscrições?')) return;
     try { await adminApi.post(`/tournaments/${id}/cancel`); reload(); }
     catch (err: any) { alert(err.response?.data?.error || 'Erro ao cancelar'); }
+  };
+
+  const emergencyCancel = async (id: string) => {
+    if (!confirm('Cancelar EMERGÊNCIA: cancelar torneio em andamento e reembolsar jogadores ativos?')) return;
+    try { await adminApi.post(`/tournaments/${id}/emergency-cancel`, { reason: 'Admin' }); reload(); }
+    catch (err: any) { alert(err.response?.data?.error || 'Erro ao cancelar'); }
+  };
+
+  const toggleDetails = async (t: any) => {
+    if (expandedId === t.id) {
+      setExpandedId(null);
+      setDetails(null);
+      return;
+    }
+    setExpandedId(t.id);
+    setDetailsLoading(true);
+    setDetails(null);
+    try {
+      const [playersRes, bracketRes] = await Promise.all([
+        adminApi.get(`/tournaments/${t.id}/players`),
+        adminApi.get(`/tournaments/${t.id}/bracket`),
+      ]);
+      setDetails({ players: playersRes.data, bracket: bracketRes.data });
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao carregar detalhes');
+    } finally {
+      setDetailsLoading(false);
+    }
   };
 
   return (
@@ -840,13 +950,17 @@ function TournamentsTab() {
                   <Td><span className="text-xs text-muted-foreground">{new Date(t.starts_at).toLocaleString('pt-BR')}</span></Td>
                   <Td>
                     <div className="flex gap-1.5 justify-center">
+                      <Button size="sm" variant="outline" onClick={() => toggleDetails(t)}>Detalhes</Button>
                       {(t.status === 'OPEN' || t.status === 'FULL') && (
                         <Button size="sm" variant="outline" onClick={() => start(t.id)}>
                           <PlayCircle className="w-3 h-3" />Iniciar
                         </Button>
                       )}
-                      {t.status !== 'FINISHED' && t.status !== 'CANCELLED' && (
+                      {(t.status === 'OPEN' || t.status === 'FULL') && (
                         <Button size="sm" variant="destructive" onClick={() => cancel(t.id)}>Cancelar</Button>
+                      )}
+                      {t.status === 'IN_PROGRESS' && (
+                        <Button size="sm" variant="destructive" onClick={() => emergencyCancel(t.id)}>Emergência</Button>
                       )}
                     </div>
                   </Td>
@@ -856,6 +970,82 @@ function TournamentsTab() {
             </tbody>
           </TableWrapper>
           <Pagination page={page} pages={data?.pages ?? 1} onChange={setPage} />
+          {expandedId && (
+            <Card className="mt-6 card-gradient">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Detalhes do torneio
+                  </CardTitle>
+                  <Button size="sm" variant="ghost" onClick={() => { setExpandedId(null); setDetails(null); }}>Fechar</Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {detailsLoading ? (
+                  <Skeleton className="h-40 w-full" />
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <Card className="card-gradient">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Inscritos</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                          <TableWrapper>
+                            <thead>
+                              <tr>{['Jogador', 'Telefone', 'Status', 'Entrada'].map(h => <Th key={h}>{h}</Th>)}</tr>
+                            </thead>
+                            <tbody>
+                              {(details?.players?.players ?? []).map((p: any) => (
+                                <tr key={p.userId} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                                  <Td><span className="text-xs text-foreground font-medium">{p.user?.name || p.userId.slice(0, 8)}</span></Td>
+                                  <Td><span className="font-mono text-xs text-muted-foreground">{p.user?.phone || '—'}</span></Td>
+                                  <Td>
+                                    <Badge variant={p.eliminated_at ? 'muted' : 'default'}>
+                                      {p.eliminated_at ? 'Eliminado' : 'Ativo'}
+                                    </Badge>
+                                  </Td>
+                                  <Td><span className="tabular-nums text-xs text-muted-foreground">{formatMoney(Number(details?.players?.entry_fee ?? 0))}</span></Td>
+                                </tr>
+                              ))}
+                              {(details?.players?.players ?? []).length === 0 && <EmptyRow cols={4} msg="Sem inscritos" />}
+                            </tbody>
+                          </TableWrapper>
+                        </CardContent>
+                      </Card>
+                      <Card className="card-gradient">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bracket / Jogos</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                          <TableWrapper>
+                            <thead>
+                              <tr>{['Round', 'Jogo', 'Status', 'Jogadores'].map(h => <Th key={h}>{h}</Th>)}</tr>
+                            </thead>
+                            <tbody>
+                              {(details?.bracket?.games ?? []).map((g: any) => (
+                                <tr key={g.id} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                                  <Td><span className="tabular-nums text-xs">{g.tournament_round ?? '—'}</span></Td>
+                                  <Td><span className="font-mono text-xs text-muted-foreground">{g.id.slice(0, 8)}</span></Td>
+                                  <Td>{gameStatusBadge(g.status)}</Td>
+                                  <Td>
+                                    <span className="text-xs text-muted-foreground">
+                                      {(g.players ?? []).map((gp: any) => gp.user?.name || gp.userId.slice(0, 6)).join(' · ')}
+                                    </span>
+                                  </Td>
+                                </tr>
+                              ))}
+                              {(details?.bracket?.games ?? []).length === 0 && <EmptyRow cols={4} msg="Sem jogos" />}
+                            </tbody>
+                          </TableWrapper>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>
@@ -976,11 +1166,246 @@ function FraudTab() {
   );
 }
 
+function PairBlocksTab() {
+  const [page, setPage] = useState(1);
+  const [activeFilter, setActiveFilter] = useState<'ALL' | 'true' | 'false'>('true');
+  const [creating, setCreating] = useState(false);
+  const [actioning, setActioning] = useState<string | null>(null);
+  const [form, setForm] = useState(() => ({ userAId: '', userBId: '', reason: '' }));
+
+  const { data, loading, error, reload } = useData<any>(
+    `/pair-blocks?page=${page}${activeFilter !== 'ALL' ? `&active=${activeFilter}` : ''}`,
+    [page, activeFilter]
+  );
+
+  const create = async (e: FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      await adminApi.post('/pair-blocks', {
+        userAId: form.userAId.trim(),
+        userBId: form.userBId.trim(),
+        reason: form.reason.trim() || undefined,
+      });
+      setForm({ userAId: '', userBId: '', reason: '' });
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao criar bloqueio');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const toggle = async (id: string, active: boolean) => {
+    setActioning(id);
+    try {
+      await adminApi.patch(`/pair-blocks/${id}`, { active: !active });
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro');
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader title="Bloqueio de pares">
+        <Select value={activeFilter} onValueChange={(v: any) => { setActiveFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="true">Ativos</SelectItem>
+            <SelectItem value="false">Inativos</SelectItem>
+            <SelectItem value="ALL">Todos</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="icon" onClick={reload} disabled={loading}>
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </Button>
+      </PageHeader>
+
+      <Card className="mb-6 card-gradient">
+        <CardHeader className="pb-0">
+          <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Criar bloqueio</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <form onSubmit={create} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div className="space-y-1.5">
+              <Label>User A ID</Label>
+              <Input value={form.userAId} onChange={e => setForm(p => ({ ...p, userAId: e.target.value }))} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>User B ID</Label>
+              <Input value={form.userBId} onChange={e => setForm(p => ({ ...p, userBId: e.target.value }))} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Motivo</Label>
+              <Input value={form.reason} onChange={e => setForm(p => ({ ...p, reason: e.target.value }))} placeholder="Opcional" />
+            </div>
+            <div className="md:col-span-3">
+              <Button type="submit" disabled={creating}>
+                {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Bloquear'}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {error ? <ErrorState msg={error} onRetry={reload} /> : loading ? (
+        <Card><CardContent className="p-0"><TableSkeleton cols={7} /></CardContent></Card>
+      ) : (
+        <>
+          <TableWrapper>
+            <thead>
+              <tr>{['User A', 'User B', 'Motivo', 'Status', 'Criado em', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
+            </thead>
+            <tbody>
+              {(data?.blocks ?? []).map((b: any) => (
+                <tr key={b.id} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                  <Td>
+                    <p className="font-medium text-foreground text-xs">{b.userA?.name || '?'}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{b.userA?.phone || b.userAId.slice(0, 8)}</p>
+                  </Td>
+                  <Td>
+                    <p className="font-medium text-foreground text-xs">{b.userB?.name || '?'}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{b.userB?.phone || b.userBId.slice(0, 8)}</p>
+                  </Td>
+                  <Td><span className="text-xs text-muted-foreground">{b.reason || '—'}</span></Td>
+                  <Td><Badge variant={b.active ? 'destructive' : 'muted'}>{b.active ? 'Ativo' : 'Inativo'}</Badge></Td>
+                  <Td><span className="text-xs text-muted-foreground">{new Date(b.created_at).toLocaleString('pt-BR')}</span></Td>
+                  <Td>
+                    <Button size="sm" variant="outline" disabled={actioning === b.id} onClick={() => toggle(b.id, b.active)}>
+                      {actioning === b.id ? <Loader2 className="w-3 h-3 animate-spin" /> : b.active ? 'Desativar' : 'Ativar'}
+                    </Button>
+                  </Td>
+                </tr>
+              ))}
+              {(data?.blocks ?? []).length === 0 && <EmptyRow cols={6} msg="Nenhum bloqueio encontrado" />}
+            </tbody>
+          </TableWrapper>
+          <Pagination page={page} pages={data?.pages ?? 1} onChange={setPage} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function BonusTab() {
+  const [page, setPage] = useState(1);
+  const [creating, setCreating] = useState(false);
+  const [actioning, setActioning] = useState<string | null>(null);
+  const [form, setForm] = useState(() => ({ code: '', bonusAmount: '', rolloverTimes: '0', maxPlayers: '' }));
+
+  const { data, loading, error, reload } = useData<any>(`/coupons?page=${page}`, [page]);
+
+  const create = async (e: FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      await adminApi.post('/coupons', {
+        code: form.code,
+        bonusAmount: Number(form.bonusAmount),
+        rolloverTimes: parseInt(form.rolloverTimes || '0', 10),
+        maxPlayers: form.maxPlayers ? parseInt(form.maxPlayers, 10) : null,
+      });
+      setForm({ code: '', bonusAmount: '', rolloverTimes: '0', maxPlayers: '' });
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao criar cupom');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const toggle = async (id: string, is_active: boolean) => {
+    setActioning(id);
+    try {
+      await adminApi.patch(`/coupons/${id}`, { is_active: !is_active });
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro');
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader title="Bônus e cupons">
+        <Button variant="outline" size="icon" onClick={reload} disabled={loading}>
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </Button>
+      </PageHeader>
+
+      <Card className="mb-6 card-gradient">
+        <CardHeader className="pb-0">
+          <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Criar cupom</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <form onSubmit={create} className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+            <div className="space-y-1.5">
+              <Label>Código</Label>
+              <Input value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value }))} placeholder="EX: BEMVINDO50" required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Valor do bônus (R$)</Label>
+              <Input value={form.bonusAmount} onChange={e => setForm(p => ({ ...p, bonusAmount: e.target.value }))} inputMode="decimal" required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Rollover (x)</Label>
+              <Input value={form.rolloverTimes} onChange={e => setForm(p => ({ ...p, rolloverTimes: e.target.value }))} inputMode="numeric" required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Limite de jogadores</Label>
+              <Input value={form.maxPlayers} onChange={e => setForm(p => ({ ...p, maxPlayers: e.target.value }))} inputMode="numeric" placeholder="Sem limite" />
+            </div>
+            <div className="col-span-2 md:col-span-4">
+              <Button type="submit" disabled={creating}>
+                {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Criar cupom'}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {error ? <ErrorState msg={error} onRetry={reload} /> : loading ? (
+        <Card><CardContent className="p-0"><TableSkeleton cols={7} /></CardContent></Card>
+      ) : (
+        <>
+          <TableWrapper>
+            <thead>
+              <tr>{['Código', 'Bônus', 'Rollover', 'Usos', 'Limite', 'Status', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
+            </thead>
+            <tbody>
+              {(data?.coupons ?? []).map((c: any) => (
+                <tr key={c.id} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                  <Td><span className="font-mono text-xs text-foreground">{c.code}</span></Td>
+                  <Td><span className="tabular-nums text-xs text-muted-foreground">{formatMoney(Number(c.bonus_amount ?? 0))}</span></Td>
+                  <Td><span className="tabular-nums text-xs text-muted-foreground">{c.rollover_times}x</span></Td>
+                  <Td><span className="tabular-nums text-xs">{c._count?.redemptions ?? 0}</span></Td>
+                  <Td><span className="tabular-nums text-xs text-muted-foreground">{c.max_players ?? '—'}</span></Td>
+                  <Td><Badge variant={c.is_active ? 'default' : 'muted'}>{c.is_active ? 'Ativo' : 'Inativo'}</Badge></Td>
+                  <Td>
+                    <Button size="sm" variant="outline" disabled={actioning === c.id} onClick={() => toggle(c.id, c.is_active)}>
+                      {actioning === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : c.is_active ? 'Desativar' : 'Ativar'}
+                    </Button>
+                  </Td>
+                </tr>
+              ))}
+              {(data?.coupons ?? []).length === 0 && <EmptyRow cols={7} msg="Nenhum cupom encontrado" />}
+            </tbody>
+          </TableWrapper>
+          <Pagination page={page} pages={data?.pages ?? 1} onChange={setPage} />
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const CONFIG_META = [
   { key: 'houseEdgePercent',        label: 'House Edge',               description: 'Percentual da casa em cada aposta.',                       unit: '%',  min: 0,  max: 50,  step: 0.5  },
-  { key: 'matchmakingBetTolerance', label: 'Tolerância de aposta',     description: 'Diferença máxima entre apostas (0.10 = 10%).',             unit: '',   min: 0,  max: 1,   step: 0.01 },
   { key: 'botInjectWaitSeconds',    label: 'Espera para bot',          description: 'Segundos sem par antes de injetar bot adversário.',        unit: 's',  min: 5,  max: 300, step: 5    },
   { key: 'turnTimeoutSeconds',      label: 'Timeout por jogada',       description: 'Tempo máximo por jogada antes de pular o turno.',          unit: 's',  min: 5,  max: 120, step: 5    },
   { key: 'disconnectGraceSeconds',  label: 'Graça de desconexão',      description: 'Janela de reconexão antes de considerar abandono.',        unit: 's',  min: 5,  max: 120, step: 5    },

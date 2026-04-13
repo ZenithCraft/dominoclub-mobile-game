@@ -14,8 +14,19 @@ import {
   createTournamentAdminHandler,
   startTournamentAdminHandler,
   cancelTournamentAdminHandler,
+  emergencyCancelTournamentAdminHandler,
+  getTournamentPlayersAdminHandler,
+  getTournamentBracketAdminHandler,
   getConfigHandler,
   updateConfigHandler,
+  getPairBlocksAdminHandler,
+  createPairBlockAdminHandler,
+  updatePairBlockAdminHandler,
+  getUserPairStatsAdminHandler,
+  getCouponsAdminHandler,
+  createCouponAdminHandler,
+  updateCouponAdminHandler,
+  getCouponRedemptionsAdminHandler,
   getFraudLogsHandler,
   resolveFraudLogHandler,
 } from '../controllers/admin.controller';
@@ -44,9 +55,22 @@ router.get('/tournaments', getTournamentsAdminHandler);
 router.post('/tournaments', createTournamentAdminHandler);
 router.post('/tournaments/:id/start', startTournamentAdminHandler);
 router.post('/tournaments/:id/cancel', cancelTournamentAdminHandler);
+router.post('/tournaments/:id/emergency-cancel', emergencyCancelTournamentAdminHandler);
+router.get('/tournaments/:id/players', getTournamentPlayersAdminHandler);
+router.get('/tournaments/:id/bracket', getTournamentBracketAdminHandler);
 
 router.get('/config', getConfigHandler);
 router.patch('/config', updateConfigHandler);
+
+router.get('/pair-blocks', getPairBlocksAdminHandler);
+router.post('/pair-blocks', createPairBlockAdminHandler);
+router.patch('/pair-blocks/:id', updatePairBlockAdminHandler);
+router.get('/users/:id/pair-stats', getUserPairStatsAdminHandler);
+
+router.get('/coupons', getCouponsAdminHandler);
+router.post('/coupons', createCouponAdminHandler);
+router.patch('/coupons/:id', updateCouponAdminHandler);
+router.get('/coupons/:id/redemptions', getCouponRedemptionsAdminHandler);
 
 router.get('/fraud-logs', getFraudLogsHandler);
 router.patch('/fraud-logs/:id/resolve', resolveFraudLogHandler);

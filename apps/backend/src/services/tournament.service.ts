@@ -118,6 +118,72 @@ export async function cancelAndRefundTournament(tournamentId: string): Promise<v
   logger.info('[Tournament] Cancelled and refunded', { tournamentId, players: tournament.players.length });
 }
 
+export async function emergencyCancelTournament(tournamentId: string, reason: string): Promise<void> {
+  const tournament = await prisma.tournament.findUnique({
+    where: { id: tournamentId },
+    include: { players: { select: { userId: true, eliminated_at: true } } },
+  });
+
+  if (!tournament) throw new Error('Tournament not found');
+  if (tournament.status === 'FINISHED' || tournament.status === 'CANCELLED') {
+    throw new Error(`Tournament cannot be cancelled (status: ${tournament.status})`);
+  }
+
+  const activeUserIds = tournament.players.filter((p) => !p.eliminated_at).map((p) => p.userId);
+  const wallets = await prisma.wallet.findMany({
+    where: { userId: { in: activeUserIds } },
+    select: { id: true, userId: true },
+  });
+  const walletByUserId = new Map(wallets.map((w) => [w.userId, w]));
+
+  for (const userId of activeUserIds) {
+    const wallet = walletByUserId.get(userId);
+    if (!wallet) continue;
+    await prisma.$transaction([
+      prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { real_balance: { increment: tournament.entry_fee } },
+      }),
+      prisma.transaction.create({
+        data: {
+          walletId: wallet.id,
+          type: 'REFUND',
+          amount: tournament.entry_fee,
+          status: 'COMPLETED',
+          description: `Reembolso — torneio "${tournament.name}" cancelado (${reason})`,
+        },
+      }),
+    ]);
+  }
+
+  await prisma.game.updateMany({
+    where: {
+      tournamentId,
+      status: { in: ['WAITING', 'PLAYING'] },
+    },
+    data: {
+      status: 'CANCELLED',
+      finished_at: new Date(),
+    },
+  });
+
+  await prisma.tournament.update({
+    where: { id: tournamentId },
+    data: { status: 'CANCELLED', finished_at: new Date() },
+  });
+
+  for (const p of tournament.players) {
+    emitToUser(p.userId, 'tournament:cancelled', {
+      tournamentId,
+      name: tournament.name,
+      refundAmount: activeUserIds.includes(p.userId) ? tournament.entry_fee : 0,
+      reason,
+    });
+  }
+
+  logger.info('[Tournament] Emergency cancelled', { tournamentId, activeRefunds: activeUserIds.length, reason });
+}
+
 // ─── Advance bracket after a game finishes ────────────────────────────────────
 
 export async function advanceTournamentBracket(

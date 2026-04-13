@@ -19,6 +19,7 @@ import {
 import { getRedisClient, getRedisSubscriber, isRedisAvailable } from '../services/redis.service';
 import { verifyIntegrityToken } from '../services/integrity.service';
 import { validateGpsBounds, updateUserGps, GpsCoords } from '../middleware/antifraud.middleware';
+import { getRuntimeConfig } from '../services/runtime-config.service';
 
 const VALID_MODES = ['ARENA_1V1', 'CUP_1V1', 'TOURNAMENT_2V2', 'RECREATIONAL_2V2'] as const;
 const VALID_VARIANTS = ['CARROCA', 'L_E_L', 'CRUZADA'] as const;
@@ -157,7 +158,9 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       };
 
       enqueue(entry);
-      const botTimer = startBotInjectionTimer(entry);
+      const runtimeCfg = await getRuntimeConfig();
+      const botWaitSeconds = data.betAmount > 0 ? 0 : runtimeCfg.botInjectWaitSeconds;
+      const botTimer = startBotInjectionTimer(entry, botWaitSeconds);
       const position = getQueuePosition(user.id, data.mode);
 
       socket.emit('queue:joined', {
@@ -165,18 +168,18 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
         betAmount: data.betAmount,
         variant,
         position,
-        botWaitSeconds: config.game.botInjectWaitSeconds,
+        botWaitSeconds,
       });
       emitQueueStats();
 
       socket.once('disconnect', () => {
-        clearTimeout(botTimer);
+        if (botTimer) clearTimeout(botTimer);
         dequeue(user.id);
         emitQueueStats();
       });
 
       socket.once('queue:leave', () => {
-        clearTimeout(botTimer);
+        if (botTimer) clearTimeout(botTimer);
         dequeue(user.id);
         socket.emit('queue:left');
         emitQueueStats();
