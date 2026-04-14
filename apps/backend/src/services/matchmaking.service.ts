@@ -188,6 +188,115 @@ async function tryMatch(mode: string) {
   }
 }
 
+// ─── Partner Cooldown ─────────────────────────────────────────────────────────
+
+const CONSECUTIVE_TRIGGER = 3;  // same-team games before cooldown kicks in
+const COOLDOWN_GAMES      = 3;  // games they must spend on opposing teams
+
+// Returns the canonical pair key and DB key fields
+function cooldownKey(userId1: string, userId2: string) {
+  const [userAId, userBId] = canonicalPair(userId1, userId2);
+  return { userAId, userBId, key: `${userAId}:${userBId}` };
+}
+
+// For a group of 4 shuffled players, determine team assignments (1 or 2) that
+// respect active cooldowns. Returns a 4-element array indexed by shuffled position.
+async function resolveTeamAssignments(userIds: string[]): Promise<number[]> {
+  // Collect cooldown pairs
+  const inCooldown = new Set<string>();
+  for (let i = 0; i < userIds.length; i++) {
+    for (let j = i + 1; j < userIds.length; j++) {
+      const { userAId, userBId, key } = cooldownKey(userIds[i], userIds[j]);
+      try {
+        const row = await prisma.partnerCooldown.findUnique({
+          where: { userAId_userBId: { userAId, userBId } },
+          select: { cooldown_remaining: true },
+        });
+        if (row && row.cooldown_remaining > 0) inCooldown.add(key);
+      } catch { /* ignore */ }
+    }
+  }
+
+  if (inCooldown.size === 0) return [1, 1, 2, 2];
+
+  // 3 possible team splits for 4 players (indices 0-3):
+  // [0,1] vs [2,3] | [0,2] vs [1,3] | [0,3] vs [1,2]
+  const splits = [
+    [[0, 1], [2, 3]],
+    [[0, 2], [1, 3]],
+    [[0, 3], [1, 2]],
+  ] as const;
+
+  for (const [t1, t2] of splits) {
+    let valid = true;
+    for (const [a, b] of [t1, t2] as [number, number][]) {
+      const { key } = cooldownKey(userIds[a], userIds[b]);
+      if (inCooldown.has(key)) { valid = false; break; }
+    }
+    if (valid) {
+      const teams = [0, 0, 0, 0];
+      for (const i of t1) teams[i] = 1;
+      for (const i of t2) teams[i] = 2;
+      return teams;
+    }
+  }
+
+  // Fallback if no clean split exists (e.g. multiple conflicting cooldowns)
+  return [1, 1, 2, 2];
+}
+
+// Called after a 2v2 game finishes. Updates consecutive-same-team counters and
+// triggers/decrements cooldowns.
+export async function updatePartnerCooldownsAfterGame(
+  mode: string,
+  players: { userId: string; team: number; isBot: boolean }[]
+): Promise<void> {
+  if (!mode.includes('2V2')) return;
+  const humans = players.filter((p) => !p.isBot);
+  if (humans.length < 2) return;
+
+  for (let i = 0; i < humans.length; i++) {
+    for (let j = i + 1; j < humans.length; j++) {
+      const pA = humans[i];
+      const pB = humans[j];
+      const { userAId, userBId } = cooldownKey(pA.userId, pB.userId);
+      const sameTeam = pA.team === pB.team;
+
+      try {
+        const cur = await prisma.partnerCooldown.findUnique({
+          where: { userAId_userBId: { userAId, userBId } },
+        });
+
+        let consecutive = cur?.consecutive_same_team ?? 0;
+        let cooldown    = cur?.cooldown_remaining    ?? 0;
+
+        if (sameTeam) {
+          if (cooldown > 0) {
+            // Should not happen (we prevented it), but don't punish twice
+          } else {
+            consecutive += 1;
+            if (consecutive >= CONSECUTIVE_TRIGGER) {
+              cooldown    = COOLDOWN_GAMES;
+              consecutive = 0;
+            }
+          }
+        } else {
+          consecutive = 0;
+          if (cooldown > 0) cooldown -= 1;
+        }
+
+        await prisma.partnerCooldown.upsert({
+          where:  { userAId_userBId: { userAId, userBId } },
+          update: { consecutive_same_team: consecutive, cooldown_remaining: cooldown },
+          create: { userAId, userBId, consecutive_same_team: consecutive, cooldown_remaining: cooldown },
+        });
+      } catch (err) {
+        logger.error('Failed to update partner cooldown', { userAId, userBId, err });
+      }
+    }
+  }
+}
+
 async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' | 'TOURNAMENT_2V2' | 'RECREATIONAL_2V2') {
   const betAmount = Math.min(...players.map((p) => p.betAmount));
   const variant = players[0].variant;
@@ -201,11 +310,19 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
     houseEdge = 0;
   }
 
-  // Anti-collusion: shuffle team assignments in 2v2
+  // Anti-collusion: shuffle then enforce partner-cooldown splits for 2v2
   const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+
+  let teamAssignments: number[];
+  if (mode.includes('2V2')) {
+    teamAssignments = await resolveTeamAssignments(shuffledPlayers.map((p) => p.userId));
+  } else {
+    teamAssignments = shuffledPlayers.map((_, i) => i + 1);
+  }
+
   const playerData = shuffledPlayers.map((p, i) => ({
     userId: p.userId,
-    team: mode.includes('2V2') ? (i < 2 ? 1 : 2) : i + 1,
+    team: teamAssignments[i],
     seat: i,
     socketId: p.socketId,
     isBot: !!p.isBot,

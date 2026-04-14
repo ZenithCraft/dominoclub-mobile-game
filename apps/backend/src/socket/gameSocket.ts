@@ -17,7 +17,7 @@ import {
   DominoVariant,
   WIN_POINTS,
 } from '../game/domino.engine';
-import { volatileMatches } from '../services/matchmaking.service';
+import { volatileMatches, updatePartnerCooldownsAfterGame } from '../services/matchmaking.service';
 
 export const activeGames = new Map<string, GameState>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
@@ -703,6 +703,14 @@ async function finalizeMatch(
       where: { gameId, userId: player.userId },
       data: { final_score: pips },
     });
+  }
+
+  // Update partner-cooldown counters for 2v2 modes
+  if (game.mode.includes('2V2')) {
+    updatePartnerCooldownsAfterGame(
+      game.mode,
+      state.players.map((p) => ({ userId: p.userId, team: p.team, isBot: p.isBot ?? false }))
+    ).catch((err) => logger.error('[Cooldown] Update failed', { gameId, err: err.message }));
   }
 
   io.to(`game:${gameId}`).emit('game:ended', {

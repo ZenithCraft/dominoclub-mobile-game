@@ -11,6 +11,7 @@ import {
   AlertTriangle, Circle, ArrowUpRight, ArrowDownRight,
   Activity, Ban, CheckCircle2, Clock, XCircle, PlayCircle,
   Loader2, PanelLeftClose, PanelLeftOpen, TrendingUp, Gift, Link2,
+  Users2,
 } from 'lucide-react';
 import { adminApi } from '../lib/api';
 import logo from '../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
@@ -24,7 +25,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '.
 import { DateTimePicker } from '../components/ui/date-time-picker';
 import { cn } from '../lib/utils';
 
-type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments' | 'fraud' | 'pairBlocks' | 'bonus' | 'config';
+type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments' | 'fraud' | 'pairBlocks' | 'teamPairs' | 'bonus' | 'config';
 
 const formatInt  = (v: number) => new Intl.NumberFormat('pt-BR').format(v);
 const formatMoney = (v: number) =>
@@ -106,6 +107,7 @@ export default function AdminDashboard() {
     { id: 'tournaments', label: 'Torneios',     Icon: Trophy },
     { id: 'fraud',       label: 'Fraudes',      Icon: ShieldAlert },
     { id: 'pairBlocks',  label: 'Bloqueios',    Icon: Link2 },
+    { id: 'teamPairs',   label: 'Duplas 2v2',   Icon: Users2 },
     { id: 'bonus',       label: 'Bônus',        Icon: Gift },
     { id: 'config',      label: 'Config.',      Icon: Settings2 },
   ];
@@ -194,6 +196,7 @@ export default function AdminDashboard() {
           {tab === 'tournaments'  && <TournamentsTab />}
           {tab === 'fraud'        && <FraudTab />}
           {tab === 'pairBlocks'   && <PairBlocksTab />}
+          {tab === 'teamPairs'    && <TeamPairsTab />}
           {tab === 'bonus'        && <BonusTab />}
           {tab === 'config'       && <ConfigTab />}
         </div>
@@ -1301,6 +1304,208 @@ function PairBlocksTab() {
             </tbody>
           </TableWrapper>
           <Pagination page={page} pages={data?.pages ?? 1} onChange={setPage} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function TeamPairsTab() {
+  const [days,       setDays]       = useState('30');
+  const [minGames,   setMinGames]   = useState('5');
+  const [threshold,  setThreshold]  = useState('70');
+  const [blocking,   setBlocking]   = useState<string | null>(null);
+
+  const url = `/team-pair-stats?days=${days}&minGames=${minGames}&threshold=${(parseFloat(threshold) / 100).toFixed(2)}`;
+  const { data, loading, error, reload } = useData<any>(url, [days, minGames, threshold]);
+
+  const block = async (userAId: string, userBId: string) => {
+    const key = `${userAId}:${userBId}`;
+    setBlocking(key);
+    try {
+      await adminApi.post('/pair-blocks', {
+        userAId,
+        userBId,
+        reason: 'Alta taxa de vitória em dupla 2v2',
+      });
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao bloquear');
+    } finally {
+      setBlocking(null);
+    }
+  };
+
+  const pairs: any[] = data?.pairs ?? [];
+
+  return (
+    <div>
+      <PageHeader
+        title="Duplas suspeitas — 2v2"
+        subtitle="Pares que jogam frequentemente no mesmo time com taxa de vitória elevada."
+      >
+        <Button variant="outline" size="icon" onClick={reload} disabled={loading}>
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </Button>
+      </PageHeader>
+
+      {/* Filters */}
+      <Card className="mb-6 card-gradient">
+        <CardContent className="pt-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Período (dias)</label>
+              <Input
+                type="number"
+                min={1} max={365}
+                value={days}
+                onChange={e => setDays(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Mín. partidas juntos</label>
+              <Input
+                type="number"
+                min={1}
+                value={minGames}
+                onChange={e => setMinGames(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Taxa mínima (%)</label>
+              <Input
+                type="number"
+                min={1} max={100}
+                value={threshold}
+                onChange={e => setThreshold(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Legend */}
+      <div className="mb-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
+        <span><span className="font-semibold text-foreground">Taxa vitória:</span> win rate jogando no mesmo time</span>
+        <span><span className="font-semibold text-foreground">Solo A/B:</span> % das partidas 2v2 jogadas SEM este parceiro</span>
+        <span><span className="font-semibold text-foreground">Horários:</span> % das horas do dia (0-23) em que jogaram juntos</span>
+        <span><span className="font-semibold text-foreground">Cooldown:</span> partidas restantes no bloqueio de time</span>
+      </div>
+
+      {error ? (
+        <ErrorState msg={error} onRetry={reload} />
+      ) : loading ? (
+        <Card><CardContent className="p-0"><TableSkeleton cols={9} /></CardContent></Card>
+      ) : (
+        <>
+          <TableWrapper>
+            <thead>
+              <tr>
+                {['Jogador A', 'Jogador B', 'Juntos', 'Taxa vitória', 'Solo A', 'Solo B', 'Horários', 'Cooldown', ''].map(h => (
+                  <Th key={h}>{h}</Th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pairs.map((p: any) => {
+                const blockKey = `${p.userA.id}:${p.userB.id}`;
+                const wr = (p.winRate * 100).toFixed(0);
+                const wrHigh = p.winRate >= (parseFloat(threshold) / 100);
+                return (
+                  <tr key={blockKey} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                    {/* Player A */}
+                    <Td>
+                      <p className="font-medium text-foreground text-xs">{p.userA.name || '?'}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{p.userA.phone || p.userA.id.slice(0, 8)}</p>
+                    </Td>
+                    {/* Player B */}
+                    <Td>
+                      <p className="font-medium text-foreground text-xs">{p.userB.name || '?'}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{p.userB.phone || p.userB.id.slice(0, 8)}</p>
+                    </Td>
+                    {/* Games together */}
+                    <Td>
+                      <span className="tabular-nums text-xs">{p.gamesTogether} partidas</span>
+                      <p className="text-xs text-muted-foreground">{p.winsTogether}V</p>
+                    </Td>
+                    {/* Win rate */}
+                    <Td>
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn('text-sm font-semibold tabular-nums', wrHigh ? 'text-destructive' : 'text-foreground')}>
+                          {wr}%
+                        </span>
+                        {wrHigh && (
+                          <Badge variant="destructive" className="text-[10px] px-1 py-0">ALERTA</Badge>
+                        )}
+                      </div>
+                    </Td>
+                    {/* Solo ratios */}
+                    <Td>
+                      <span className={cn('tabular-nums text-xs', p.userASoloRatio < 30 ? 'text-yellow-400' : 'text-muted-foreground')}>
+                        {p.userASoloRatio}%
+                      </span>
+                      <p className="text-[10px] text-muted-foreground">{p.userATotalGames} totais</p>
+                    </Td>
+                    <Td>
+                      <span className={cn('tabular-nums text-xs', p.userBSoloRatio < 30 ? 'text-yellow-400' : 'text-muted-foreground')}>
+                        {p.userBSoloRatio}%
+                      </span>
+                      <p className="text-[10px] text-muted-foreground">{p.userBTotalGames} totais</p>
+                    </Td>
+                    {/* Hour overlap */}
+                    <Td>
+                      <span className={cn('tabular-nums text-xs', p.hourOverlapPct >= 50 ? 'text-yellow-400' : 'text-muted-foreground')}>
+                        {p.hourOverlapPct}%
+                      </span>
+                      <p className="text-[10px] text-muted-foreground">das horas</p>
+                    </Td>
+                    {/* Cooldown */}
+                    <Td>
+                      {p.cooldownRemaining > 0 ? (
+                        <Badge variant="secondary" className="text-[10px] whitespace-nowrap">
+                          -{p.cooldownRemaining} partidas
+                        </Badge>
+                      ) : p.consecutiveSameTeam > 0 ? (
+                        <span className="text-xs text-muted-foreground">{p.consecutiveSameTeam}/3 seguidas</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {new Date(p.lastPlayedAt).toLocaleDateString('pt-BR')}
+                      </p>
+                    </Td>
+                    {/* Block action */}
+                    <Td>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={blocking === blockKey}
+                        onClick={() => block(p.userA.id, p.userB.id)}
+                      >
+                        {blocking === blockKey
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><Ban className="w-3 h-3 mr-1" />Bloquear</>
+                        }
+                      </Button>
+                    </Td>
+                  </tr>
+                );
+              })}
+              {pairs.length === 0 && (
+                <EmptyRow cols={9} msg="Nenhuma dupla suspeita encontrada com os filtros atuais" />
+              )}
+            </tbody>
+          </TableWrapper>
+
+          {pairs.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-3">
+              {pairs.length} dupla{pairs.length !== 1 ? 's' : ''} encontrada{pairs.length !== 1 ? 's' : ''} ·
+              {' '}Solo baixo (&lt;30%) e horários altos (≥50%) são sinais de conluio.
+            </p>
+          )}
         </>
       )}
     </div>

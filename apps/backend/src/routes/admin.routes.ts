@@ -24,6 +24,7 @@ import {
   createPairBlockAdminHandler,
   updatePairBlockAdminHandler,
   getUserPairStatsAdminHandler,
+  getTeamPairStatsAdminHandler,
   getCouponsAdminHandler,
   createCouponAdminHandler,
   updateCouponAdminHandler,
@@ -68,6 +69,7 @@ router.get('/pair-blocks', getPairBlocksAdminHandler);
 router.post('/pair-blocks', createPairBlockAdminHandler);
 router.patch('/pair-blocks/:id', updatePairBlockAdminHandler);
 router.get('/users/:id/pair-stats', getUserPairStatsAdminHandler);
+router.get('/team-pair-stats', getTeamPairStatsAdminHandler);
 
 router.get('/coupons', getCouponsAdminHandler);
 router.post('/coupons', createCouponAdminHandler);

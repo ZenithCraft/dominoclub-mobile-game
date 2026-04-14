@@ -302,3 +302,19 @@ model CouponRedemption {
   @@index([couponId])
   @@index([userId])
 }
+
+// ─── Partner Cooldown (2v2 anti-collusion) ────────────────────────────────────
+// Tracks consecutive same-team games for 2v2 pairs.
+// After 3 consecutive same-team games, they are forced to opposing teams for 3 games.
+model PartnerCooldown {
+  id                    String   @id @default(uuid())
+  userAId               String
+  userBId               String
+  consecutive_same_team Int      @default(0)  // consecutive FINISHED games on same team
+  cooldown_remaining    Int      @default(0)  // games left where they must be on opposing teams
+  updated_at            DateTime @updatedAt
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+}
