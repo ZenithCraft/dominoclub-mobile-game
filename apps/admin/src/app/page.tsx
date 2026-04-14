@@ -776,6 +776,7 @@ function TournamentsTab() {
   const [page, setPage]             = useState(1);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [creating, setCreating]     = useState(false);
+  const [creatingDemo, setCreatingDemo] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [details, setDetails] = useState<any | null>(null);
@@ -803,6 +804,18 @@ function TournamentsTab() {
       reload();
     } catch (err: any) { alert(err.response?.data?.error || 'Erro ao criar torneio'); }
     finally { setCreating(false); }
+  };
+
+  const createDemo = async () => {
+    setCreatingDemo(true);
+    try {
+      await adminApi.post('/tournaments/demo?startsIn=20&entryFee=5&maxPlayers=16&mode=CUP_1V1&variant=CARROCA');
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao criar demo');
+    } finally {
+      setCreatingDemo(false);
+    }
   };
 
   const start = async (id: string) => {
@@ -859,6 +872,10 @@ function TournamentsTab() {
             <SelectItem value="CANCELLED">Cancelados</SelectItem>
           </SelectContent>
         </Select>
+        <Button onClick={createDemo} disabled={creatingDemo} className="gap-2">
+          {creatingDemo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />}
+          Demo 20s
+        </Button>
         <Button variant="outline" size="icon" onClick={reload} disabled={loading}>
           <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
         </Button>
@@ -1294,7 +1311,7 @@ function BonusTab() {
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [actioning, setActioning] = useState<string | null>(null);
-  const [form, setForm] = useState(() => ({ code: '', bonusAmount: '', rolloverTimes: '0', maxPlayers: '' }));
+  const [form, setForm] = useState(() => ({ code: '', bonusAmount: '', minDepositAmount: '', rolloverTimes: '0', maxPlayers: '' }));
 
   const { data, loading, error, reload } = useData<any>(`/coupons?page=${page}`, [page]);
 
@@ -1305,10 +1322,11 @@ function BonusTab() {
       await adminApi.post('/coupons', {
         code: form.code,
         bonusAmount: Number(form.bonusAmount),
+        minDepositAmount: form.minDepositAmount === '' ? 0 : Number(form.minDepositAmount),
         rolloverTimes: parseInt(form.rolloverTimes || '0', 10),
         maxPlayers: form.maxPlayers ? parseInt(form.maxPlayers, 10) : null,
       });
-      setForm({ code: '', bonusAmount: '', rolloverTimes: '0', maxPlayers: '' });
+      setForm({ code: '', bonusAmount: '', minDepositAmount: '', rolloverTimes: '0', maxPlayers: '' });
       reload();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Erro ao criar cupom');
@@ -1352,12 +1370,16 @@ function BonusTab() {
               <Input value={form.bonusAmount} onChange={e => setForm(p => ({ ...p, bonusAmount: e.target.value }))} inputMode="decimal" required />
             </div>
             <div className="space-y-1.5">
-              <Label>Rollover (x)</Label>
-              <Input value={form.rolloverTimes} onChange={e => setForm(p => ({ ...p, rolloverTimes: e.target.value }))} inputMode="numeric" required />
+              <Label>Depósito mínimo (R$)</Label>
+              <Input value={form.minDepositAmount} onChange={e => setForm(p => ({ ...p, minDepositAmount: e.target.value }))} inputMode="decimal" placeholder="0" />
             </div>
             <div className="space-y-1.5">
               <Label>Limite de jogadores</Label>
               <Input value={form.maxPlayers} onChange={e => setForm(p => ({ ...p, maxPlayers: e.target.value }))} inputMode="numeric" placeholder="Sem limite" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Rollover (x)</Label>
+              <Input value={form.rolloverTimes} onChange={e => setForm(p => ({ ...p, rolloverTimes: e.target.value }))} inputMode="numeric" required />
             </div>
             <div className="col-span-2 md:col-span-4">
               <Button type="submit" disabled={creating}>
@@ -1374,12 +1396,13 @@ function BonusTab() {
         <>
           <TableWrapper>
             <thead>
-              <tr>{['Código', 'Bônus', 'Rollover', 'Usos', 'Limite', 'Status', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
+              <tr>{['Código', 'Min. dep.', 'Bônus', 'Rollover', 'Usos', 'Limite', 'Status', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
             </thead>
             <tbody>
               {(data?.coupons ?? []).map((c: any) => (
                 <tr key={c.id} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
                   <Td><span className="font-mono text-xs text-foreground">{c.code}</span></Td>
+                  <Td><span className="tabular-nums text-xs text-muted-foreground">{formatMoney(Number(c.min_deposit_amount ?? 0))}</span></Td>
                   <Td><span className="tabular-nums text-xs text-muted-foreground">{formatMoney(Number(c.bonus_amount ?? 0))}</span></Td>
                   <Td><span className="tabular-nums text-xs text-muted-foreground">{c.rollover_times}x</span></Td>
                   <Td><span className="tabular-nums text-xs">{c._count?.redemptions ?? 0}</span></Td>
@@ -1392,7 +1415,7 @@ function BonusTab() {
                   </Td>
                 </tr>
               ))}
-              {(data?.coupons ?? []).length === 0 && <EmptyRow cols={7} msg="Nenhum cupom encontrado" />}
+              {(data?.coupons ?? []).length === 0 && <EmptyRow cols={8} msg="Nenhum cupom encontrado" />}
             </tbody>
           </TableWrapper>
           <Pagination page={page} pages={data?.pages ?? 1} onChange={setPage} />

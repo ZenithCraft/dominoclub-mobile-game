@@ -277,6 +277,7 @@ model Coupon {
   id              String   @id @default(uuid())
   code            String   @unique
   bonus_amount    Float
+  min_deposit_amount Float @default(0)
   rollover_times  Int      @default(0)
   max_players     Int?
   is_active       Boolean  @default(true)

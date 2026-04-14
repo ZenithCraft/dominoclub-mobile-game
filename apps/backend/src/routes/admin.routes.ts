@@ -12,6 +12,7 @@ import {
   rejectWithdrawalHandler,
   getTournamentsAdminHandler,
   createTournamentAdminHandler,
+  createDemoTournamentAdminHandler,
   startTournamentAdminHandler,
   cancelTournamentAdminHandler,
   emergencyCancelTournamentAdminHandler,
@@ -53,6 +54,7 @@ router.patch('/transactions/:id/reject', rejectWithdrawalHandler);
 
 router.get('/tournaments', getTournamentsAdminHandler);
 router.post('/tournaments', createTournamentAdminHandler);
+router.post('/tournaments/demo', createDemoTournamentAdminHandler);
 router.post('/tournaments/:id/start', startTournamentAdminHandler);
 router.post('/tournaments/:id/cancel', cancelTournamentAdminHandler);
 router.post('/tournaments/:id/emergency-cancel', emergencyCancelTournamentAdminHandler);

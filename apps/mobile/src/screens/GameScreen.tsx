@@ -437,50 +437,43 @@ function buildSnakeLayout(
     }
     if (first === -1 && !cornerTile) continue;
 
-    const segment = first === -1 ? [] : (rowTiles.slice(first, last + 1).filter(Boolean) as Tile[]);
-    const dims = segment.map((t) => {
+    const rowHeight = Math.max(S, L);
+
+    for (let i = 0; i < rowTiles.length; i++) {
+      const t = rowTiles[i];
+      if (!t) continue;
       const isDouble = t[0] === t[1];
       const horizontal = !isDouble;
       const proj = horizontal ? L : S;
       const w = proj;
       const h = horizontal ? S : L;
-      return { t, w, h, proj, horizontal };
-    });
 
-    const rowHeight = dims.reduce((m, d) => Math.max(m, d.h), Math.max(S, L));
-
-    const starts: number[] = [];
-    let cum = 0;
-    for (let i = 0; i < dims.length; i++) {
-      starts.push(cum);
-      cum += Math.max(1, (dims[i].proj - attach) + GH);
-    }
-    const rowLenWidth = dims.length ? (starts[starts.length - 1] + dims[dims.length - 1].proj) : 0;
-    const origin = rtl ? (maxRowWidth - rowLenWidth) : 0;
-
-    for (let i = 0; i < dims.length; i++) {
-      const d = dims[i];
-      const left = rtl
-        ? (origin + (rowLenWidth - (starts[i] + d.w)))
-        : (origin + starts[i]);
-      const top = cursorY + Math.floor((rowHeight - d.h) / 2);
+      const cellX = rtl ? (hPerRow - 1 - i) * maxStep : i * maxStep;
+      const offset = Math.floor((maxStep - proj) / 2);
+      const left = cellX + offset;
+      const top = cursorY + Math.floor((rowHeight - h) / 2);
+      
       placed.push({
-        tile: rtl ? ([d.t[1], d.t[0]] as Tile) : d.t,
+        tile: rtl ? ([t[1], t[0]] as Tile) : t,
         x: left,
         y: top,
-        horizontal: d.horizontal,
+        horizontal,
       });
       minX = Math.min(minX, left);
-      maxX = Math.max(maxX, left + d.w);
-      maxY = Math.max(maxY, top + d.h);
+      maxX = Math.max(maxX, left + w);
+      maxY = Math.max(maxY, top + h);
     }
 
     if (cornerTile) {
-      const endX = rtl ? origin : (origin + rowLenWidth);
+      const offsetL = Math.floor((maxStep - L) / 2);
+      const rightEdge = (hPerRow - 1) * maxStep + offsetL + L;
+      const leftEdge = offsetL;
+      
       const cornerW = S;
       const cornerH = L;
-      const cornerLeft = endX - Math.floor(cornerW / 2);
+      const cornerLeft = rtl ? (leftEdge + attach - cornerW) : (rightEdge - attach);
       const cornerTop = cursorY + rowHeight - attach;
+      
       placed.push({ tile: cornerTile, x: cornerLeft, y: cornerTop, horizontal: false });
       minX = Math.min(minX, cornerLeft);
       maxX = Math.max(maxX, cornerLeft + cornerW);

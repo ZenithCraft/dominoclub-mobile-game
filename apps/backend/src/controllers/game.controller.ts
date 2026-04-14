@@ -135,8 +135,8 @@ export async function joinTournamentHandler(req: Request, res: Response) {
       }),
     ]);
 
-    // Auto-start when all spots are filled
-    if (isFull) {
+    // Auto-start immediately only if the scheduled start time has already passed
+    if (isFull && tournament.starts_at.getTime() <= Date.now()) {
       startTournament(id).catch((err) => {
         console.error('[Tournament] Auto-start failed', err.message);
       });
@@ -161,6 +161,66 @@ export async function joinTournamentHandler(req: Request, res: Response) {
       const tournament = await prisma.tournament.findUnique({ where: { id } }).catch(() => null);
       return res.json({ message: 'Already enrolled', starting: false, balance: wallet?.real_balance ?? 0, tournament });
     }
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function leaveTournamentHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const { id } = req.params;
+
+    const tournament = await prisma.tournament.findUnique({ where: { id } });
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+    if (!['OPEN', 'FULL'].includes(tournament.status)) {
+      return res.status(400).json({ error: 'Tournament cannot be left' });
+    }
+
+    const existing = await prisma.tournamentPlayer.findFirst({ where: { tournamentId: id, userId } });
+    if (!existing) {
+      const wallet = await prisma.wallet.findUnique({ where: { userId } });
+      return res.json({ message: 'Not enrolled', balance: wallet?.real_balance ?? 0, tournament });
+    }
+
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) return res.status(400).json({ error: 'Wallet not found' });
+
+    const poolDelta = tournament.entry_fee * 0.9;
+
+    await prisma.$transaction([
+      prisma.tournamentPlayer.deleteMany({ where: { tournamentId: id, userId } }),
+      prisma.tournament.update({
+        where: { id },
+        data: {
+          current_players: { decrement: 1 },
+          prize_pool: { decrement: poolDelta },
+          status: 'OPEN',
+        },
+      }),
+      prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { real_balance: { increment: tournament.entry_fee } },
+      }),
+      prisma.transaction.create({
+        data: {
+          walletId: wallet.id,
+          type: 'REFUND',
+          amount: tournament.entry_fee,
+          status: 'COMPLETED',
+          description: `Reembolso — saída do torneio "${tournament.name}"`,
+        },
+      }),
+    ]);
+
+    const updatedWallet = await prisma.wallet.findUnique({ where: { id: wallet.id } });
+    const updatedTournament = await prisma.tournament.findUnique({ where: { id } });
+
+    res.json({
+      message: 'Left tournament successfully',
+      balance: updatedWallet?.real_balance ?? 0,
+      tournament: updatedTournament,
+    });
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 }

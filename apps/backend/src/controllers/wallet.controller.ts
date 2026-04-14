@@ -18,8 +18,8 @@ export async function getWalletHandler(req: Request, res: Response) {
 export async function depositHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).user?.userId;
-    const { amount } = depositSchema.parse(req.body);
-    const result = await deposit(userId, amount);
+    const { amount, couponCode } = depositSchema.parse(req.body);
+    const result = await deposit(userId, amount, couponCode);
     res.status(201).json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message });

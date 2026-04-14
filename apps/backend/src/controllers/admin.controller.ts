@@ -389,6 +389,64 @@ export async function createTournamentAdminHandler(req: Request, res: Response) 
   }
 }
 
+export async function createDemoTournamentAdminHandler(req: Request, res: Response) {
+  try {
+    const startsInSeconds = Math.max(1, parseInt(String((req.query as any)?.startsIn ?? '20'), 10) || 20);
+    const entryFee = Number((req.query as any)?.entryFee ?? 5);
+    const maxPlayers = Math.max(2, parseInt(String((req.query as any)?.maxPlayers ?? '16'), 10) || 16);
+    const mode = String((req.query as any)?.mode ?? 'CUP_1V1') as any;
+    const variant = String((req.query as any)?.variant ?? 'CARROCA') as any;
+    const startsAt = new Date(Date.now() + startsInSeconds * 1000);
+    const name = String((req.query as any)?.name ?? `Demo — inicia em ${startsInSeconds}s`);
+
+    const tournament = await prisma.tournament.create({
+      data: {
+        name,
+        mode,
+        variant,
+        entry_fee: entryFee,
+        max_players: maxPlayers,
+        starts_at: startsAt,
+      },
+    });
+
+    const phones = ['+5511999990002', '+5511999990003', '+5511999990004'];
+    const users = await prisma.user.findMany({
+      where: { phone: { in: phones } },
+      select: { id: true },
+    });
+
+    for (const u of users) {
+      const wallet = await prisma.wallet.findUnique({ where: { userId: u.id } });
+      if (!wallet || wallet.real_balance < entryFee) continue;
+      await prisma
+        .$transaction([
+          prisma.wallet.update({
+            where: { userId: u.id },
+            data: { real_balance: { decrement: entryFee } },
+          }),
+          prisma.tournamentPlayer.create({
+            data: { tournamentId: tournament.id, userId: u.id },
+          }),
+          prisma.tournament.update({
+            where: { id: tournament.id },
+            data: {
+              current_players: { increment: 1 },
+              prize_pool: { increment: entryFee * 0.9 },
+            },
+          }),
+        ])
+        .catch(() => null);
+    }
+
+    const updated = await prisma.tournament.findUnique({ where: { id: tournament.id } });
+    logger.info('[Admin] Demo tournament created', { tournamentId: tournament.id, startsAt, entryFee, maxPlayers });
+    res.status(201).json(updated);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
 export async function startTournamentAdminHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -753,14 +811,16 @@ export async function getCouponsAdminHandler(req: Request, res: Response) {
 
 export async function createCouponAdminHandler(req: Request, res: Response) {
   try {
-    const { code, bonusAmount, rolloverTimes, maxPlayers } = req.body as any;
+    const { code, bonusAmount, minDepositAmount, rolloverTimes, maxPlayers } = req.body as any;
     const parsedCode = String(code ?? '').trim().toUpperCase();
     const parsedBonus = Number(bonusAmount);
+    const parsedMinDeposit = Number(minDepositAmount ?? 0);
     const parsedRolloverTimes = parseInt(String(rolloverTimes ?? 0), 10);
     const parsedMaxPlayers = maxPlayers === null || maxPlayers === undefined || maxPlayers === '' ? null : parseInt(String(maxPlayers), 10);
 
     if (!parsedCode) return res.status(400).json({ error: 'code is required' });
     if (!Number.isFinite(parsedBonus) || parsedBonus <= 0) return res.status(400).json({ error: 'bonusAmount must be a positive number' });
+    if (!Number.isFinite(parsedMinDeposit) || parsedMinDeposit < 0) return res.status(400).json({ error: 'minDepositAmount must be a non-negative number' });
     if (!Number.isFinite(parsedRolloverTimes) || parsedRolloverTimes < 0) return res.status(400).json({ error: 'rolloverTimes must be a non-negative integer' });
     if (parsedMaxPlayers !== null && (!Number.isFinite(parsedMaxPlayers) || parsedMaxPlayers <= 0)) {
       return res.status(400).json({ error: 'maxPlayers must be a positive integer or null' });
@@ -770,6 +830,7 @@ export async function createCouponAdminHandler(req: Request, res: Response) {
       data: {
         code: parsedCode,
         bonus_amount: parsedBonus,
+        min_deposit_amount: parsedMinDeposit,
         rollover_times: parsedRolloverTimes,
         max_players: parsedMaxPlayers,
         is_active: true,

@@ -25,9 +25,9 @@ export async function getWallet(userId: string) {
   return wallet;
 }
 
-export async function deposit(userId: string, amount: number) {
-  if (amount < 10) throw new Error('Minimum deposit is R$10');
-  return createPixCharge(userId, amount);
+export async function deposit(userId: string, amount: number, couponCode?: string) {
+  if (amount < 20) throw new Error('Minimum deposit is R$20');
+  return createPixCharge(userId, amount, couponCode);
 }
 
 export async function withdraw(userId: string, amount: number, pixKey: string) {

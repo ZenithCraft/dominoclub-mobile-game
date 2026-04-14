@@ -10,7 +10,7 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "db:seed": "ts-node src/seed.ts",
+    "db:seed": "ts-node scripts/seed-demo.ts",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

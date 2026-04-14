@@ -43,6 +43,10 @@ export const verifyOtpSchema = z.object({
 
 export const depositSchema = z.object({
   amount: z.number().min(20, 'Minimum deposit is R$20').max(10000),
+  couponCode: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(3).max(32).optional()
+  ),
 });
 
 export const withdrawSchema = z.object({

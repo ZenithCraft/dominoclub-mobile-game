@@ -31,7 +31,7 @@ type DepositStep = 'amount' | 'qr' | 'confirmed';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DEPOSIT_PRESETS = [10, 25, 50, 100];
+const DEPOSIT_PRESETS = [20, 25, 50, 100];
 const POLL_INTERVAL_MS = 3000;
 
 const TYPE_LABEL: Record<string, string> = {
@@ -140,11 +140,12 @@ export function WalletScreen() {
   // Deposit
   const [depositModal, setDepositModal]   = useState(false);
   const [depositStep, setDepositStep]     = useState<DepositStep>('amount');
-  const [depositAmount, setDepositAmount] = useState(10);
+  const [depositAmount, setDepositAmount] = useState(20);
   const [customAmount, setCustomAmount]   = useState('');
   const [useCustom, setUseCustom]         = useState(false);
   const [qrCode, setQrCode]               = useState('');
   const [depositLoading, setDepositLoading] = useState(false);
+  const [couponCode, setCouponCode]       = useState('');
 
   // Withdraw
   const [withdrawModal, setWithdrawModal]   = useState(false);
@@ -274,10 +275,11 @@ export function WalletScreen() {
 
   const handleDeposit = async () => {
     const amount = effectiveAmount;
-    if (amount < 10) { Alert.alert('Valor inválido', 'O depósito mínimo é R$ 10,00'); return; }
+    if (amount < 20) { Alert.alert('Valor inválido', 'O depósito mínimo é R$ 20,00'); return; }
     setDepositLoading(true);
     try {
-      const { data } = await api.post('/wallet/deposit', { amount });
+      const code = couponCode.trim();
+      const { data } = await api.post('/wallet/deposit', { amount, couponCode: code ? code : undefined });
       setQrCode(data.qrCode);
       setDepositStep('qr');
       startPolling(data.transactionId);
@@ -294,6 +296,7 @@ export function WalletScreen() {
     setDepositStep('amount');
     setQrCode('');
     setUseCustom(false); setCustomAmount('');
+    setCouponCode('');
     loadWallet(true);
   }, [stopPolling, loadWallet]);
 
@@ -486,9 +489,9 @@ export function WalletScreen() {
 
                 {/* Yellow PIX button */}
                 <TouchableOpacity
-                  style={[styles.pixBtn, (depositLoading || effectiveAmount < 10) && styles.pixBtnLoading]}
+                  style={[styles.pixBtn, (depositLoading || effectiveAmount < 20) && styles.pixBtnLoading]}
                   onPress={handleDeposit}
-                  disabled={depositLoading || effectiveAmount < 10}
+                  disabled={depositLoading || effectiveAmount < 20}
                   accessibilityLabel="Gerar código PIX"
                   testID="deposit-generate-pix"
                 >
@@ -501,9 +504,22 @@ export function WalletScreen() {
                     </View>
                   )}
                 </TouchableOpacity>
-                {useCustom && effectiveAmount < 10 ? (
+                <Text style={styles.fieldLabel}>Cupom (opcional)</Text>
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.input}
+                    value={couponCode}
+                    onChangeText={setCouponCode}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    placeholder="EX: BEMVINDO20"
+                    placeholderTextColor="rgba(255,255,255,0.35)"
+                  />
+                </View>
+
+                {useCustom && effectiveAmount < 20 ? (
                   <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.xs, textAlign: 'center' }}>
-                    Depósito mínimo: R$ 10,00
+                    Depósito mínimo: R$ 20,00
                   </Text>
                 ) : null}
               </>

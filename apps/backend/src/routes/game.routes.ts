@@ -6,6 +6,7 @@ import {
   getActiveGameHandler,
   getTournamentsHandler,
   joinTournamentHandler,
+  leaveTournamentHandler,
   getTournamentBracketHandler,
   getMyActiveTournamentHandler,
 } from '../controllers/game.controller';
@@ -17,6 +18,7 @@ router.get('/active', authMiddleware, getActiveGameHandler);
 router.get('/tournaments', authMiddleware, getTournamentsHandler);
 router.get('/tournaments/my-active', authMiddleware, getMyActiveTournamentHandler);
 router.post('/tournaments/:id/join', authMiddleware, joinTournamentHandler);
+router.post('/tournaments/:id/leave', authMiddleware, leaveTournamentHandler);
 router.get('/tournaments/:id/bracket', authMiddleware, getTournamentBracketHandler);
 router.get('/:id/replay', authMiddleware, getGameReplayHandler);
 

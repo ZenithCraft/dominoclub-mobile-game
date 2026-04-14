@@ -21,6 +21,7 @@ import { AchievementsScreen } from '../screens/AchievementsScreen';
 import { TournamentWaitingScreen } from '../screens/TournamentWaitingScreen';
 import { TournamentBracketScreen } from '../screens/TournamentBracketScreen';
 import { TournamentResultScreen } from '../screens/TournamentResultScreen';
+import { GlobalTournamentBar } from '../components/GlobalTournamentBar';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -125,34 +126,37 @@ export function AppNavigator() {
   return (
     <NavigationContainer>
       <ErrorBoundary>
-        <Stack.Navigator
-          initialRouteName={initialRouteName}
-          screenOptions={{ headerShown: false, animation: 'fade' }}
-        >
-          <Stack.Screen name="Splash"               component={SplashScreen} />
-          <Stack.Screen name="Login"                component={LoginScreen} />
-          <Stack.Screen name="Register"             component={RegisterScreen} />
-          <Stack.Screen name="OTPVerification"      component={OTPVerificationScreen} />
-          <Stack.Screen name="ForgotPassword"       component={ForgotPasswordScreen} />
-          <Stack.Screen name="SetNewPassword"       component={SetNewPasswordScreen} />
-          <Stack.Screen name="Main"                 component={HomeScreen} />
-          <Stack.Screen name="Wallet"               component={WalletScreen} />
-          <Stack.Screen name="ModeSelect"           component={ModeSelectScreen} />
-          <Stack.Screen
-            name="Game"
-            component={GameScreen}
-            initialParams={{ gameId: initialGameId }}
-            options={{ gestureEnabled: false }}
-          />
-          <Stack.Screen name="History"              component={HistoryScreen} />
-          <Stack.Screen name="Achievements"         component={AchievementsScreen} />
-          <Stack.Screen name="Terms"                component={TermsScreen} />
-          <Stack.Screen name="PrivacyPolicy"        component={PrivacyPolicyScreen} />
-          <Stack.Screen name="ResponsibleGambling"  component={ResponsibleGamblingScreen} />
-          <Stack.Screen name="TournamentWaiting"    component={TournamentWaitingScreen} options={{ gestureEnabled: false }} />
-          <Stack.Screen name="TournamentBracket"    component={TournamentBracketScreen} />
-          <Stack.Screen name="TournamentResult"     component={TournamentResultScreen} options={{ gestureEnabled: false }} />
-        </Stack.Navigator>
+        <View style={{ flex: 1 }}>
+          <Stack.Navigator
+            initialRouteName={initialRouteName}
+            screenOptions={{ headerShown: false, animation: 'fade' }}
+          >
+            <Stack.Screen name="Splash"               component={SplashScreen} />
+            <Stack.Screen name="Login"                component={LoginScreen} />
+            <Stack.Screen name="Register"             component={RegisterScreen} />
+            <Stack.Screen name="OTPVerification"      component={OTPVerificationScreen} />
+            <Stack.Screen name="ForgotPassword"       component={ForgotPasswordScreen} />
+            <Stack.Screen name="SetNewPassword"       component={SetNewPasswordScreen} />
+            <Stack.Screen name="Main"                 component={HomeScreen} />
+            <Stack.Screen name="Wallet"               component={WalletScreen} />
+            <Stack.Screen name="ModeSelect"           component={ModeSelectScreen} />
+            <Stack.Screen
+              name="Game"
+              component={GameScreen}
+              initialParams={{ gameId: initialGameId }}
+              options={{ gestureEnabled: false }}
+            />
+            <Stack.Screen name="History"              component={HistoryScreen} />
+            <Stack.Screen name="Achievements"         component={AchievementsScreen} />
+            <Stack.Screen name="Terms"                component={TermsScreen} />
+            <Stack.Screen name="PrivacyPolicy"        component={PrivacyPolicyScreen} />
+            <Stack.Screen name="ResponsibleGambling"  component={ResponsibleGamblingScreen} />
+            <Stack.Screen name="TournamentWaiting"    component={TournamentWaitingScreen} options={{ gestureEnabled: false }} />
+            <Stack.Screen name="TournamentBracket"    component={TournamentBracketScreen} />
+            <Stack.Screen name="TournamentResult"     component={TournamentResultScreen} options={{ gestureEnabled: false }} />
+          </Stack.Navigator>
+          <GlobalTournamentBar />
+        </View>
       </ErrorBoundary>
     </NavigationContainer>
   );

@@ -13,6 +13,7 @@ import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
 import { IconUser, IconUsers, IconTrophy } from '../components/Icons';
 import { useGameStore } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
+import { useTournamentStore } from '../store/tournament.store';
 import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
 import { toast } from '../store/toast.store';
@@ -229,6 +230,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
   const { user, refreshUser, setTokens, setUser } = useAuthStore();
   const { setQueueStatus, setLastQueue } = useGameStore();
+  const setActiveTournament = useTournamentStore((s) => s.setActiveTournament);
   const [queueStats, setQueueStats] = useState<Record<string, { total: number; byBet: Record<string, number> }>>({});
   const [serverBotWaitSeconds, setServerBotWaitSeconds] = useState<number | null>(null);
   const [tournaments, setTournaments]   = useState<Tournament[]>([]);
@@ -409,6 +411,12 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       const { data } = await api.post(`/game/tournaments/${tour.id}/join`);
       await refreshUser();
       setConfirmTour(null);
+      await setActiveTournament({
+        tournamentId: tour.id,
+        tournamentName: tour.name,
+        startsAt: data.tournament?.starts_at ?? tour.starts_at,
+        entryFee: tour.entry_fee,
+      });
       navigation.replace('TournamentWaiting', {
         tournamentId: tour.id,
         tournamentName: tour.name,

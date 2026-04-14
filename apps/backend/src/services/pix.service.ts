@@ -123,7 +123,7 @@ export function verifyPixWebhookSignature(rawBody: string, signatureHeader: stri
   return expected === signatureHeader;
 }
 
-export async function createPixCharge(userId: string, amountBRL: number): Promise<{
+export async function createPixCharge(userId: string, amountBRL: number, couponCode?: string): Promise<{
   txid: string;
   qrCode: string;
   transactionId: string;
@@ -161,6 +161,7 @@ export async function createPixCharge(userId: string, amountBRL: number): Promis
     logger.info('[PIX MOCK] Created charge', { txid, amount: amountBRL });
   }
 
+  const parsedCouponCode = typeof couponCode === 'string' ? couponCode.trim().toUpperCase() : undefined;
   const transaction = await prisma.transaction.create({
     data: {
       walletId: user.wallet.id,
@@ -169,7 +170,9 @@ export async function createPixCharge(userId: string, amountBRL: number): Promis
       pix_id: txid,
       pix_qr_code: qrCode,
       status: 'PENDING',
-      metadata: pixResponse as any,
+      metadata: parsedCouponCode
+        ? ({ ...(pixResponse as any), couponCode: parsedCouponCode } as any)
+        : (pixResponse as any),
     },
   });
 
@@ -196,19 +199,73 @@ export async function confirmPixDeposit(txid: string): Promise<void> {
     return;
   }
 
-  await prisma.$transaction([
-    prisma.wallet.update({
+  const rawMeta: any = transaction.metadata as any;
+  const parsedCouponCode =
+    rawMeta && typeof rawMeta === 'object' && typeof rawMeta.couponCode === 'string'
+      ? String(rawMeta.couponCode).trim().toUpperCase()
+      : undefined;
+
+  await prisma.$transaction(async (tx) => {
+    const updatedWallet = await tx.wallet.update({
       where: { id: transaction.walletId },
       data: { real_balance: { increment: transaction.amount } },
-    }),
-    prisma.transaction.update({
+    });
+
+    await tx.transaction.update({
       where: { id: transaction.id },
       data: {
         status: 'COMPLETED',
-        balance_after: transaction.wallet.real_balance + transaction.amount,
+        balance_after: updatedWallet.real_balance,
       },
-    }),
-  ]);
+    });
+
+    if (!parsedCouponCode) return;
+
+    const coupon = await tx.coupon.findUnique({ where: { code: parsedCouponCode } });
+    if (!coupon || !coupon.is_active) return;
+    if (transaction.amount < coupon.min_deposit_amount) return;
+
+    if (coupon.max_players !== null) {
+      const used = await tx.couponRedemption.count({ where: { couponId: coupon.id } });
+      if (used >= coupon.max_players) return;
+    }
+
+    const rolloverAdded = coupon.bonus_amount * coupon.rollover_times;
+
+    try {
+      await tx.couponRedemption.create({
+        data: {
+          couponId: coupon.id,
+          userId: transaction.wallet.userId,
+          bonus_amount: coupon.bonus_amount,
+          rollover_added: rolloverAdded,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002') return;
+      throw err;
+    }
+
+    const afterBonusWallet = await tx.wallet.update({
+      where: { id: updatedWallet.id },
+      data: {
+        bonus_balance: { increment: coupon.bonus_amount },
+        rollover_remaining: { increment: rolloverAdded },
+      },
+    });
+
+    await tx.transaction.create({
+      data: {
+        walletId: afterBonusWallet.id,
+        type: 'BONUS',
+        amount: coupon.bonus_amount,
+        status: 'COMPLETED',
+        balance_after: afterBonusWallet.real_balance,
+        description: `Bônus de depósito — cupom ${coupon.code}`,
+        metadata: { depositTransactionId: transaction.id } as any,
+      },
+    });
+  });
 
   logger.info('[PIX] Deposit confirmed', { txid, amount: transaction.amount, walletId: transaction.walletId });
 }

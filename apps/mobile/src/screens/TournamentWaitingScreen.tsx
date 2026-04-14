@@ -11,6 +11,8 @@ import { IconTrophy } from '../components/Icons';
 import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
 import * as Notifications from 'expo-notifications';
+import { useTournamentStore } from '../store/tournament.store';
+import { toast } from '../store/toast.store';
 
 // ─── Push notification setup ─────────────────────────────────────────────────
 
@@ -25,16 +27,33 @@ Notifications.setNotificationHandler({
 });
 
 async function scheduleTournamentNotification(startsAt: Date, tournamentName: string) {
-  if (Platform.OS === 'web') return; // web push not available via Expo
   try {
+    const msToStart = startsAt.getTime() - Date.now();
+    if (msToStart <= 0) return;
+    const notifyBeforeMs = 10_000;
+    const triggerMs = Math.max(1_000, msToStart - notifyBeforeMs);
+
+    if (Platform.OS === 'web') {
+      const WebNotification = (globalThis as any)?.Notification;
+      if (!WebNotification) return;
+      if (WebNotification.permission !== 'granted') return;
+      setTimeout(() => {
+        try {
+          if ((globalThis as any)?.Notification?.permission !== 'granted') return;
+          new (globalThis as any).Notification('Torneio vai começar!', {
+            body: `${tournamentName} começa em instantes. Entre agora!`,
+          });
+        } catch {}
+      }, triggerMs);
+      return;
+    }
+
     const { status } = await Notifications.requestPermissionsAsync();
     if (status !== 'granted') return;
-    const triggerMs = startsAt.getTime() - Date.now() - 60_000; // 1 min before
-    if (triggerMs <= 0) return;
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '🏆 Torneio vai começar!',
-        body: `${tournamentName} começa em 1 minuto. Entre agora!`,
+        body: `${tournamentName} começa em instantes. Entre agora!`,
         sound: true,
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.floor(triggerMs / 1000), repeats: false },
@@ -85,6 +104,11 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
   const { remaining, h, m, s } = useCountdown(startsAtDate);
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const [cancelledMessage, setCancelledMessage] = useState<string | null>(null);
+  const [notifEnabled, setNotifEnabled] = useState(false);
+
+  const setActiveTournament = useTournamentStore((st) => st.setActiveTournament);
+  const setNotificationsEnabled = useTournamentStore((st) => st.setNotificationsEnabled);
+  const clearActiveTournament = useTournamentStore((st) => st.clearActiveTournament);
 
   // Pulse animation for trophy icon
   useEffect(() => {
@@ -98,10 +122,47 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
     return () => loop.stop();
   }, [pulseAnim]);
 
-  // Schedule push notification
   useEffect(() => {
-    scheduleTournamentNotification(startsAtDate, tournamentName);
+    setActiveTournament({ tournamentId, tournamentName, startsAt, entryFee });
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const WebNotification = (globalThis as any)?.Notification;
+    if (WebNotification?.permission === 'granted') {
+      setNotifEnabled(true);
+      setNotificationsEnabled(true);
+    }
+  }, []);
+
+  const enableNotifications = useCallback(async () => {
+    if (notifEnabled) return;
+    if (Platform.OS === 'web') {
+      const WebNotification = (globalThis as any)?.Notification;
+      if (!WebNotification) {
+        toast.warning('Notificações não suportadas neste navegador.');
+        return;
+      }
+      try {
+        const permission: any =
+          WebNotification.permission === 'default'
+            ? await WebNotification.requestPermission()
+            : WebNotification.permission;
+        if (permission !== 'granted') {
+          toast.warning('Permissão de notificação não concedida.');
+          return;
+        }
+      } catch {
+        toast.warning('Não foi possível pedir permissão de notificação.');
+        return;
+      }
+    }
+
+    await scheduleTournamentNotification(startsAtDate, tournamentName);
+    await setNotificationsEnabled(true);
+    setNotifEnabled(true);
+    toast.success('Notificação ativada.');
+  }, [notifEnabled, startsAt, tournamentName]);
 
   // Socket listeners for tournament events
   useEffect(() => {
@@ -113,16 +174,19 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
 
         socket.on('tournament:started', (data: { tournamentId: string; gameId: string; round: number; totalRounds: number }) => {
           if (!mounted || data.tournamentId !== tournamentId) return;
+          clearActiveTournament();
           navigation.replace('Game', { gameId: data.gameId });
         });
 
         socket.on('tournament:cancelled', (data: { tournamentId: string; refundAmount: number; reason: string }) => {
           if (!mounted || data.tournamentId !== tournamentId) return;
           setCancelledMessage(`Torneio cancelado — ${data.reason}. R$ ${data.refundAmount.toFixed(2)} reembolsado.`);
+          clearActiveTournament();
         });
 
         socket.on('tournament:next_game', (data: { tournamentId: string; gameId: string; round: number; totalRounds: number }) => {
           if (!mounted || data.tournamentId !== tournamentId) return;
+          clearActiveTournament();
           navigation.replace('Game', { gameId: data.gameId });
         });
       } catch {}
@@ -195,12 +259,36 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
               <View style={styles.infoDivider} />
               <View style={styles.infoItem}>
                 <Text style={styles.infoLabel}>Notificação</Text>
-                <Text style={[styles.infoValue, { color: '#4ade80' }]}>
-                  {Platform.OS === 'web' ? 'N/A (web)' : 'Ativa'}
+                <Text style={[styles.infoValue, { color: notifEnabled ? '#4ade80' : 'rgba(255,255,255,0.75)' }]}>
+                  {notifEnabled ? 'Ativa' : 'Desativada'}
                 </Text>
               </View>
             </View>
           </LinearGradient>
+
+          {!cancelledMessage && !notifEnabled && (
+            <TouchableOpacity style={styles.notifyBtn} onPress={enableNotifications} activeOpacity={0.85}>
+              <Text style={styles.notifyBtnText}>Ativar notificação</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.leaveBtn}
+            onPress={async () => {
+              try {
+                await api.post(`/game/tournaments/${tournamentId}/leave`);
+              } catch {
+                toast.warning('Não foi possível sair do torneio.');
+                return;
+              }
+              await clearActiveTournament();
+              toast.success('Você saiu do torneio.');
+              navigation.replace('ModeSelect', { mode: 'TORNEIO' });
+            }}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.leaveBtnText}>Sair do torneio</Text>
+          </TouchableOpacity>
 
           {/* Back button */}
           <TouchableOpacity
@@ -276,6 +364,27 @@ const styles = StyleSheet.create({
   infoDivider: { width: 1, height: 32, backgroundColor: 'rgba(255,255,255,0.15)' },
   infoLabel: { color: 'rgba(255,255,255,0.5)', fontSize: fonts.sizes.xs, fontWeight: '600' },
   infoValue: { color: '#fff', fontSize: fonts.sizes.md, fontWeight: '800' },
+
+  notifyBtn: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.35)',
+    paddingVertical: 12,
+    paddingHorizontal: spacing.xxl,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginBottom: spacing.md,
+  },
+  notifyBtnText: { color: '#4ade80', fontWeight: '800', fontSize: fonts.sizes.sm },
+  leaveBtn: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.55)',
+    paddingVertical: 12,
+    paddingHorizontal: spacing.xxl,
+    backgroundColor: 'rgba(239,68,68,0.18)',
+    marginBottom: spacing.md,
+  },
+  leaveBtnText: { color: '#fecaca', fontWeight: '800', fontSize: fonts.sizes.sm },
 
   backBtn: {
     borderRadius: radius.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
