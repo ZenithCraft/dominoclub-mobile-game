@@ -244,7 +244,7 @@ function normalizeGameState(raw: any): GameState {
     firstPlayMade: !!raw?.firstPlayMade,
     matchScores: (raw?.matchScores && typeof raw.matchScores === 'object') ? raw.matchScores : { 1: 0, 2: 0 },
     roundNumber: asNumber(raw?.roundNumber, 1),
-    targetScore: asNumber(raw?.targetScore, 7),
+    targetScore: asNumber(raw?.targetScore, 6),
     matchWinnerTeam: raw?.matchWinnerTeam,
   };
 }
