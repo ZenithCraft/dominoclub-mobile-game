@@ -1,17 +1,22 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
+const fs = require('fs');
 
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '../..');
+// On EAS Build servers the project is uploaded standalone — workspaceRoot may not exist
+const workspaceExists = fs.existsSync(workspaceRoot);
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch the root node_modules (monorepo hoisted deps)
-config.watchFolders = [workspaceRoot];
+// Watch the root node_modules (monorepo hoisted deps) — only locally
+if (workspaceExists) {
+  config.watchFolders = [workspaceRoot];
+}
 
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
-  path.resolve(workspaceRoot, 'node_modules'),
+  ...(workspaceExists ? [path.resolve(workspaceRoot, 'node_modules')] : []),
 ];
 
 // Force all React-related packages to resolve to the single copy in

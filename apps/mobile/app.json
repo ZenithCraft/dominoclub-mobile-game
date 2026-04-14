@@ -3,9 +3,7 @@
     "name": "DominoClub",
     "slug": "dominoclub",
     "version": "1.0.0",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "orientation": "landscape",
     "icon": "./assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png",
     "userInterfaceStyle": "dark",

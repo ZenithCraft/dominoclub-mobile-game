@@ -14,7 +14,7 @@ import {
   Users2, DoorOpen, Lock, Unlock, Trash2,
 } from 'lucide-react';
 import { adminApi } from '../lib/api';
-import logo from '../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
+const logo = { src: '/logo.png' };
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
