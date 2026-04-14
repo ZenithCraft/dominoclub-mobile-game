@@ -418,7 +418,7 @@ export async function createDemoTournamentAdminHandler(req: Request, res: Respon
 
     for (const u of users) {
       const wallet = await prisma.wallet.findUnique({ where: { userId: u.id } });
-      if (!wallet || wallet.real_balance < entryFee) continue;
+      if (!wallet || Number(wallet.real_balance) < entryFee) continue;
       await prisma
         .$transaction([
           prisma.wallet.update({
@@ -919,6 +919,64 @@ export async function resolveFraudLogHandler(req: Request, res: Response) {
     });
     logger.info('[Admin] Fraud log resolved', { logId: id, type: log.type, userId: log.userId });
     res.json(log);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+// ─── Game Rooms ───────────────────────────────────────────────────────────────
+// Admin-managed slots: a room = mode + bet_amount combination.
+// Locking a room prevents new matches from being created in that slot.
+
+export async function getGameRoomsAdminHandler(req: Request, res: Response) {
+  try {
+    const rooms = await prisma.gameRoom.findMany({ orderBy: [{ mode: 'asc' }, { bet_amount: 'asc' }] });
+    res.json({ rooms: rooms.map((r) => ({ ...r, bet_amount: Number(r.bet_amount) })) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function createGameRoomAdminHandler(req: Request, res: Response) {
+  try {
+    const { mode, betAmount, label } = req.body as any;
+    if (!mode || betAmount === undefined) return res.status(400).json({ error: 'mode and betAmount are required' });
+    const parsed = parseFloat(String(betAmount));
+    if (!Number.isFinite(parsed) || parsed < 0) return res.status(400).json({ error: 'betAmount must be a non-negative number' });
+
+    const room = await prisma.gameRoom.upsert({
+      where: { mode_bet_amount: { mode, bet_amount: parsed } },
+      update: { label: label ? String(label) : undefined },
+      create: { mode, bet_amount: parsed, label: label ? String(label) : undefined },
+    });
+    logger.info('[Admin] Game room created/updated', { mode, betAmount: parsed });
+    res.status(201).json({ ...room, bet_amount: Number(room.bet_amount) });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function updateGameRoomAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { locked, label } = req.body as any;
+    const patch: any = {};
+    if (locked !== undefined) patch.locked = !!locked;
+    if (label  !== undefined) patch.label  = label ? String(label) : null;
+    const room = await prisma.gameRoom.update({ where: { id }, data: patch });
+    logger.info('[Admin] Game room updated', { id, patch });
+    res.json({ ...room, bet_amount: Number(room.bet_amount) });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function deleteGameRoomAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    await prisma.gameRoom.delete({ where: { id } });
+    logger.info('[Admin] Game room deleted', { id });
+    res.json({ message: 'Room deleted' });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

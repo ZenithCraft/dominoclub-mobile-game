@@ -31,6 +31,10 @@ import {
   getCouponRedemptionsAdminHandler,
   getFraudLogsHandler,
   resolveFraudLogHandler,
+  getGameRoomsAdminHandler,
+  createGameRoomAdminHandler,
+  updateGameRoomAdminHandler,
+  deleteGameRoomAdminHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -78,5 +82,10 @@ router.get('/coupons/:id/redemptions', getCouponRedemptionsAdminHandler);
 
 router.get('/fraud-logs', getFraudLogsHandler);
 router.patch('/fraud-logs/:id/resolve', resolveFraudLogHandler);
+
+router.get('/game-rooms', getGameRoomsAdminHandler);
+router.post('/game-rooms', createGameRoomAdminHandler);
+router.patch('/game-rooms/:id', updateGameRoomAdminHandler);
+router.delete('/game-rooms/:id', deleteGameRoomAdminHandler);
 
 export default router;

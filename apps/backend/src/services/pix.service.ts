@@ -223,14 +223,14 @@ export async function confirmPixDeposit(txid: string): Promise<void> {
 
     const coupon = await tx.coupon.findUnique({ where: { code: parsedCouponCode } });
     if (!coupon || !coupon.is_active) return;
-    if (transaction.amount < coupon.min_deposit_amount) return;
+    if (Number(transaction.amount) < Number(coupon.min_deposit_amount)) return;
 
     if (coupon.max_players !== null) {
       const used = await tx.couponRedemption.count({ where: { couponId: coupon.id } });
       if (used >= coupon.max_players) return;
     }
 
-    const rolloverAdded = coupon.bonus_amount * coupon.rollover_times;
+    const rolloverAdded = Number(coupon.bonus_amount) * coupon.rollover_times;
 
     try {
       await tx.couponRedemption.create({
@@ -273,8 +273,8 @@ export async function confirmPixDeposit(txid: string): Promise<void> {
 export async function processWithdrawal(userId: string, amountBRL: number, pixKey: string): Promise<string> {
   const wallet = await prisma.wallet.findUnique({ where: { userId } });
   if (!wallet) throw new Error('Wallet not found');
-  if (wallet.real_balance < amountBRL) throw new Error('Insufficient balance');
-  if (wallet.rollover_remaining > 0) throw new Error('Rollover requirement not met yet');
+  if (Number(wallet.real_balance) < amountBRL) throw new Error('Insufficient balance');
+  if (Number(wallet.rollover_remaining) > 0) throw new Error('Rollover requirement not met yet');
 
   const txid = uuidv4().replace(/-/g, '').slice(0, 26);
 
@@ -293,7 +293,7 @@ export async function processWithdrawal(userId: string, amountBRL: number, pixKe
         pix_id: txid,
         pix_key: pixKey,
         status: 'PENDING',
-        balance_after: wallet.real_balance - amountBRL,
+        balance_after: Number(wallet.real_balance) - amountBRL,
       },
     });
   });

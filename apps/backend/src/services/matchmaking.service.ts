@@ -139,6 +139,7 @@ async function tryMatch(mode: string) {
         if (a.variant !== b.variant) continue;
         if (a.betAmount !== b.betAmount) continue;
         if (await isPairBlocked(a.userId, b.userId)) continue;
+        if (await isRoomLocked(mode, a.betAmount)) continue;
         queue.splice(j, 1);
         queue.splice(i, 1);
         void createMatch([a, b], mode as any);
@@ -174,6 +175,7 @@ async function tryMatch(mode: string) {
               }
               if (blocked) continue;
 
+              if (await isRoomLocked(mode, group[0].betAmount)) continue;
               group.forEach((entry) => {
                 const idx = queue.findIndex((e) => e.userId === entry.userId);
                 if (idx !== -1) queue.splice(idx, 1);
@@ -297,6 +299,18 @@ export async function updatePartnerCooldownsAfterGame(
   }
 }
 
+async function isRoomLocked(mode: string, betAmount: number): Promise<boolean> {
+  try {
+    const room = await prisma.gameRoom.findFirst({
+      where: { mode: mode as any, bet_amount: betAmount },
+      select: { locked: true },
+    });
+    return room?.locked ?? false;
+  } catch {
+    return false;
+  }
+}
+
 async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' | 'TOURNAMENT_2V2' | 'RECREATIONAL_2V2') {
   const betAmount = Math.min(...players.map((p) => p.betAmount));
   const variant = players[0].variant;
@@ -331,7 +345,7 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
   volatileMatches.set(gameId, { gameId, betAmount, mode, variant, players: playerData });
 
   try {
-    const game = await prisma.game.create({
+    await prisma.game.create({
       data: {
         id: gameId,
         mode,

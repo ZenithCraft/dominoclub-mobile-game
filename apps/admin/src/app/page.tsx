@@ -11,7 +11,7 @@ import {
   AlertTriangle, Circle, ArrowUpRight, ArrowDownRight,
   Activity, Ban, CheckCircle2, Clock, XCircle, PlayCircle,
   Loader2, PanelLeftClose, PanelLeftOpen, TrendingUp, Gift, Link2,
-  Users2,
+  Users2, DoorOpen, Lock, Unlock, Trash2,
 } from 'lucide-react';
 import { adminApi } from '../lib/api';
 import logo from '../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
@@ -25,7 +25,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '.
 import { DateTimePicker } from '../components/ui/date-time-picker';
 import { cn } from '../lib/utils';
 
-type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments' | 'fraud' | 'pairBlocks' | 'teamPairs' | 'bonus' | 'config';
+type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments' | 'fraud' | 'pairBlocks' | 'teamPairs' | 'bonus' | 'rooms' | 'config';
 
 const formatInt  = (v: number) => new Intl.NumberFormat('pt-BR').format(v);
 const formatMoney = (v: number) =>
@@ -109,6 +109,7 @@ export default function AdminDashboard() {
     { id: 'pairBlocks',  label: 'Bloqueios',    Icon: Link2 },
     { id: 'teamPairs',   label: 'Duplas 2v2',   Icon: Users2 },
     { id: 'bonus',       label: 'Bônus',        Icon: Gift },
+    { id: 'rooms',       label: 'Salas',        Icon: DoorOpen },
     { id: 'config',      label: 'Config.',      Icon: Settings2 },
   ];
 
@@ -198,6 +199,7 @@ export default function AdminDashboard() {
           {tab === 'pairBlocks'   && <PairBlocksTab />}
           {tab === 'teamPairs'    && <TeamPairsTab />}
           {tab === 'bonus'        && <BonusTab />}
+          {tab === 'rooms'        && <GameRoomsTab />}
           {tab === 'config'       && <ConfigTab />}
         </div>
       </main>
@@ -1631,6 +1633,193 @@ function BonusTab() {
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const MODE_LABELS: Record<string, string> = {
+  ARENA_1V1:        'Arena 1v1',
+  CUP_1V1:          'Copa 1v1',
+  TOURNAMENT_2V2:   'Torneio 2v2',
+  RECREATIONAL_2V2: 'Recreativo 2v2',
+};
+
+// ─── Game Rooms Tab ───────────────────────────────────────────────────────────
+
+function GameRoomsTab() {
+  const { data, loading, error, reload } = useData<{ rooms: any[] }>('/game-rooms');
+  const [creating, setCreating]   = useState(false);
+  const [actioning, setActioning] = useState<string | null>(null);
+  const [form, setForm] = useState({ mode: 'ARENA_1V1', betAmount: '', label: '' });
+
+  const rooms: any[] = data?.rooms ?? [];
+
+  const create = async (e: FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      await adminApi.post('/game-rooms', {
+        mode:      form.mode,
+        betAmount: parseFloat(form.betAmount),
+        label:     form.label.trim() || undefined,
+      });
+      setForm(p => ({ ...p, betAmount: '', label: '' }));
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao criar sala');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const toggleLock = async (id: string, locked: boolean) => {
+    setActioning(id);
+    try {
+      await adminApi.patch(`/game-rooms/${id}`, { locked: !locked });
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro');
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm('Remover esta sala?')) return;
+    setActioning(id);
+    try {
+      await adminApi.delete(`/game-rooms/${id}`);
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao remover sala');
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Salas de jogo"
+        subtitle="Defina os valores de aposta disponíveis por modo. Travar uma sala impede novas partidas naquele slot."
+      >
+        <Button variant="outline" size="icon" onClick={reload} disabled={loading}>
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </Button>
+      </PageHeader>
+
+      {/* Create form */}
+      <Card className="mb-6 card-gradient">
+        <CardHeader className="pb-0">
+          <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nova sala</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <form onSubmit={create} className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+            <div className="space-y-1.5">
+              <Label>Modo</Label>
+              <Select value={form.mode} onValueChange={v => setForm(p => ({ ...p, mode: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(MODE_LABELS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Valor da aposta (R$)</Label>
+              <Input
+                value={form.betAmount}
+                onChange={e => setForm(p => ({ ...p, betAmount: e.target.value }))}
+                inputMode="decimal"
+                placeholder="Ex: 10.00"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Rótulo (opcional)</Label>
+              <Input
+                value={form.label}
+                onChange={e => setForm(p => ({ ...p, label: e.target.value }))}
+                placeholder="Ex: Sala VIP"
+              />
+            </div>
+            <div>
+              <Button type="submit" disabled={creating}>
+                {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Criar sala'}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {error ? (
+        <ErrorState msg={error} onRetry={reload} />
+      ) : loading ? (
+        <Card><CardContent className="p-0"><TableSkeleton cols={5} /></CardContent></Card>
+      ) : (
+        <>
+          <TableWrapper>
+            <thead>
+              <tr>{['Modo', 'Aposta', 'Rótulo', 'Status', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
+            </thead>
+            <tbody>
+              {rooms.map((r: any) => (
+                <tr key={r.id} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                  <Td><span className="text-xs">{MODE_LABELS[r.mode] ?? r.mode}</span></Td>
+                  <Td>
+                    <span className="font-semibold tabular-nums text-sm text-foreground">
+                      {formatMoney(r.bet_amount)}
+                    </span>
+                  </Td>
+                  <Td><span className="text-xs text-muted-foreground">{r.label || '—'}</span></Td>
+                  <Td>
+                    {r.locked
+                      ? <Badge variant="destructive" className="gap-1"><Lock className="w-2.5 h-2.5" />Travada</Badge>
+                      : <Badge variant="secondary"   className="gap-1"><Unlock className="w-2.5 h-2.5" />Aberta</Badge>
+                    }
+                  </Td>
+                  <Td>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant={r.locked ? 'outline' : 'destructive'}
+                        disabled={actioning === r.id}
+                        onClick={() => toggleLock(r.id, r.locked)}
+                      >
+                        {actioning === r.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : r.locked
+                            ? <><Unlock className="w-3 h-3 mr-1" />Abrir</>
+                            : <><Lock   className="w-3 h-3 mr-1" />Travar</>
+                        }
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={actioning === r.id}
+                        onClick={() => remove(r.id)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </Td>
+                </tr>
+              ))}
+              {rooms.length === 0 && <EmptyRow cols={5} msg="Nenhuma sala configurada. Crie salas para controlar quais apostas ficam disponíveis." />}
+            </tbody>
+          </TableWrapper>
+
+          {rooms.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Salas travadas bloqueiam novas partidas naquele modo + valor mas não afetam partidas já em andamento.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 const CONFIG_META = [
   { key: 'houseEdgePercent',        label: 'House Edge',               description: 'Percentual da casa em cada aposta.',                       unit: '%',  min: 0,  max: 50,  step: 0.5  },
