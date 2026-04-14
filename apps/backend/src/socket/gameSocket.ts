@@ -182,7 +182,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       return;
     }
 
-    const isPlayer = game.players.some((p) => p.userId === user.id);
+    const isPlayer = game.players.some((p: any) => p.userId === user.id);
     if (!isPlayer) {
       socket.emit('game:error', { message: 'You are not in this game' });
       return;
@@ -226,7 +226,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       socket.emit('game:error', { message: 'Game not active' });
       return;
     }
-    const isPlayer = state.players.some((p) => p.userId === user.id);
+    const isPlayer = state.players.some((p: any) => p.userId === user.id);
     if (!isPlayer) return;
 
     const seq = gameStateSeq.get(gameId) ?? 0;
