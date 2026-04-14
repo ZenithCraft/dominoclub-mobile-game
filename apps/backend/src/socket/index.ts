@@ -5,6 +5,7 @@ import { verifyAccessToken } from '../utils/jwt';
 import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
 import { setupGameSocket, activeGames, initTournamentScheduler } from './gameSocket';
+import { getDevUserById } from '../services/dev-user.store';
 import {
   enqueue,
   dequeue,
@@ -19,6 +20,7 @@ import {
 import { getRedisClient, getRedisSubscriber, isRedisAvailable } from '../services/redis.service';
 import { verifyIntegrityToken } from '../services/integrity.service';
 import { validateGpsBounds, updateUserGps, GpsCoords } from '../middleware/antifraud.middleware';
+import { getRuntimeConfig } from '../services/runtime-config.service';
 
 const VALID_MODES = ['ARENA_1V1', 'CUP_1V1', 'TOURNAMENT_2V2', 'RECREATIONAL_2V2'] as const;
 const VALID_VARIANTS = ['CARROCA', 'L_E_L', 'CRUZADA'] as const;
@@ -60,13 +62,25 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
 
     try {
       const payload = verifyAccessToken(token);
-      const user = await prisma.user.findUnique({
-        where: { id: payload.userId },
-        select: { id: true, name: true, avatar: true, is_banned: true },
-      });
-      if (!user || user.is_banned) return next(new Error('Unauthorized'));
-      (socket as any).user = user;
-      next();
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: payload.userId },
+          select: { id: true, name: true, avatar: true, is_banned: true },
+        });
+        if (!user || user.is_banned) return next(new Error('Unauthorized'));
+        (socket as any).user = user;
+        next();
+      } catch {
+        if (!config.devAuthBypass && config.env === 'production') return next(new Error('Unauthorized'));
+        const dev = getDevUserById(payload.userId);
+        (socket as any).user = {
+          id: payload.userId,
+          name: dev?.name ?? 'Dev User',
+          avatar: dev?.avatar ?? null,
+          is_banned: false,
+        };
+        next();
+      }
     } catch {
       next(new Error('Invalid token'));
     }
@@ -141,10 +155,17 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       }
 
       // Check wallet balance
-      const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } });
-      if (!wallet || wallet.real_balance + wallet.bonus_balance < data.betAmount) {
-        socket.emit('queue:error', { message: 'Saldo insuficiente' });
-        return;
+      if (data.betAmount > 0) {
+        try {
+          const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } });
+          if (!wallet || wallet.real_balance + wallet.bonus_balance < data.betAmount) {
+            socket.emit('queue:error', { message: 'Saldo insuficiente' });
+            return;
+          }
+        } catch {
+          socket.emit('queue:error', { message: 'Saldo insuficiente' });
+          return;
+        }
       }
 
       const entry: QueueEntry = {
@@ -157,7 +178,9 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       };
 
       enqueue(entry);
-      const botTimer = entry.betAmount === 0 ? startBotInjectionTimer(entry) : null;
+      const runtimeCfg = await getRuntimeConfig();
+      const botWaitSeconds = data.betAmount > 0 ? 0 : runtimeCfg.botInjectWaitSeconds;
+      const botTimer = startBotInjectionTimer(entry, botWaitSeconds);
       const position = getQueuePosition(user.id, data.mode);
 
       socket.emit('queue:joined', {
@@ -165,7 +188,7 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
         betAmount: data.betAmount,
         variant,
         position,
-        ...(entry.betAmount === 0 ? { botWaitSeconds: config.game.botInjectWaitSeconds } : {}),
+        botWaitSeconds,
       });
       emitQueueStats();
 

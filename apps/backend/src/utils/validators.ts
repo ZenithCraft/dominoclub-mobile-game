@@ -50,7 +50,7 @@ export const withdrawSchema = z.object({
   pixKey: pixKeySchema,
 });
 
-export const couponRedeemSchema = z.object({
+export const redeemCouponSchema = z.object({
   code: z.string().min(3).max(32),
 });
 

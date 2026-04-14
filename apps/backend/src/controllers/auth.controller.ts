@@ -5,6 +5,7 @@ import { loginSchema, verifyOtpSchema, cpfSchema } from '../utils/validators';
 import { checkMultiAccount } from '../middleware/antifraud.middleware';
 import { prisma } from '../services/prisma.service';
 import { config } from '../config';
+import { getDevUserById } from '../services/dev-user.store';
 
 export async function sendOtpHandler(req: Request, res: Response) {
   try {
@@ -231,22 +232,45 @@ export async function selfExclusionHandler(req: Request, res: Response) {
 export async function getMeHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).user?.userId;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        phone: true,
-        name: true,
-        email: true,
-        avatar: true,
-        cpf_verified: true,
-        phone_verified: true,
-        created_at: true,
-        wallet: { select: { real_balance: true, bonus_balance: true, rollover_remaining: true } },
-      },
-    });
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          phone: true,
+          name: true,
+          email: true,
+          avatar: true,
+          cpf_verified: true,
+          phone_verified: true,
+          created_at: true,
+          wallet: { select: { real_balance: true, bonus_balance: true, rollover_remaining: true } },
+        },
+      });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      res.json(user);
+    } catch {
+      if (!config.devAuthBypass && config.env === 'production') {
+        return res.status(500).json({ error: 'Server error' });
+      }
+      const dev = userId ? getDevUserById(userId) : null;
+      if (!dev) return res.status(404).json({ error: 'User not found' });
+      res.json({
+        id: dev.id,
+        phone: dev.phone,
+        name: dev.name,
+        email: null,
+        avatar: dev.avatar,
+        cpf_verified: dev.cpf_verified,
+        phone_verified: dev.phone_verified,
+        created_at: new Date().toISOString(),
+        wallet: {
+          real_balance: dev.wallet.real_balance,
+          bonus_balance: dev.wallet.bonus_balance,
+          rollover_remaining: 0,
+        },
+      });
+    }
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

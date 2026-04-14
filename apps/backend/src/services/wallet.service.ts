@@ -42,7 +42,7 @@ export async function deductBet(walletId: string, amount: number) {
   const useBonus = wallet.bonus_balance >= amount;
   const realDeduction = useBonus ? 0 : amount - Math.min(wallet.bonus_balance, amount);
   const bonusDeduction = useBonus ? amount : wallet.bonus_balance;
-  const rolloverDeduction = Math.min(wallet.rollover_remaining, amount);
+  const rolloverDeduction = wallet.rollover_remaining > 0 ? Math.min(wallet.rollover_remaining, amount) : 0;
 
   if (wallet.real_balance < realDeduction) throw new Error('Insufficient balance');
 
@@ -51,7 +51,7 @@ export async function deductBet(walletId: string, amount: number) {
     data: {
       real_balance: { decrement: realDeduction },
       bonus_balance: { decrement: bonusDeduction },
-      rollover_remaining: { decrement: rolloverDeduction },
+      ...(rolloverDeduction > 0 ? { rollover_remaining: { decrement: rolloverDeduction } } : {}),
     },
   });
 
@@ -100,71 +100,5 @@ export async function creditWin(walletId: string, amount: number) {
       status: 'COMPLETED',
       balance_after: wallet.real_balance,
     },
-  });
-}
-
-export async function redeemCoupon(userId: string, rawCode: string) {
-  const code = String(rawCode ?? '').trim().toUpperCase();
-  if (!code) throw new Error('Invalid coupon code');
-
-  const now = new Date();
-
-  return prisma.$transaction(async (tx) => {
-    const wallet = await tx.wallet.findUnique({ where: { userId } });
-    if (!wallet) throw new Error('Wallet not found');
-
-    const coupon = await tx.coupon.findFirst({
-      where: {
-        code,
-        active: true,
-      },
-    });
-    if (!coupon) throw new Error('Coupon not found or inactive');
-
-    if (coupon.starts_at && now < coupon.starts_at) throw new Error('Coupon not active yet');
-    if (coupon.expires_at && now > coupon.expires_at) throw new Error('Coupon expired');
-    if (coupon.max_uses !== null && coupon.uses >= coupon.max_uses) throw new Error('Coupon usage limit reached');
-
-    const already = await tx.couponRedemption.findFirst({
-      where: { couponId: coupon.id, userId },
-      select: { id: true },
-    });
-    if (already) throw new Error('Coupon already redeemed');
-
-    const bonusAmount = coupon.bonus_amount;
-    const rolloverAdd = bonusAmount * coupon.rollover_multiplier;
-
-    const updatedWallet = await tx.wallet.update({
-      where: { id: wallet.id },
-      data: {
-        bonus_balance: { increment: bonusAmount },
-        rollover_remaining: { increment: rolloverAdd },
-      },
-    });
-
-    await tx.coupon.update({
-      where: { id: coupon.id },
-      data: { uses: { increment: 1 } },
-    });
-
-    await tx.couponRedemption.create({
-      data: {
-        couponId: coupon.id,
-        userId,
-      },
-    });
-
-    await tx.transaction.create({
-      data: {
-        walletId: wallet.id,
-        type: 'BONUS',
-        amount: bonusAmount,
-        status: 'COMPLETED',
-        balance_after: updatedWallet.real_balance,
-        description: `Cupom ${coupon.code}`,
-      },
-    });
-
-    return { bonusAmount, rolloverAdded: rolloverAdd };
   });
 }

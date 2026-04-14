@@ -17,6 +17,7 @@ import {
   DominoVariant,
   WIN_POINTS,
 } from '../game/domino.engine';
+import { volatileMatches } from '../services/matchmaking.service';
 
 export const activeGames = new Map<string, GameState>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
@@ -146,10 +147,30 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
 
   // Join game room
   socket.on('game:join', async ({ gameId }: { gameId: string }) => {
-    const game = await prisma.game.findUnique({
-      where: { id: gameId },
-      include: { players: { include: { user: { select: { id: true, name: true, avatar: true } } } } },
-    });
+    let game: any = null;
+    try {
+      game = await prisma.game.findUnique({
+        where: { id: gameId },
+        include: { players: { include: { user: { select: { id: true, name: true, avatar: true } } } } },
+      });
+    } catch {
+      const v = volatileMatches.get(gameId);
+      if (v) {
+        game = {
+          id: v.gameId,
+          variant: v.variant,
+          bet_amount: v.betAmount,
+          mode: v.mode,
+          players: v.players.map((p: any) => ({
+            userId: p.userId,
+            team: p.team,
+            seat: p.seat,
+            is_bot: !!p.isBot,
+            user: { id: p.userId, name: p.isBot ? 'Bot' : 'Dev User', avatar: null },
+          })),
+        };
+      }
+    }
 
     if (!game) {
       socket.emit('game:error', { message: 'Game not found' });
@@ -166,10 +187,12 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     joinedGames.add(gameId);
 
     // Update connected status
-    await prisma.gamePlayer.updateMany({
-      where: { gameId, userId: user.id },
-      data: { connected: true },
-    });
+    try {
+      await prisma.gamePlayer.updateMany({
+        where: { gameId, userId: user.id },
+        data: { connected: true },
+      });
+    } catch {}
 
     const k = `${gameId}:${user.id}`;
     const pending = disconnectTimers.get(k);
@@ -316,21 +339,26 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
   socket.on('game:leave', async ({ gameId }: { gameId: string }) => {
     socket.leave(`game:${gameId}`);
     joinedGames.delete(gameId);
-    await prisma.gamePlayer.updateMany({
-      where: { gameId, userId: user.id },
-      data: { connected: false },
-    });
+    try {
+      await prisma.gamePlayer.updateMany({
+        where: { gameId, userId: user.id },
+        data: { connected: false },
+      });
+    } catch {}
     await forfeitGame(gameId, user.id, io, 'leave');
   });
 
   socket.on('disconnect', () => {
     const gameIds = [...joinedGames];
     joinedGames.clear();
-    gameIds.forEach(async (gameId) => {
-      await prisma.gamePlayer.updateMany({
-        where: { gameId, userId: user.id },
-        data: { connected: false },
-      });
+    gameIds.forEach((gameId) => {
+      void (async () => {
+        try {
+          await prisma.gamePlayer.updateMany({
+            where: { gameId, userId: user.id },
+            data: { connected: false },
+          });
+        } catch {}
       const k = `${gameId}:${user.id}`;
       const t = setTimeout(() => {
         disconnectTimers.delete(k);
@@ -342,6 +370,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
         userId: user.id,
         graceSeconds: config.game.disconnectGraceSeconds,
       });
+      })();
     });
   });
 }
@@ -350,11 +379,15 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
 
 async function startGame(gameId: string, variant: DominoVariant, players: any[], betAmount: number, io: SocketServer) {
   // Deduct bets
-  for (const player of players) {
-    if (!player.is_bot) {
-      const wallet = await prisma.wallet.findUnique({ where: { userId: player.userId } });
-      if (wallet) {
-        await deductBet(wallet.id, betAmount);
+  if (betAmount > 0) {
+    for (const player of players) {
+      if (!player.is_bot) {
+        try {
+          const wallet = await prisma.wallet.findUnique({ where: { userId: player.userId } });
+          if (wallet) {
+            await deductBet(wallet.id, betAmount);
+          }
+        } catch {}
       }
     }
   }
@@ -379,7 +412,9 @@ async function startGame(gameId: string, variant: DominoVariant, players: any[],
     moves: [],
   });
 
-  await prisma.game.update({ where: { id: gameId }, data: { status: 'PLAYING' } });
+  try {
+    await prisma.game.update({ where: { id: gameId }, data: { status: 'PLAYING' } });
+  } catch {}
 
   broadcastGameState(gameId, state, io);
   startTurnTimer(gameId, state, io);
@@ -415,66 +450,39 @@ function startTurnTimer(gameId: string, state: GameState, io: SocketServer) {
     const currentState = activeGames.get(gameId);
     if (!currentState || currentState.status !== 'playing') return;
 
+    // Auto-play on timeout instead of auto-pass
     const timedOutIndex = currentState.currentPlayerIndex;
-    const timedOutPlayer = currentState.players[timedOutIndex];
+    const move = getBotMove(currentState, timedOutIndex);
 
-    const pickOpeningTile = (hand: [number, number][]) => {
-      const doubles = hand.filter((t) => t[0] === t[1]).sort((a, b) => b[0] - a[0]);
-      if (doubles.length) return doubles[0];
-      const sorted = [...hand].sort((a, b) => {
-        const aMax = Math.max(a[0], a[1]);
-        const bMax = Math.max(b[0], b[1]);
-        if (aMax !== bMax) return bMax - aMax;
-        const aMin = Math.min(a[0], a[1]);
-        const bMin = Math.min(b[0], b[1]);
-        if (aMin !== bMin) return bMin - aMin;
-        return 0;
-      });
-      return sorted[0] ?? null;
-    };
-
-    const moves = getValidMoves(currentState, timedOutIndex);
     let newState: GameState;
-
-    if (!currentState.firstPlayMade) {
-      const opening = pickOpeningTile(timedOutPlayer.hand);
-      if (!opening) return;
-      newState = applyMove(currentState, timedOutIndex, opening, 'left', false);
+    if (move.action === 'play' && move.tile && move.side) {
+      newState = applyMove(currentState, timedOutIndex, move.tile, move.side, move.flipped ?? false);
       recordMove(gameId, {
         type: 'play',
-        userId: timedOutPlayer.userId,
+        userId: currentPlayer.userId,
         playerIndex: timedOutIndex,
         timestamp: Date.now(),
-        tile: opening,
-        side: 'left',
-        flipped: false,
+        tile: move.tile,
+        side: move.side,
+        flipped: move.flipped ?? false,
       });
-    } else if (moves.length > 0) {
-      const choice = moves[Math.floor(Math.random() * moves.length)];
-      const play = choice.plays[Math.floor(Math.random() * choice.plays.length)] ?? choice.plays[0];
-      newState = applyMove(currentState, timedOutIndex, choice.tile, play.side, play.flipped);
-      recordMove(gameId, {
-        type: 'play',
-        userId: timedOutPlayer.userId,
-        playerIndex: timedOutIndex,
-        timestamp: Date.now(),
-        tile: choice.tile,
-        side: play.side,
-        flipped: play.flipped,
-      });
-    } else if (currentState.boneyard.length > 0) {
+    } else if (move.action === 'draw') {
       newState = drawFromBoneyard(currentState, timedOutIndex);
       recordMove(gameId, {
         type: 'draw',
-        userId: timedOutPlayer.userId,
+        userId: currentPlayer.userId,
         playerIndex: timedOutIndex,
         timestamp: Date.now(),
       });
+      activeGames.set(gameId, newState);
+      broadcastGameState(gameId, newState, io);
+      startTurnTimer(gameId, newState, io);
+      return;
     } else {
       newState = applyPass(currentState, timedOutIndex);
       recordMove(gameId, {
         type: 'pass',
-        userId: timedOutPlayer.userId,
+        userId: currentPlayer.userId,
         playerIndex: timedOutIndex,
         timestamp: Date.now(),
       });
@@ -483,7 +491,7 @@ function startTurnTimer(gameId: string, state: GameState, io: SocketServer) {
     activeGames.set(gameId, newState);
 
     broadcastGameState(gameId, newState, io);
-    io.to(`game:${gameId}`).emit('game:timeout', { userId: timedOutPlayer.userId });
+    io.to(`game:${gameId}`).emit('game:timeout', { userId: currentPlayer.userId });
 
     if (newState.status === 'finished') {
       handleGameEnd(gameId, newState, io);
@@ -572,14 +580,20 @@ async function handleGameEnd(
 ) {
   clearTurnTimer(gameId);
 
-  const game = await prisma.game.findUnique({ where: { id: gameId } });
-  if (!game) return;
+  let game: any = null;
+  try {
+    game = await prisma.game.findUnique({ where: { id: gameId } });
+  } catch {
+    game = null;
+  }
 
   // ── Forfeit / Abandoned — end match immediately ──────────────────────────
   if (opts?.status === 'ABANDONED') {
     activeGames.delete(gameId);
     gameStateSeq.delete(gameId);
-    await finalizeMatch(gameId, state, game, io, 'ABANDONED');
+    if (game) {
+      await finalizeMatch(gameId, state, game, io, 'ABANDONED');
+    }
     return;
   }
 
@@ -626,7 +640,9 @@ async function handleGameEnd(
     // Match is over — pay out and close the DB game
     activeGames.delete(gameId);
     gameStateSeq.delete(gameId);
-    await finalizeMatch(gameId, state, game, io, 'FINISHED');
+    if (game) {
+      await finalizeMatch(gameId, state, game, io, 'FINISHED');
+    }
   } else {
     // Start next round after a 4-second pause (client shows round banner)
     setTimeout(() => {
@@ -649,7 +665,7 @@ async function finalizeMatch(
 ) {
   const prizePool = game.prize_pool;
 
-  // The overall match winner is whoever reached the target score (or team that didn't forfeit)
+  // The overall match winner is whoever reached 7 pts (or team that didn't forfeit)
   const matchWinnerTeam = state.matchWinnerTeam ?? state.winnerTeam;
   const winningPlayers  = matchWinnerTeam
     ? state.players.filter((p) => p.team === matchWinnerTeam && !p.isBot)

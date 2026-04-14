@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
-import { getWallet, deposit, withdraw, getTransaction, redeemCoupon } from '../services/wallet.service';
+import { getWallet, deposit, withdraw, getTransaction } from '../services/wallet.service';
+import { redeemCoupon } from '../services/coupon.service';
 import { confirmPixDeposit, verifyPixWebhookSignature } from '../services/pix.service';
-import { depositSchema, withdrawSchema, couponRedeemSchema } from '../utils/validators';
+import { depositSchema, redeemCouponSchema, withdrawSchema } from '../utils/validators';
 import { logger } from '../utils/logger';
 
 export async function getWalletHandler(req: Request, res: Response) {
@@ -39,9 +40,9 @@ export async function withdrawHandler(req: Request, res: Response) {
 export async function redeemCouponHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).user?.userId;
-    const { code } = couponRedeemSchema.parse(req.body);
+    const { code } = redeemCouponSchema.parse(req.body);
     const result = await redeemCoupon(userId, code);
-    res.status(201).json({ message: 'Coupon redeemed', ...result });
+    res.status(201).json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

@@ -17,10 +17,10 @@ import * as Notifications from 'expo-notifications';
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -37,7 +37,7 @@ async function scheduleTournamentNotification(startsAt: Date, tournamentName: st
         body: `${tournamentName} começa em 1 minuto. Entre agora!`,
         sound: true,
       },
-      trigger: { type: 'timeInterval', seconds: Math.floor(triggerMs / 1000), repeats: false } as any,
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.floor(triggerMs / 1000), repeats: false },
     });
   } catch {}
 }
