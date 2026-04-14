@@ -21,7 +21,12 @@ function getSocketUrl(): string {
     ? (isLocalhostWeb ? 'http://localhost:3001' : location.origin)
     : 'http://localhost:3001';
 }
-const IS_MOCK    = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
+function isMockMode(): boolean {
+  return (
+    process.env.EXPO_PUBLIC_MOCK_MODE === 'true' ||
+    (typeof window !== 'undefined' && !!(window as any).__MOCK_GAME__)
+  );
+}
 
 let socket: Socket | null = null;
 
@@ -95,7 +100,7 @@ function createSocket(token: string | null) {
 }
 
 export async function connectSocket(): Promise<Socket> {
-  if (IS_MOCK) {
+  if (isMockMode()) {
     const { fakeSocket } = require('../mocks/fakeSocket');
     return fakeSocket as unknown as Socket;
   }

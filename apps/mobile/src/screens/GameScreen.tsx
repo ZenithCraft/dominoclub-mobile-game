@@ -1101,6 +1101,7 @@ export function GameScreen({ navigation, route }: Props) {
 
   const { width: viewportWidth } = useWindowDimensions();
   const [feltWidth, setFeltWidth] = useState(0);
+  const [tableBgSize, setTableBgSize] = useState({ width: 0, height: 0 });
 
   const [turnTimer, setTurnTimer]       = useState(15);
   const [resultModal, setResultModal]   = useState(false);
@@ -1199,7 +1200,7 @@ export function GameScreen({ navigation, route }: Props) {
   const is2v2 = currentGame?.mode?.includes('2V2') ?? false;
   const boardTileSize: DominoTileSize = 'xs';
   const boardTilePreset = TILE_DIMS[boardTileSize];
-  const tableHeight = Math.round(Math.min(viewportWidth * 0.88, 940) / (is2v2 ? 2.1 : 2.6));
+  const tableHeight = Math.round(Math.min(viewportWidth * 0.88, 940) / (is2v2 ? 2.1 : 2.2));
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
   const myPlayerIndex = (() => {
     const players = currentGame?.players ?? [];
@@ -1832,31 +1833,20 @@ export function GameScreen({ navigation, route }: Props) {
                 </View>
               )}
 
-              <View style={styles.tableBg}>
-                <View pointerEvents="none" style={styles.tableBgNoise}>
-                  <FeltNoiseOverlay seed={1337} dots={520} opacity={0.06} />
-                </View>
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={['rgba(255,255,255,0.14)', 'rgba(0,0,0,0.00)']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.tableBgHighlight}
-                />
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={['rgba(0,0,0,0.32)', 'rgba(0,0,0,0.06)', 'rgba(0,0,0,0.32)']}
-                  locations={[0, 0.52, 1]}
-                  style={styles.tableBgVignetteV}
-                />
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={['rgba(0,0,0,0.28)', 'rgba(0,0,0,0.04)', 'rgba(0,0,0,0.28)']}
-                  locations={[0, 0.5, 1]}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={styles.tableBgVignetteH}
-                />
+              <View
+                style={styles.tableBg}
+                onLayout={(e) => {
+                  const { width, height } = e.nativeEvent.layout;
+                  setTableBgSize({ width: Math.round(width), height: Math.round(height) });
+                }}
+              >
+                {tableBgSize.width > 0 && (
+                  <Image
+                    source={require('../../assets/Rectangle 1.png')}
+                    style={{ position: 'absolute', top: -tableBgSize.height * 0.15, left: -tableBgSize.width * 0.15, width: tableBgSize.width * 1.3, height: tableBgSize.height * 1.3 }}
+                    resizeMode="cover"
+                  />
+                )}
 
                 <View
                   style={styles.tableFelt}
@@ -2339,15 +2329,10 @@ const styles = StyleSheet.create({
   },
   tableBg: {
     flex: 1,
-    backgroundColor: '#3aa61a',
     borderRadius: 999,
     overflow: 'hidden',
     position: 'relative',
   },
-  tableBgNoise: { ...StyleSheet.absoluteFillObject },
-  tableBgHighlight: { ...StyleSheet.absoluteFillObject },
-  tableBgVignetteV: { ...StyleSheet.absoluteFillObject },
-  tableBgVignetteH: { ...StyleSheet.absoluteFillObject },
   tableFelt: {
     flex: 1,
     backgroundColor: 'transparent',
