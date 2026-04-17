@@ -1084,20 +1084,28 @@ const oppStyles = StyleSheet.create({
   avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
 });
 
-// ─── Side player card (4p left/right) — compact vertical ─────────────────────
+// ─── Side player card (4p left/right) — horizontal pill, same as OpponentCard ─
 
-function SidePlayerCard({ player, tileCount, isTurn, team = 0 }: { player: any; tileCount: number; isTurn: boolean; team?: number }) {
+function SidePlayerCard({ player, tileCount, isTurn, team = 0, matchScore = 0 }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
   const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
   return (
     <LinearGradient
-      colors={['rgba(8,38,14,0.97)', 'rgba(20,70,14,0.95)']}
+      colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
       start={{ x: 0, y: 0 }}
-      end={{ x: 0, y: 1 }}
+      end={{ x: 1, y: 0 }}
       style={[sideStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
     >
+      <View style={sideStyles.sideSlot}>
+        <DominoTile tile={[1, 1]} size="icon" />
+        <Text style={sideStyles.tileCount}>{tileCount}</Text>
+      </View>
+      <View style={sideStyles.nameWrap}>
+        <Text style={sideStyles.name} numberOfLines={1}>{name}</Text>
+        <Text style={sideStyles.sub}>{matchScore}/6 pts</Text>
+      </View>
       <View style={sideStyles.avatar}>
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={sideStyles.avatarImg} />
@@ -1105,28 +1113,45 @@ function SidePlayerCard({ player, tileCount, isTurn, team = 0 }: { player: any; 
           <Text style={sideStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
         )}
       </View>
-      <Text style={sideStyles.name} numberOfLines={1}>{name}</Text>
-      <View style={sideStyles.tileRow}>
-        <DominoTile tile={[1, 1]} size="icon" />
-        <Text style={sideStyles.tileCount}>{tileCount}</Text>
-      </View>
     </LinearGradient>
   );
 }
 const sideStyles = StyleSheet.create({
   card: {
-    borderWidth: 2,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: radius.full,
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.55)',
+    width: 180,
+  },
+  sideSlot: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    width: 76,
+    width: 52,
   },
+  tileCount: {
+    color: '#c8c8c8',
+    fontWeight: '800',
+    fontSize: 22,
+    lineHeight: 24,
+  },
+  nameWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  sub:  { color: '#fff', fontSize: fonts.sizes.sm, textAlign: 'center' },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -1135,16 +1160,7 @@ const sideStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { color: '#fff', fontWeight: '900', fontSize: 15 },
-  name: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 12,
-    textAlign: 'center',
-    maxWidth: 68,
-  },
-  tileRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  tileCount: { color: '#c8c8c8', fontWeight: '800', fontSize: 17 },
+  avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
 });
 
 // ─── My player card (right side, below emoji) ────────────────────────────────
@@ -1431,6 +1447,14 @@ export function GameScreen({ navigation, route }: Props) {
       { tile: [5,2], side:'left',  flipped:true  },
       { tile: [5,1], side:'left',  flipped:true  },
       { tile: [5,0], side:'left',  flipped:true  },
+      { tile: [0,1], side:'right', flipped:false },
+      { tile: [1,3], side:'right', flipped:false },
+      { tile: [3,3], side:'right', flipped:false },
+      { tile: [3,5], side:'right', flipped:false },
+      { tile: [5,5], side:'right', flipped:false },
+      { tile: [5,6], side:'right', flipped:false },
+      { tile: [6,2], side:'right', flipped:false },
+      { tile: [2,4], side:'right', flipped:false },
     ];
     const mockState = {
       id: 'dev-mock-2v2',
@@ -1955,8 +1979,8 @@ export function GameScreen({ navigation, route }: Props) {
   const SNAKE_GAP_BASE = 5;
   const SNAKE_GAP = SNAKE_GAP_BASE;
   const snakeMaxW = feltWidth
-    ? Math.max(0, feltWidth * (is4Player ? 0.76 : 0.90))
-    : Math.max(0, viewportWidth * (is4Player ? 0.64 : 0.78));
+    ? Math.max(0, feltWidth * (is4Player ? 0.82 : 0.90))
+    : Math.max(0, viewportWidth * (is4Player ? 0.68 : 0.78));
   const SNAKE_H_PER_ROW = Math.max(
     6,
     Math.min(is4Player ? 8 : 11, Math.floor((snakeMaxW + SNAKE_GAP) / (boardTilePreset.long + SNAKE_GAP)))
@@ -2087,12 +2111,13 @@ export function GameScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </View>
 
-      {/* ── Middle: [left player] [table] [emoji] [right player] ── */}
+      {/* ── Middle: [table] (side players are absolute overlays on tableFrame) ── */}
       <View style={styles.middle}>
+
         {/* Table */}
         <View style={styles.tableWrap}>
           <View style={styles.tableArea}>
-            <View style={[styles.tableFrame, { height: tableHeight }]}>
+            <View style={[styles.tableFrame, { height: tableHeight, width: is4Player ? '85%' : '90%' }]}>
               {topOpponent && (
                 <View style={styles.oppCardOverlay}>
                   <View style={styles.playerCardFxWrap}>
@@ -2102,18 +2127,19 @@ export function GameScreen({ navigation, route }: Props) {
                 </View>
               )}
 
+              {/* Side players anchored to table edges */}
               {is4Player && leftOpponent && (
-                <View style={styles.tableSideBadgeLeft}>
+                <View style={styles.sideCardLeft}>
                   <View style={styles.playerCardFxWrap}>
-                    <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} team={leftOpponent.team} />
+                    <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} team={leftOpponent.team} matchScore={currentGame.matchScores?.[leftOpponent.team] ?? 0} />
                     {renderPlayerFx(leftOpponent.userId, 'left')}
                   </View>
                 </View>
               )}
               {is4Player && rightOpponent && (
-                <View style={styles.tableSideBadgeRight}>
+                <View style={styles.sideCardRight}>
                   <View style={styles.playerCardFxWrap}>
-                    <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} team={rightOpponent.team} />
+                    <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} team={rightOpponent.team} matchScore={currentGame.matchScores?.[rightOpponent.team] ?? 0} />
                     {renderPlayerFx(rightOpponent.userId, 'right')}
                   </View>
                 </View>
@@ -2467,6 +2493,7 @@ export function GameScreen({ navigation, route }: Props) {
 
           </View>
         </View>
+
 
       </View>
 
@@ -2829,7 +2856,21 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     gap: spacing.sm,
   },
-  tableWrap: { flex: 1, position: 'relative' },
+  tableWrap: { flex: 1, minWidth: 0, position: 'relative' },
+  sideCardLeft: {
+    position: 'absolute',
+    left: 0,
+    top: '50%',
+    zIndex: 20,
+    transform: [{ translateX: -60 }, { translateY: -30 }],
+  },
+  sideCardRight: {
+    position: 'absolute',
+    right: 0,
+    top: '50%',
+    zIndex: 20,
+    transform: [{ translateX: 60 }, { translateY: -30 }],
+  },
   tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative', paddingBottom: 130 },
   oppCardOverlay: {
     position: 'absolute',
