@@ -157,9 +157,9 @@ export function WalletScreen() {
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const successAnim = useRef(new Animated.Value(0)).current;
 
-  const realBalance    = user?.wallet?.real_balance ?? 0;
-  const bonusBalance   = user?.wallet?.bonus_balance ?? 0;
-  const rolloverRemaining = user?.wallet?.rollover_remaining ?? 0;
+  const realBalance    = Number(user?.wallet?.real_balance ?? 0);
+  const bonusBalance   = Number(user?.wallet?.bonus_balance ?? 0);
+  const rolloverRemaining = Number(user?.wallet?.rollover_remaining ?? 0);
   const canWithdraw    = rolloverRemaining === 0 && realBalance >= 20;
 
   const [selectedDate, setSelectedDate] = useState<string | null>(null); // yyyy-mm-dd

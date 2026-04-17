@@ -35,6 +35,7 @@ import {
   createGameRoomAdminHandler,
   updateGameRoomAdminHandler,
   deleteGameRoomAdminHandler,
+  getGameLogsHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -51,6 +52,7 @@ router.get('/users', getUsersHandler);
 router.patch('/users/:id/ban', banUserHandler);
 
 router.get('/games', getGamesHandler);
+router.get('/games/:id/logs', getGameLogsHandler);
 router.get('/games/:id/replay', getGameReplayAdminHandler);
 
 router.get('/transactions', getTransactionsHandler);

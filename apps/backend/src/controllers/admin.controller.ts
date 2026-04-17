@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 import { config } from '../config';
 import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
@@ -330,6 +332,31 @@ export async function getGameReplayAdminHandler(req: Request, res: Response) {
     if (!game) return res.status(404).json({ error: 'Game not found' });
 
     res.json(game);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─── Game Logs ────────────────────────────────────────────────────────────────
+
+export async function getGameLogsHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const logFile = path.join(process.cwd(), 'logs', 'matches.log');
+
+    if (!fs.existsSync(logFile)) {
+      return res.json({ logs: [] });
+    }
+
+    const raw = fs.readFileSync(logFile, 'utf-8');
+    const logs = raw
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .filter((e): e is Record<string, any> => e !== null && e.matchId === id)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    res.json({ logs });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

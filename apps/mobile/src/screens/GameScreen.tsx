@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, ImageBackground, Image,
   TouchableOpacity, Modal, Alert, Animated, Pressable, ActivityIndicator,
-  Platform, useWindowDimensions, Easing, PanResponder,
+  Platform, useWindowDimensions, Easing, PanResponder, Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -242,6 +242,9 @@ function normalizeGameState(raw: any): GameState {
     turnStartedAt: raw?.turnStartedAt,
     boneyard: Array.isArray(raw?.boneyard) ? raw.boneyard : [],
     firstPlayMade: !!raw?.firstPlayMade,
+    requiredFirstTile: Array.isArray(raw?.requiredFirstTile) && raw.requiredFirstTile.length === 2
+      ? [Number(raw.requiredFirstTile[0]), Number(raw.requiredFirstTile[1])]
+      : undefined,
     matchScores: (raw?.matchScores && typeof raw.matchScores === 'object') ? raw.matchScores : { 1: 0, 2: 0 },
     roundNumber: asNumber(raw?.roundNumber, 1),
     targetScore: asNumber(raw?.targetScore, 6),
@@ -280,7 +283,15 @@ function computeOpenEndsFromBoard(board: PlacedTile[], variant: string) {
 }
 
 function canPlayTile(tile: Tile, game: GameState): PlayOption[] {
-  if (!game.firstPlayMade && (!game.board || game.board.length === 0)) return [{ side: 'left', flipped: false }];
+  if (!game.firstPlayMade && (!game.board || game.board.length === 0)) {
+    // Only the required opening tile (highest double) is playable on the first move.
+    // If the server hasn't sent requiredFirstTile yet, fall back to allowing any tile.
+    if (game.requiredFirstTile) {
+      const [ra, rb] = game.requiredFirstTile;
+      if (tile[0] !== ra || tile[1] !== rb) return [];
+    }
+    return [{ side: 'left', flipped: false }];
+  }
   let leftOpen = game.leftOpen;
   let rightOpen = game.rightOpen;
   let topOpen = game.topOpen;
@@ -398,7 +409,7 @@ function buildSnakeLayout(
   hPerRow: number,
   base: { short: number; long: number },
   gap: number,
-  overlap: number,
+  _overlap: number,
   scale: number
 ): { placed: SnakePlaced[]; width: number; height: number } {
   if (!seq.length) return { placed: [], width: 0, height: 0 };
@@ -407,7 +418,6 @@ function buildSnakeLayout(
   const L = Math.round(base.long * scale);
   const GH = Math.max(1, Math.round(gap * scale));
   const GV = Math.max(1, Math.round((gap + 2) * scale));
-  const O = Math.max(0, Math.round(overlap * scale));
 
   const placed: SnakePlaced[] = [];
   let cursorY = 0;
@@ -417,78 +427,245 @@ function buildSnakeLayout(
 
   const rowCells = hPerRow + 1;
   const rows = Math.ceil(seq.length / rowCells);
-  const attach = Math.min(Math.floor(S * 0.18), O);
-  const maxStep = Math.max(1, (L - attach) + GH);
-  const maxRowWidth = (hPerRow - 1) * maxStep + L;
 
+  // ── Pass 1: pre-compute per-row tile widths so rowBaseX can be resolved ──────
+  // Each row has variable tile steps: horizontal tiles use L+GH, doubles use S+GH.
+  // rowBaseX[n] offsets row n so that the corner always aligns with the actual
+  // last tile in the chain (not a fixed row-boundary), supporting partial rows:
+  //   LTR→RTL: corner left of LTR = rightmost RTL tile right
+  //             baseX[n+1] = baseX[n] + cum_n[last_n+1] − totalWidth[n+1]
+  //   RTL→LTR: corner right of RTL = leftmost LTR tile left
+  //             baseX[n+1] = baseX[n] + totalWidth[n] − cum_n[last_n+1]
+  const perRow: { tiles: (Tile | null)[]; corner: Tile | null; steps: number[]; cum: number[]; w: number; first: number; last: number }[] = [];
+  for (let r = 0; r < rows; r++) {
+    const bi = r * rowCells;
+    const tiles = Array.from({ length: hPerRow }, (_, i) => seq[bi + i] ?? null) as (Tile | null)[];
+    const corner = (seq[bi + hPerRow] ?? null) as Tile | null;
+    const steps = tiles.map(t => (!t || t[0] !== t[1]) ? L + GH : S + GH);
+    const cum: number[] = [0];
+    for (const w of steps) cum.push(cum[cum.length - 1] + w);
+    let pFirst = -1, pLast = -1;
+    for (let i = 0; i < tiles.length; i++) { if (tiles[i]) { if (pFirst < 0) pFirst = i; pLast = i; } }
+    perRow.push({ tiles, corner, steps, cum, w: cum[hPerRow], first: pFirst, last: pLast });
+  }
+
+  const rowBaseX: number[] = [0];
+  for (let r = 0; r < rows - 1; r++) {
+    const rtl = r % 2 === 1;
+    const rLast = perRow[r].last;
+    let rLastCum = rLast >= 0 ? perRow[r].cum[rLast + 1] : perRow[r].w;
+    // Perpendicular double: corner sits directly below the double (same X column, no horizontal offset)
+    if (rLast >= 0 && perRow[r].corner) {
+      const lastT = perRow[r].tiles[rLast];
+      if (lastT && lastT[0] === lastT[1]) {
+        rLastCum = perRow[r].cum[rLast + 1] - Math.floor(GH / 2);
+      }
+    }
+    if (!rtl) {
+      rowBaseX.push(rowBaseX[r] + rLastCum - perRow[r + 1].w);
+    } else {
+      rowBaseX.push(rowBaseX[r] + perRow[r].w - rLastCum);
+    }
+  }
+
+  // ── Pass 2: place tiles ───────────────────────────────────────────────────────
   for (let rowNum = 0; rowNum < rows; rowNum++) {
     const rtl = rowNum % 2 === 1;
-    const baseIdx = rowNum * rowCells;
-    const rowTiles = seq.slice(baseIdx, baseIdx + hPerRow);
-    const cornerTile = seq[baseIdx + hPerRow] ?? null;
-
-    let first = -1;
-    let last = -1;
-    for (let i = 0; i < rowTiles.length; i++) {
-      if (rowTiles[i]) { first = i; break; }
-    }
-    for (let i = rowTiles.length - 1; i >= 0; i--) {
-      if (rowTiles[i]) { last = i; break; }
-    }
+    const { tiles: rowTiles, corner: cornerTile, cum: cumSteps, w: totalRowWidth, first, last } = perRow[rowNum];
+    const baseX = rowBaseX[rowNum];
     if (first === -1 && !cornerTile) continue;
 
-    const rowHeight = Math.max(S, L);
+    const rowHeight = L;
 
     for (let i = 0; i < rowTiles.length; i++) {
       const t = rowTiles[i];
       if (!t) continue;
       const isDouble = t[0] === t[1];
       const horizontal = !isDouble;
-      const proj = horizontal ? L : S;
-      const w = proj;
-      const h = horizontal ? S : L;
+      const tileW = horizontal ? L : S;
+      const tileH = horizontal ? S : L;
 
-      const cellX = rtl ? (hPerRow - 1 - i) * maxStep : i * maxStep;
-      const offset = Math.floor((maxStep - proj) / 2);
-      const left = cellX + offset;
-      const top = cursorY + Math.floor((rowHeight - h) / 2);
-      
-      placed.push({
-        tile: rtl ? ([t[1], t[0]] as Tile) : t,
-        x: left,
-        y: top,
-        horizontal,
-      });
+      // cell origin in row-local coords; GH/2 is the consistent leading margin
+      const cellXLocal = rtl ? (totalRowWidth - cumSteps[i + 1]) : cumSteps[i];
+      const left = baseX + cellXLocal + Math.floor(GH / 2);
+      const top  = cursorY + Math.floor((rowHeight - tileH) / 2);
+
+      placed.push({ tile: rtl ? ([t[1], t[0]] as Tile) : t, x: left, y: top, horizontal });
       minX = Math.min(minX, left);
-      maxX = Math.max(maxX, left + w);
-      maxY = Math.max(maxY, top + h);
+      maxX = Math.max(maxX, left + tileW);
+      maxY = Math.max(maxY, top + tileH);
     }
 
     if (cornerTile) {
-      const offsetL = Math.floor((maxStep - L) / 2);
-      const rightEdge = (hPerRow - 1) * maxStep + offsetL + L;
-      const leftEdge = offsetL;
-      
       const cornerW = S;
-      const cornerH = L;
-      const cornerLeft = rtl ? (leftEdge + attach - cornerW) : (rightEdge - attach);
-      const cornerTop = cursorY + rowHeight - attach;
-      
+      let cornerLeft: number;
+      let cornerTop: number;
+
+      // When the last tile before the corner is a double it is perpendicular to the chain.
+      // Place the corner BELOW the double (same x) rather than to its side.
+      const lastIsDouble = last >= 0 && rowTiles[last] != null && rowTiles[last]![0] === rowTiles[last]![1];
+
+      if (lastIsDouble) {
+        // Perpendicular double: corner directly below the double, same left x
+        if (rtl) {
+          const leftCellStart = last >= 0 ? (totalRowWidth - cumSteps[last + 1]) : 0;
+          cornerLeft = baseX + leftCellStart + Math.floor(GH / 2);
+        } else {
+          cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + Math.floor(GH / 2);
+        }
+        // GH gap above and below the corner — same breathing room as horizontal piece margins
+        cornerTop = cursorY + L + GH;
+        cursorY = cursorY + L + Math.floor((L - S) / 2) + S + 2 * GH;
+      } else {
+        if (rtl) {
+          // Left-side corner: within the leftmost tile's column, left-aligned
+          const leftCellStart = last >= 0 ? (totalRowWidth - cumSteps[last + 1]) : 0;
+          cornerLeft = baseX + leftCellStart + Math.floor(GH / 2);
+        } else {
+          // Right-side corner: within the last tile's column, right-aligned
+          cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + Math.floor(GH / 2) + L - S;
+        }
+        // GH gap above and below the corner — same breathing room as horizontal piece margins
+        cornerTop = cursorY + Math.floor((L + S) / 2) + GH;
+        cursorY = cursorY + L + S + 2 * GH;
+      }
+
       placed.push({ tile: cornerTile, x: cornerLeft, y: cornerTop, horizontal: false });
       minX = Math.min(minX, cornerLeft);
       maxX = Math.max(maxX, cornerLeft + cornerW);
-      maxY = Math.max(maxY, cornerTop + cornerH);
-      cursorY = cornerTop + cornerH - attach + GV;
+      maxY = Math.max(maxY, cornerTop + L);
     } else {
       cursorY = cursorY + rowHeight + GV;
     }
   }
 
   if (!placed.length) return { placed: [], width: 0, height: 0 };
-  const contentW = Math.max(1, maxX - minX);
-  const shiftX = Math.floor((maxRowWidth - contentW) / 2) - minX;
+  const shiftX = -minX;
   for (const p of placed) p.x += shiftX;
-  return { placed, width: maxRowWidth, height: maxY };
+  return { placed, width: Math.max(1, maxX - minX), height: maxY };
+}
+
+// ─── Full board layout: horizontal snake + vertical CRUZADA branches ─────────
+// Replaces the raw buildLinearBoardTiles + buildSnakeLayout two-call pattern.
+// For non-CRUZADA boards (no top/bottom sides) the result is identical to before.
+
+function buildHorizBoardTiles(
+  board: PlacedTile[],
+  opts?: { hPerRow?: number; rows?: number }
+): { padded: (Tile | null)[]; spinnerPaddedIdx: number } {
+  if (!board || board.length === 0) return { padded: [], spinnerPaddedIdx: 0 };
+  const seq: Tile[] = [];
+  let leftCount = 0;
+  for (let i = 0; i < board.length; i++) {
+    const pt = board[i];
+    // top/bottom are handled as vertical branches — exclude from the horizontal snake
+    if (i > 0 && pt.side !== 'left' && pt.side !== 'right') continue;
+    const effective: Tile = pt.flipped ? [pt.tile[1], pt.tile[0]] : pt.tile;
+    if (i === 0) { seq.push(effective); continue; }
+    if (pt.side === 'left') { seq.unshift(effective); leftCount++; }
+    else { seq.push(effective); }
+  }
+  const hPerRow   = Math.max(6, Math.min(14, Math.floor(opts?.hPerRow ?? 6)));
+  const rowCells  = hPerRow + 1;
+  const totalRows = Math.max(7, Math.min(21, Math.floor(opts?.rows ?? 13)));
+  const centerRow = Math.floor(totalRows / 2);
+  const centerIndex = centerRow * rowCells + Math.floor(hPerRow / 2);
+  const totalCells  = totalRows * rowCells;
+  const padded: (Tile | null)[] = new Array(totalCells).fill(null);
+  const startIndex = centerIndex - leftCount;
+  for (let i = 0; i < seq.length; i++) {
+    if (startIndex + i >= 0 && startIndex + i < totalCells) padded[startIndex + i] = seq[i];
+  }
+  return { padded, spinnerPaddedIdx: centerIndex };
+}
+
+function buildFullBoardLayout(
+  board: PlacedTile[],
+  hPerRow: number,
+  base: { short: number; long: number },
+  gap: number,
+  scale: number
+): { placed: SnakePlaced[]; width: number; height: number; horizCount: number } {
+  if (!board || board.length === 0) return { placed: [], width: 0, height: 0, horizCount: 0 };
+
+  // Step 1 — build horizontal snake (left/right chain only)
+  const { padded, spinnerPaddedIdx } = buildHorizBoardTiles(board, { hPerRow, rows: 13 });
+  const snake = buildSnakeLayout(padded, hPerRow, base, gap, 0, scale);
+  if (!snake.placed.length) return { placed: [], width: 0, height: 0, horizCount: 0 };
+
+  const horizCount = snake.placed.length;
+
+  // Step 2 — find the spinner (board[0]) index inside snake.placed
+  // It lives at padded[spinnerPaddedIdx]; count non-null tiles before it.
+  let spinnerSnakeIdx = 0;
+  { let c = 0;
+    for (let i = 0; i < padded.length; i++) {
+      if (i === spinnerPaddedIdx) { spinnerSnakeIdx = c; break; }
+      if (padded[i] !== null) c++;
+    }
+  }
+  spinnerSnakeIdx = Math.min(spinnerSnakeIdx, snake.placed.length - 1);
+
+  const S = Math.round(base.short * scale);
+  const L = Math.round(base.long * scale);
+  const G = Math.max(1, Math.round(gap * scale));
+
+  // Spinner is a double in CRUZADA → horizontal=false, width=S, height=L
+  const spinner   = snake.placed[spinnerSnakeIdx];
+  const spinnerCX = spinner.x + S / 2; // horizontal centre of the spinner tile
+
+  const allPlaced: SnakePlaced[] = [...snake.placed];
+
+  // snake.placed is already x-normalised (minX=0) and y starts at 0
+  let minX = 0; let maxX = snake.width;
+  let minY = 0; let maxY = snake.height;
+
+  // Step 3 — top branch tiles (grow upward from spinner top)
+  // Orientation rule (mirrors the horizontal chain in reverse):
+  //   non-double in vertical branch → portrait (horizontal=false), width=S, height=L
+  //   double in vertical branch     → landscape (horizontal=true),  width=L, height=S
+  // Connecting end: effective[1] sits at the BOTTOM of each portrait tile → faces the spinner ✓
+  let topEdgeY = spinner.y;
+  for (let i = 1; i < board.length; i++) {
+    const pt = board[i];
+    if (pt.side !== 'top') continue;
+    const effective: Tile = pt.flipped ? [pt.tile[1], pt.tile[0]] : pt.tile;
+    const isDouble = effective[0] === effective[1];
+    const tileW = isDouble ? L : S;
+    const tileH = isDouble ? S : L;
+    const tileX = Math.round(spinnerCX - tileW / 2);
+    const tileY = topEdgeY - G - tileH;
+    topEdgeY = tileY;
+    allPlaced.push({ tile: effective, x: tileX, y: tileY, horizontal: isDouble });
+    minX = Math.min(minX, tileX); maxX = Math.max(maxX, tileX + tileW);
+    minY = Math.min(minY, tileY);
+  }
+
+  // Step 4 — bottom branch tiles (grow downward from spinner bottom)
+  // Connecting end: effective[0] sits at the TOP of each portrait tile → faces the spinner ✓
+  let bottomEdgeY = spinner.y + L;
+  for (let i = 1; i < board.length; i++) {
+    const pt = board[i];
+    if (pt.side !== 'bottom') continue;
+    const effective: Tile = pt.flipped ? [pt.tile[1], pt.tile[0]] : pt.tile;
+    const isDouble = effective[0] === effective[1];
+    const tileW = isDouble ? L : S;
+    const tileH = isDouble ? S : L;
+    const tileX = Math.round(spinnerCX - tileW / 2);
+    const tileY = bottomEdgeY + G;
+    bottomEdgeY = tileY + tileH;
+    allPlaced.push({ tile: effective, x: tileX, y: tileY, horizontal: isDouble });
+    minX = Math.min(minX, tileX); maxX = Math.max(maxX, tileX + tileW);
+    maxY = Math.max(maxY, tileY + tileH);
+  }
+
+  // Step 5 — re-normalise so (minX, minY) = (0, 0)
+  // shiftY > 0 when top branch tiles pushed above y=0
+  const shiftX = -minX;
+  const shiftY = -minY;
+  for (const p of allPlaced) { p.x += shiftX; p.y += shiftY; }
+
+  return { placed: allPlaced, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), horizCount };
 }
 
 // ─── Pip positions ────────────────────────────────────────────────────────────
@@ -517,38 +694,80 @@ function TileHandImage({ tile, selected, playable, onPress }: {
   );
 }
 
-function DraggableTile({ tile, isPlayable, isSelected, onPress, onDragUp }: {
+function DraggableTile({ tile, isPlayable, isSelected, onPress, onDragUp, onWebDragStart, onNativeDragStart, onNativeDragMove, onNativeDragEnd }: {
   tile: Tile;
   isPlayable: boolean;
   isSelected: boolean;
   onPress: () => void;
-  onDragUp: () => void;
+  onDragUp: (moveX?: number) => void;
+  onWebDragStart?: (clientX: number, clientY: number) => void;
+  onNativeDragStart?: (pageX: number, pageY: number) => void;
+  onNativeDragMove?: (pageX: number, pageY: number) => void;
+  onNativeDragEnd?: (pageX: number, pageY: number) => void;
 }) {
   const pan = useRef(new Animated.ValueXY()).current;
-  
+  const [isDragging, setIsDragging] = useState(false);
+  // Refs keep PanResponder callbacks up-to-date without recreating the responder
+  const isPlayableRef        = useRef(isPlayable);
+  const onDragUpRef          = useRef(onDragUp);
+  const onNativeDragStartRef = useRef(onNativeDragStart);
+  const onNativeDragMoveRef  = useRef(onNativeDragMove);
+  const onNativeDragEndRef   = useRef(onNativeDragEnd);
+  isPlayableRef.current        = isPlayable;
+  onDragUpRef.current          = onDragUp;
+  onNativeDragStartRef.current = onNativeDragStart;
+  onNativeDragMoveRef.current  = onNativeDragMove;
+  onNativeDragEndRef.current   = onNativeDragEnd;
+
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => isPlayable && gestureState.dy < -10,
-      onPanResponderGrant: () => {
-        pan.setOffset({ x: (pan.x as any)._value, y: (pan.y as any)._value });
+      // Native only — on web we use pointer events to escape the ScrollView overflow clip
+      onStartShouldSetPanResponder: () => Platform.OS !== 'web' && isPlayableRef.current,
+      // No onMoveShouldSetPanResponder — we never want to steal a gesture from another element.
+      // The gesture is claimed on touch-start; terminationRequest keeps it locked after that.
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => {
+        setIsDragging(true);
         pan.setValue({ x: 0, y: 0 });
+        onNativeDragStartRef.current?.(e.nativeEvent.pageX, e.nativeEvent.pageY);
       },
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
-      onPanResponderRelease: (_, gestureState) => {
-        pan.flattenOffset();
-        if (gestureState.dy < -50) {
-          onDragUp();
-        }
-        Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
+      onPanResponderMove: (_, gs) => {
+        // Ghost tile tracks finger at root level — don't move the local tile
+        onNativeDragMoveRef.current?.(gs.moveX, gs.moveY);
+      },
+      onPanResponderRelease: (_, gs) => {
+        setIsDragging(false);
+        pan.setValue({ x: 0, y: 0 });
+        onNativeDragEndRef.current?.(gs.moveX, gs.moveY);
+      },
+      onPanResponderTerminate: (_, gs) => {
+        // Gesture was stolen (e.g. system interrupt) — clean up state
+        setIsDragging(false);
+        pan.setValue({ x: 0, y: 0 });
+        onNativeDragEndRef.current?.(gs.moveX, gs.moveY);
       },
     })
   ).current;
 
+  // Web: pointer capture so move/up fire even outside the element
+  const webHandlers = (Platform.OS === 'web' && isPlayable) ? {
+    onPointerDown: (e: any) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try { e.currentTarget?.setPointerCapture?.(e.pointerId); } catch {}
+      onWebDragStart?.(e.clientX, e.clientY);
+    },
+  } : {};
+
+  // Dim the source tile while dragging on native (ghost takes over visually)
+  const opacity = isDragging && Platform.OS !== 'web' ? 0.2 : 1;
+
   return (
     <Animated.View
-      {...(isPlayable ? panResponder.panHandlers : {})}
+      {...(Platform.OS !== 'web' ? panResponder.panHandlers : {})}
+      {...(webHandlers as any)}
       style={[
-        { transform: pan.getTranslateTransform(), zIndex: isSelected ? 10 : 1 }
+        { transform: pan.getTranslateTransform(), zIndex: isDragging ? 9999 : (isSelected ? 10 : 1), opacity }
       ]}
     >
       <TileHandImage
@@ -576,7 +795,7 @@ type DominoTileProps = {
 const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
   icon: { short: 16, long: 28, pip: 2, corner: 2 },
   hand: { short: 28, long: 50, pip: 4, corner: 6 },
-  xs:   { short: 22, long: 44, pip: 3, corner: 4 },
+  xs:   { short: 22, long: 44, pip: 4, corner: 4 },
   sm:   { short: 32, long: 64, pip: 5, corner: 6 },
   md:   { short: 44, long: 88, pip: 7, corner: 8 },
 };
@@ -584,13 +803,13 @@ const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: numb
 // Ivory white matching the PNG tile colour
 const TILE_BG    = '#f8f6f0';
 const TILE_LINE  = '#c8c4bc';
-const TILE_PIP   = '#1c1c1e';
+const TILE_PIP   = '#090909';
 
 function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, onPress, style }: DominoTileProps) {
   const base   = TILE_DIMS[size] ?? TILE_DIMS.md;
   const S      = Math.round(base.short  * tileScale);
   const L      = Math.round(base.long   * tileScale);
-  const pip    = Math.max(2, Math.round(base.pip    * tileScale));
+  const pip    = Math.max(3, Math.round(base.pip    * tileScale));
   const corner = Math.max(2, Math.round(base.corner * tileScale));
   const divW   = Math.max(1, Math.round(tileScale));
 
@@ -648,7 +867,7 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
 function Pips({ value, halfW, halfH, dot }: { value: number; halfW: number; halfH: number; dot: number }) {
   const spots = PIP_POSITIONS[value] ?? [];
   const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-  const edge = Math.max(dot * 0.8, Math.min(halfW, halfH) * 0.08);
+  const edge = Math.max(1, Math.floor(Math.min(halfW, halfH) * 0.12));
   const minCenter = dot / 2 + edge;
   return (
     <View style={{ width: halfW, height: halfH }}>
@@ -767,16 +986,31 @@ const scoreStyles = StyleSheet.create({
 
 // ─── Opponent card (top centre) ───────────────────────────────────────────────
 
-function OpponentCard({ player, tileCount, isTurn }: { player: any; tileCount: number; isTurn: boolean }) {
+const TEAM_COLORS = {
+  idle:  (t: number) => t === 1 ? 'rgba(59,130,246,0.45)' : 'rgba(239,68,68,0.45)',
+  turn:  (t: number) => t === 1 ? 'rgba(96,165,250,0.95)'  : 'rgba(248,113,113,0.95)',
+  glow:  (t: number) => t === 1 ? '#60a5fa' : '#f87171',
+  none: 'rgba(0,0,0,0.55)',
+};
+
+function teamTurnStyle(team: number) {
+  const g = TEAM_COLORS.glow(team);
+  return Platform.OS === 'web'
+    ? ({ borderColor: TEAM_COLORS.turn(team), boxShadow: `0 0 14px ${g}88` } as any)
+    : { borderColor: TEAM_COLORS.turn(team), shadowColor: g, shadowOpacity: 0.75, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 10 };
+}
+
+function OpponentCard({ player, tileCount, isTurn, team = 0, matchScore = 0 }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
+  const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
   return (
     <LinearGradient
       colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
-      style={[oppStyles.card, isTurn && oppStyles.cardTurn]}
+      style={[oppStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
     >
       <View style={oppStyles.sideSlot}>
         <DominoTile tile={[1, 1]} size="icon" />
@@ -785,7 +1019,7 @@ function OpponentCard({ player, tileCount, isTurn }: { player: any; tileCount: n
 
       <View style={oppStyles.nameWrap}>
         <Text style={oppStyles.name} numberOfLines={1}>{name}</Text>
-        <Text style={oppStyles.sub}>{tileCount}/7</Text>
+        <Text style={oppStyles.sub}>{matchScore}/6 pts</Text>
       </View>
 
       <View style={[oppStyles.sideSlot, oppStyles.sideSlotRight]}>
@@ -814,9 +1048,6 @@ const oppStyles = StyleSheet.create({
     minWidth: 200,
     minHeight: 48,
   },
-  cardTurn: Platform.OS === 'web'
-    ? ({ borderColor: 'rgba(74,222,128,0.65)', boxShadow: '0 0 14px rgba(74,222,128,0.45)' } as any)
-    : { borderColor: 'rgba(74,222,128,0.65)', shadowColor: '#4ade80', shadowOpacity: 0.8, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 10 },
   sideSlot: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -853,79 +1084,49 @@ const oppStyles = StyleSheet.create({
   avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
 });
 
-// ─── Side player card (4p left/right) ────────────────────────────────────────
+// ─── Side player card (4p left/right) — compact vertical ─────────────────────
 
-function SidePlayerCard({ player, tileCount, isTurn }: { player: any; tileCount: number; isTurn: boolean }) {
+function SidePlayerCard({ player, tileCount, isTurn, team = 0 }: { player: any; tileCount: number; isTurn: boolean; team?: number }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
+  const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
   return (
     <LinearGradient
-      colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
+      colors={['rgba(8,38,14,0.97)', 'rgba(20,70,14,0.95)']}
       start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={[sideStyles.card, isTurn && sideStyles.cardTurn]}
+      end={{ x: 0, y: 1 }}
+      style={[sideStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
     >
-      <View style={sideStyles.sideSlot}>
+      <View style={sideStyles.avatar}>
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={sideStyles.avatarImg} />
+        ) : (
+          <Text style={sideStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
+        )}
+      </View>
+      <Text style={sideStyles.name} numberOfLines={1}>{name}</Text>
+      <View style={sideStyles.tileRow}>
         <DominoTile tile={[1, 1]} size="icon" />
         <Text style={sideStyles.tileCount}>{tileCount}</Text>
-      </View>
-
-      <View style={sideStyles.nameWrap}>
-        <Text style={sideStyles.name} numberOfLines={1}>{name}</Text>
-        <Text style={sideStyles.sub}>{tileCount}/7</Text>
-      </View>
-
-      <View style={[sideStyles.sideSlot, sideStyles.sideSlotRight]}>
-        <View style={sideStyles.avatar}>
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={sideStyles.avatarImg} />
-          ) : (
-            <Text style={sideStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
-          )}
-        </View>
       </View>
     </LinearGradient>
   );
 }
 const sideStyles = StyleSheet.create({
   card: {
-    borderColor: 'rgba(0,0,0,0.55)',
-    borderRadius: radius.full,
-    borderWidth: 1,
-    flexDirection: 'row',
-    paddingVertical: 10,
-    paddingLeft: 12,
-    paddingRight: 12,
-    gap: 8,
-    width: 180,
-    minWidth: 180,
-    minHeight: 48,
-  },
-  cardTurn: Platform.OS === 'web'
-    ? ({ borderColor: 'rgba(74,222,128,0.65)', boxShadow: '0 0 14px rgba(74,222,128,0.45)' } as any)
-    : { borderColor: 'rgba(74,222,128,0.65)', shadowColor: '#4ade80', shadowOpacity: 0.8, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 10 },
-  sideSlot: {
-    flexDirection: 'row',
+    borderWidth: 2,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     alignItems: 'center',
     gap: 6,
-    width: 62,
+    width: 76,
   },
-  sideSlotRight: { justifyContent: 'flex-end' },
-  tileIcon: { width: 16, height: 22 },
-  tileCount: {
-    color: '#c8c8c8',
-    fontWeight: '800',
-    fontSize: 24,
-    lineHeight: 26,
-  },
-  nameWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
-  sub:  { color: '#fff', fontSize: fonts.sizes.sm, textAlign: 'center' },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -934,21 +1135,31 @@ const sideStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
+  avatarText: { color: '#fff', fontWeight: '900', fontSize: 15 },
+  name: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 12,
+    textAlign: 'center',
+    maxWidth: 68,
+  },
+  tileRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  tileCount: { color: '#c8c8c8', fontWeight: '800', fontSize: 17 },
 });
 
 // ─── My player card (right side, below emoji) ────────────────────────────────
 
-function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji }: {
-  name: string; hand: number; isMyTurn: boolean; avatarUri?: string; onSelectEmoji?: (e: string) => void;
+function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji, team = 0, matchScore = 0 }: {
+  name: string; hand: number; isMyTurn: boolean; avatarUri?: string; onSelectEmoji?: (e: string) => void; team?: number; matchScore?: number;
 }) {
   const [open, setOpen] = React.useState(false);
+  const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
   return (
     <LinearGradient
       colors={['rgba(32,100,22,0.93)', 'rgba(8,38,14,0.97)']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
-      style={[myCardStyles.card, isMyTurn && myCardStyles.cardMyTurn]}
+      style={[myCardStyles.card, { borderColor: idleBorder }, isMyTurn && teamTurnStyle(team)]}
     >
       <View style={myCardStyles.sideSlot}>
         <DominoTile tile={[1, 1]} size="icon" />
@@ -957,7 +1168,7 @@ function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji }: {
 
       <View style={myCardStyles.nameWrap}>
         <Text style={myCardStyles.name} numberOfLines={1}>{name}</Text>
-        <Text style={myCardStyles.sub}>{hand}/7</Text>
+        <Text style={myCardStyles.sub}>{matchScore}/6 pts</Text>
       </View>
 
       <View style={[myCardStyles.sideSlot, myCardStyles.sideSlotRight]}>
@@ -1009,7 +1220,6 @@ const myCardStyles = StyleSheet.create({
     minWidth: 200,
     minHeight: 48,
   },
-  cardMyTurn: { borderColor: 'rgba(74,222,128,0.65)' },
   sideSlot: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1100,8 +1310,73 @@ export function GameScreen({ navigation, route }: Props) {
   const { currentGame, selectedTile, gameResult, roundBanner, lastQueue, setGame, setSelectedTile, setGameResult, setRoundBanner, clearGame } = useGameStore();
 
   const { width: viewportWidth } = useWindowDimensions();
+  const safeInsets = useSafeAreaInsets();
   const [feltWidth, setFeltWidth] = useState(0);
   const [tableBgSize, setTableBgSize] = useState({ width: 0, height: 0 });
+  const tableBgRef = useRef<View>(null);
+  const boardScreenCenterXRef = useRef<number>(
+    typeof window !== 'undefined' ? window.innerWidth / 2 : Dimensions.get('window').width / 2
+  );
+
+  // ── Web drag-and-drop ghost ─────────────────────────────────────────────────
+  const [webDrag, setWebDrag] = useState<{ tile: Tile; x: number; y: number; startY: number } | null>(null);
+  const webDragDropRef  = useRef<((dropX: number) => void) | null>(null);
+
+  // ── Native (mobile) drag-and-drop ghost ────────────────────────────────────
+  const nativeDragPos  = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [nativeDrag, setNativeDrag] = useState<{ tile: Tile; startY: number } | null>(null);
+  const nativeDragDropRef = useRef<((dropX: number) => void) | null>(null);
+
+  const handSectionTopRef = useRef<number>(Dimensions.get('window').height * 0.72);
+  const handScrollRef = useRef<ScrollView>(null);
+
+  const startWebDrag = useCallback((tile: Tile, clientX: number, clientY: number, onDrop: (dropX: number) => void) => {
+    if (Platform.OS !== 'web') return;
+    webDragDropRef.current = onDrop;
+    setWebDrag({ tile, x: clientX, y: clientY, startY: clientY });
+
+    const handleMove = (e: PointerEvent) => {
+      setWebDrag(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
+    };
+    const handleUp = (e: PointerEvent) => {
+      document.removeEventListener('pointermove', handleMove);
+      document.removeEventListener('pointerup', handleUp);
+      const drop = webDragDropRef.current;
+      webDragDropRef.current = null;
+      setWebDrag(null);
+      // Only trigger play if released above the hand section (i.e. over the table)
+      if (drop && e.clientY < handSectionTopRef.current) {
+        drop(e.clientX);
+      }
+    };
+    document.addEventListener('pointermove', handleMove);
+    document.addEventListener('pointerup', handleUp);
+  }, []);
+
+  const startNativeDrag = useCallback((tile: Tile, pageX: number, pageY: number, onDrop: (dropX: number) => void) => {
+    if (Platform.OS === 'web') return;
+    // Synchronously disable scroll before any move event fires — prevents ScrollView
+    // from stealing the gesture when the first move is sideways (state update is async)
+    handScrollRef.current?.setNativeProps({ scrollEnabled: false });
+    nativeDragDropRef.current = onDrop;
+    nativeDragPos.setValue({ x: pageX, y: pageY });
+    setNativeDrag({ tile, startY: pageY });
+  }, [nativeDragPos]);
+
+  const updateNativeDragPos = useCallback((pageX: number, pageY: number) => {
+    nativeDragPos.setValue({ x: pageX, y: pageY });
+  }, [nativeDragPos]);
+
+  const endNativeDrag = useCallback((pageX: number, pageY: number) => {
+    // Re-enable scroll synchronously before clearing state
+    handScrollRef.current?.setNativeProps({ scrollEnabled: true });
+    const drop = nativeDragDropRef.current;
+    nativeDragDropRef.current = null;
+    setNativeDrag(null);
+    if (drop && pageY < handSectionTopRef.current) {
+      drop(pageX);
+    }
+  }, []);
 
   const [turnTimer, setTurnTimer]       = useState(15);
   const [resultModal, setResultModal]   = useState(false);
@@ -1129,7 +1404,11 @@ export function GameScreen({ navigation, route }: Props) {
 
   // ── Dev mock: inject a 2v2 game so the board can be screenshotted ────────────
   useEffect(() => {
-    if (process.env.EXPO_PUBLIC_MOCK_GAME !== 'true') return;
+    const isMockGame =
+      process.env.EXPO_PUBLIC_MOCK_GAME === 'true' ||
+      process.env.EXPO_PUBLIC_MOCK_MODE === 'true' ||
+      (typeof window !== 'undefined' && !!(window as any).__MOCK_GAME__);
+    if (!isMockGame) return;
     if (currentGame) return;
     const board: PlacedTile[] = [
       { tile: [6,6], side:'left',  flipped:false },
@@ -1153,7 +1432,7 @@ export function GameScreen({ navigation, route }: Props) {
       { tile: [5,1], side:'left',  flipped:true  },
       { tile: [5,0], side:'left',  flipped:true  },
     ];
-    setGame({
+    const mockState = {
       id: 'dev-mock-2v2',
       mode: 'TOURNAMENT_2V2',
       variant: 'CARROCA',
@@ -1174,7 +1453,13 @@ export function GameScreen({ navigation, route }: Props) {
       matchScores: { 1: 3, 2: 2 },
       roundNumber: 4,
       targetScore: 6,
-    });
+    };
+    // Pre-seed fakeSocket so game:join re-emits this state instead of creating a new 1v1 game
+    try {
+      const { fakeSocket } = require('../mocks/fakeSocket');
+      fakeSocket.setInitialState(mockState);
+    } catch {}
+    setGame(mockState);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1669,10 +1954,12 @@ export function GameScreen({ navigation, route }: Props) {
 
   const SNAKE_GAP_BASE = 5;
   const SNAKE_GAP = SNAKE_GAP_BASE;
-  const snakeMaxW = feltWidth ? Math.max(0, feltWidth * 0.90) : Math.max(0, viewportWidth * 0.78);
+  const snakeMaxW = feltWidth
+    ? Math.max(0, feltWidth * (is4Player ? 0.76 : 0.90))
+    : Math.max(0, viewportWidth * (is4Player ? 0.64 : 0.78));
   const SNAKE_H_PER_ROW = Math.max(
     6,
-    Math.min(11, Math.floor((snakeMaxW + SNAKE_GAP) / (boardTilePreset.long + SNAKE_GAP)))
+    Math.min(is4Player ? 8 : 11, Math.floor((snakeMaxW + SNAKE_GAP) / (boardTilePreset.long + SNAKE_GAP)))
   );
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1680,18 +1967,17 @@ export function GameScreen({ navigation, route }: Props) {
     ? ({ boxShadow: '0px 1px 2px rgba(0,0,0,0.16)' } as any)
     : { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 2, elevation: 2 };
 
-  const boardTilesLinear = buildLinearBoardTiles(currentGame.board ?? [], { hPerRow: SNAKE_H_PER_ROW, rows: 13 });
-  const baseLayout = buildSnakeLayout(boardTilesLinear, SNAKE_H_PER_ROW, boardTilePreset, SNAKE_GAP, 3, 1);
+  const baseLayout = buildFullBoardLayout(currentGame.board ?? [], SNAKE_H_PER_ROW, boardTilePreset, SNAKE_GAP, 1);
 
   // ── Board scale: shrink tiles so they always fit inside the oval ─────────
   const boardScale = (() => {
     if (!feltWidth || baseLayout.width === 0 || baseLayout.height === 0) return 1;
-    const boardPadBase = 10;
-    const availW = Math.max(0, feltWidth  * 0.88 - boardPadBase * 2);
-    const availH = Math.max(0, tableHeight * 0.70 - boardPadBase * 2);
+    const boardPadBase = 8;
+    const availW = Math.max(0, feltWidth  * 0.92 - boardPadBase * 2);
+    const availH = Math.max(0, tableHeight * 0.78 - boardPadBase * 2);
     const scaleW = baseLayout.width > availW ? availW / baseLayout.width : 1;
     const scaleH = baseLayout.height > availH ? availH / baseLayout.height : 1;
-    return Math.max(0.60, Math.min(1, scaleW, scaleH));
+    return Math.max(0.52, Math.min(1, scaleW, scaleH));
   })();
   const layout = baseLayout;
   const boardPad         = Math.round(10 * boardScale);
@@ -1810,7 +2096,7 @@ export function GameScreen({ navigation, route }: Props) {
               {topOpponent && (
                 <View style={styles.oppCardOverlay}>
                   <View style={styles.playerCardFxWrap}>
-                    <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} isTurn={turnUserId === topOpponent.userId} />
+                    <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} isTurn={turnUserId === topOpponent.userId} team={topOpponent.team} matchScore={currentGame.matchScores?.[topOpponent.team] ?? 0} />
                     {renderPlayerFx(topOpponent.userId, 'top')}
                   </View>
                 </View>
@@ -1819,7 +2105,7 @@ export function GameScreen({ navigation, route }: Props) {
               {is4Player && leftOpponent && (
                 <View style={styles.tableSideBadgeLeft}>
                   <View style={styles.playerCardFxWrap}>
-                    <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} />
+                    <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} team={leftOpponent.team} />
                     {renderPlayerFx(leftOpponent.userId, 'left')}
                   </View>
                 </View>
@@ -1827,17 +2113,22 @@ export function GameScreen({ navigation, route }: Props) {
               {is4Player && rightOpponent && (
                 <View style={styles.tableSideBadgeRight}>
                   <View style={styles.playerCardFxWrap}>
-                    <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} />
+                    <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} team={rightOpponent.team} />
                     {renderPlayerFx(rightOpponent.userId, 'right')}
                   </View>
                 </View>
               )}
 
               <View
+                ref={tableBgRef}
                 style={styles.tableBg}
                 onLayout={(e) => {
                   const { width, height } = e.nativeEvent.layout;
                   setTableBgSize({ width: Math.round(width), height: Math.round(height) });
+                  // Measure absolute screen position for accurate left/right side detection
+                  (tableBgRef.current as any)?.measureInWindow?.((x: number, _y: number, w: number) => {
+                    boardScreenCenterXRef.current = x + w / 2;
+                  });
                 }}
               >
                 {tableBgSize.width > 0 && (
@@ -1861,23 +2152,116 @@ export function GameScreen({ navigation, route }: Props) {
                   />
                 )}
 
-                {currentGame.board.length > 0 && (
-                  <View style={[styles.snakeBoardFrame, { padding: boardPad }]}>
-                    <View style={[styles.snakeBoard, { width: layoutW, height: layoutH }]}>
-                      {layout.placed.map((p, i) => (
-                        <View key={i} style={{ position: 'absolute', left: Math.round(p.x * boardScale), top: Math.round(p.y * boardScale) }}>
-                          <DominoTile
-                            tile={p.tile}
-                            size={boardTileSize}
-                            tileScale={boardScale}
-                            horizontal={p.horizontal}
-                            style={boardTileNoShadow}
-                          />
-                        </View>
-                      ))}
+                {currentGame.board.length > 0 && (() => {
+                  const S_u = boardTilePreset.short;
+                  const L_u = boardTilePreset.long;
+
+                  // Active tile: selected via click, or currently being dragged
+                  const dragTile = webDrag?.tile ?? nativeDrag?.tile ?? null;
+                  const activeGhostTile = selectedTile?.tile ?? (isMyTurn ? dragTile : null);
+                  const validPlaysForGhost: PlayOption[] = activeGhostTile
+                    ? (validMovesMap.get(tileKey(activeGhostTile)) ?? []) : [];
+
+                  const leftPlay  = isMyTurn && activeGhostTile && layout.placed.length > 0
+                    ? validPlaysForGhost.find(p => p.side === 'left') : undefined;
+                  const rightPlay = isMyTurn && activeGhostTile && layout.placed.length > 0
+                    ? validPlaysForGhost.find(p => p.side === 'right') : undefined;
+
+                  // During drag, highlight the side the finger is heading toward
+                  const dragX = webDrag?.x ?? null;
+                  const dragTargetSide: 'left' | 'right' | null = dragX !== null
+                    ? (dragX < boardScreenCenterXRef.current ? 'left' : 'right') : null;
+
+                  const activeIsDouble = activeGhostTile
+                    ? activeGhostTile[0] === activeGhostTile[1] : false;
+                  const ghostHoriz = !activeIsDouble;
+                  const ghostW_u = ghostHoriz ? L_u : S_u;
+                  const ghostW_px = Math.round(ghostW_u * boardScale);
+
+                  // Extend board horizontally to hold ghost slots (ghost tile + small gap)
+                  const gapPx = Math.round(2 * boardScale);
+                  const leftSlot_px  = leftPlay  ? ghostW_px + gapPx : 0;
+                  const rightSlot_px = rightPlay ? ghostW_px + gapPx : 0;
+                  const extW = layoutW + leftSlot_px + rightSlot_px;
+
+                  const firstP = layout.placed[0];
+                  // use horizCount so branch tiles don't corrupt the right-end ghost position
+                  const lastP  = layout.horizCount > 0 ? layout.placed[layout.horizCount - 1] : layout.placed[0];
+
+                  // Y position of ghost: align with the end tile's connection center
+                  const ghostY = (endP: typeof firstP): number => {
+                    const top = Math.round(endP.y * boardScale);
+                    const centerOffset = Math.round((L_u - S_u) / 2 * boardScale);
+                    if (ghostHoriz) return endP.horizontal ? top : top + centerOffset;
+                    return endP.horizontal ? top - centerOffset : top;
+                  };
+
+                  const flippedTile = (play: { flipped: boolean }): Tile => {
+                    if (!activeGhostTile) return [0, 0];
+                    return play.flipped
+                      ? ([activeGhostTile[1], activeGhostTile[0]] as Tile)
+                      : activeGhostTile;
+                  };
+
+                  // Left ghost X: starts at 0 (the allocated left slot)
+                  const leftGhostX_px = 0;
+                  // Right ghost X: immediately after the last tile's right edge
+                  const rightEndX_px = Math.round((lastP.x + (lastP.horizontal ? L_u : S_u)) * boardScale) + leftSlot_px;
+                  const rightGhostX_px = rightEndX_px + gapPx;
+
+                  return (
+                    <View style={[styles.snakeBoardFrame, { padding: boardPad }]}>
+                      <View style={[styles.snakeBoard, { width: extW, height: layoutH }]}>
+                        {/* Board tiles (shifted right by leftSlot_px) */}
+                        {layout.placed.map((p, i) => (
+                          <View key={i} style={{ position: 'absolute', left: Math.round(p.x * boardScale) + leftSlot_px, top: Math.round(p.y * boardScale) }}>
+                            <DominoTile
+                              tile={p.tile}
+                              size={boardTileSize}
+                              tileScale={boardScale}
+                              horizontal={p.horizontal}
+                              style={boardTileNoShadow}
+                            />
+                          </View>
+                        ))}
+
+                        {/* ── Left ghost: tap to play on left side ── */}
+                        {leftPlay && (
+                          <TouchableOpacity
+                            onPress={() => handlePlayTile('left')}
+                            activeOpacity={0.75}
+                            style={{ position: 'absolute', left: leftGhostX_px, top: ghostY(firstP), zIndex: 50 }}
+                          >
+                            {/* Arrow floats above the tile without shifting it in layout */}
+                            <View style={{ position: 'absolute', top: -11, left: 0, right: 0, alignItems: 'center' }}>
+                              <View style={[styles.ghostArrow, dragTargetSide === 'left' && styles.ghostArrowActive]} />
+                            </View>
+                            <View style={{ opacity: dragTargetSide === 'left' ? 0.7 : 0.45 }}>
+                              <DominoTile tile={flippedTile(leftPlay)} size={boardTileSize} tileScale={boardScale} horizontal={ghostHoriz} style={boardTileNoShadow} />
+                            </View>
+                          </TouchableOpacity>
+                        )}
+
+                        {/* ── Right ghost: tap to play on right side ── */}
+                        {rightPlay && (
+                          <TouchableOpacity
+                            onPress={() => handlePlayTile('right')}
+                            activeOpacity={0.75}
+                            style={{ position: 'absolute', left: rightGhostX_px, top: ghostY(lastP), zIndex: 50 }}
+                          >
+                            {/* Arrow floats above the tile without shifting it in layout */}
+                            <View style={{ position: 'absolute', top: -11, left: 0, right: 0, alignItems: 'center' }}>
+                              <View style={[styles.ghostArrow, dragTargetSide === 'right' && styles.ghostArrowActive]} />
+                            </View>
+                            <View style={{ opacity: dragTargetSide === 'right' ? 0.7 : 0.45 }}>
+                              <DominoTile tile={flippedTile(rightPlay)} size={boardTileSize} tileScale={boardScale} horizontal={ghostHoriz} style={boardTileNoShadow} />
+                            </View>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
-                  </View>
-                )}
+                  );
+                })()}
 
               </View>
               </View>
@@ -1885,7 +2269,15 @@ export function GameScreen({ navigation, route }: Props) {
           </View>
 
           {/* Hand section — action bar above tiles, player card beside */}
-          <View style={styles.handSection}>
+          <View
+            style={styles.handSection}
+            onLayout={(e) => {
+              const screenH = Platform.OS === 'web' && typeof window !== 'undefined'
+                ? window.innerHeight
+                : Dimensions.get('window').height;
+              handSectionTopRef.current = screenH - e.nativeEvent.layout.height;
+            }}
+          >
 
             {/* ── Action bar ── */}
             {isMyTurn && (
@@ -1932,9 +2324,11 @@ export function GameScreen({ navigation, route }: Props) {
             {/* ── Hand tiles + player card ── */}
             <View style={styles.handRow}>
               <ScrollView
+                ref={handScrollRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.handScroll}
+                scrollEnabled={Platform.OS === 'web' ? true : !nativeDrag}
                 {...(Platform.OS === 'web'
                   ? ({
                       onWheel: (e: any) => {
@@ -1954,29 +2348,96 @@ export function GameScreen({ navigation, route }: Props) {
                   const isSelected = selectedTile?.handIndex === i;
                   return (
                     <View key={`${key}-${i}`} style={[styles.handTileWrap, isSelected && styles.handTileSelected]}>
+                      {isMyTurn && isPlayable && !isSelected && (
+                        <View style={styles.handTileArrow} />
+                      )}
                       <DraggableTile
                         tile={tile}
                         isSelected={isSelected}
                         isPlayable={!isMyTurn || isPlayable}
                         onPress={() => handleTileSelect(tile, i)}
-                        onDragUp={() => {
+                        onDragUp={(moveX?: number) => {
                           const plays = validMovesMap.get(tileKey(tile)) || [];
-                          if (plays.length === 1 || currentGame?.board?.length === 0) {
-                            handleTileSelect(tile, i);
-                            // We know there's only 1 play or it's the first move, just emit directly
-                            const side = plays[0]?.side || 'left';
-                            const flipped = plays[0]?.flipped || false;
+                          if (!plays.length) return;
+                          const emptyBoard = (currentGame?.board?.length ?? 0) === 0;
+                          if (emptyBoard || plays.length === 1) {
+                            const play = plays[0];
                             connectSocket().then(s => {
-                              s.emit('game:move', { gameId, tile, side, flipped });
+                              s.emit('game:move', { gameId, tile, side: play.side, flipped: play.flipped });
                               setSelectedTile(null);
                             }).catch(() => showError('Falha ao jogar'));
-                          } else if (plays.length > 1) {
-                            // Multiple options, just select it so user can click left/right
-                            handleTileSelect(tile, i);
+                          } else {
+                            const cx = boardScreenCenterXRef.current;
+                            const intendedSide: PlaySide = (moveX ?? cx) < cx ? 'left' : 'right';
+                            const sidePlay = plays.find(p => p.side === intendedSide);
+                            if (sidePlay) {
+                              connectSocket().then(s => {
+                                s.emit('game:move', { gameId, tile, side: sidePlay.side, flipped: sidePlay.flipped });
+                                setSelectedTile(null);
+                              }).catch(() => showError('Falha ao jogar'));
+                            } else {
+                              const otherSide = intendedSide === 'left' ? 'direita →' : '← esquerda';
+                              showError(`Solte no lado ${otherSide}`);
+                            }
                           }
                         }}
+                        onWebDragStart={isPlayable ? (clientX, clientY) => {
+                          const plays = validMovesMap.get(tileKey(tile)) || [];
+                          startWebDrag(tile, clientX, clientY, (dropX: number) => {
+                            if (!plays.length) return;
+                            const emptyBoard = (currentGame?.board?.length ?? 0) === 0;
+                            if (emptyBoard || plays.length === 1) {
+                              const play = plays[0];
+                              connectSocket().then(s => {
+                                s.emit('game:move', { gameId, tile, side: play.side, flipped: play.flipped });
+                                setSelectedTile(null);
+                              }).catch(() => showError('Falha ao jogar'));
+                            } else {
+                              const cx = boardScreenCenterXRef.current;
+                              const intendedSide: PlaySide = dropX < cx ? 'left' : 'right';
+                              const sidePlay = plays.find(p => p.side === intendedSide);
+                              if (sidePlay) {
+                                connectSocket().then(s => {
+                                  s.emit('game:move', { gameId, tile, side: sidePlay.side, flipped: sidePlay.flipped });
+                                  setSelectedTile(null);
+                                }).catch(() => showError('Falha ao jogar'));
+                              } else {
+                                const otherSide = intendedSide === 'left' ? 'direita →' : '← esquerda';
+                                showError(`Solte no lado ${otherSide}`);
+                              }
+                            }
+                          });
+                        } : undefined}
+                        onNativeDragStart={isPlayable && Platform.OS !== 'web' ? (pageX, pageY) => {
+                          const plays = validMovesMap.get(tileKey(tile)) || [];
+                          startNativeDrag(tile, pageX, pageY, (dropX: number) => {
+                            if (!plays.length) return;
+                            const emptyBoard = (currentGame?.board?.length ?? 0) === 0;
+                            if (emptyBoard || plays.length === 1) {
+                              const play = plays[0];
+                              connectSocket().then(s => {
+                                s.emit('game:move', { gameId, tile, side: play.side, flipped: play.flipped });
+                                setSelectedTile(null);
+                              }).catch(() => showError('Falha ao jogar'));
+                            } else {
+                              const cx = boardScreenCenterXRef.current;
+                              const intendedSide: PlaySide = dropX < cx ? 'left' : 'right';
+                              const sidePlay = plays.find(p => p.side === intendedSide);
+                              if (sidePlay) {
+                                connectSocket().then(s => {
+                                  s.emit('game:move', { gameId, tile, side: sidePlay.side, flipped: sidePlay.flipped });
+                                  setSelectedTile(null);
+                                }).catch(() => showError('Falha ao jogar'));
+                              } else {
+                                const otherSide = intendedSide === 'left' ? 'direita →' : '← esquerda';
+                                showError(`Solte no lado ${otherSide}`);
+                              }
+                            }
+                          });
+                        } : undefined}
+                        onNativeDragMove={Platform.OS !== 'web' ? updateNativeDragPos : undefined}
+                        onNativeDragEnd={Platform.OS !== 'web' ? endNativeDrag : undefined}
                       />
-                      {isMyTurn && isPlayable && !isSelected && <View style={styles.playIndicator} />}
                     </View>
                   );
                 })}
@@ -1996,6 +2457,8 @@ export function GameScreen({ navigation, route }: Props) {
                     isMyTurn={isMyTurn}
                     avatarUri={(user as any)?.avatarUrl ?? (user as any)?.avatar}
                     onSelectEmoji={handleEmoji}
+                    team={myTeam}
+                    matchScore={myMatchScore}
                   />
                   {renderPlayerFx(myEffectiveUserId, 'bottom')}
                 </View>
@@ -2103,6 +2566,91 @@ export function GameScreen({ navigation, route }: Props) {
           />
         </View>
       </Modal>
+
+      {/* ── Native drag ghost — floats above everything at absolute screen position ── */}
+      {Platform.OS !== 'web' && nativeDrag && (() => {
+        // TileHandImage always renders vertically: width = short, height = long
+        const ghostW = TILE_DIMS.hand.short;
+        const ghostH = TILE_DIMS.hand.long;
+        const startY = nativeDrag.startY;
+        const boardCX = boardScreenCenterXRef.current;
+        // Rotation magnitude grows as tile is dragged upward
+        const rotMag = nativeDragPos.y.interpolate({
+          inputRange: [startY - 70, startY - 10],
+          outputRange: [90, 0],
+          extrapolate: 'clamp',
+        });
+        // Direction: left of board center = negative (CCW), right = positive (CW)
+        // 80px transition zone so direction doesn't snap abruptly at dead-center
+        const rotDir = nativeDragPos.x.interpolate({
+          inputRange: [boardCX - 80, boardCX + 80],
+          outputRange: [-1, 1],
+          extrapolate: 'clamp',
+        });
+        const rot = (Animated.multiply(rotMag, rotDir) as any).interpolate({
+          inputRange: [-90, 90],
+          outputRange: ['-90deg', '90deg'],
+          extrapolate: 'clamp',
+        });
+        const scl = nativeDragPos.y.interpolate({
+          inputRange: [startY - 70, startY],
+          outputRange: [1.06, 1],
+          extrapolate: 'clamp',
+        });
+        // pageX/pageY are screen coords; subtract safe insets since ghost is inside SafeAreaView
+        const offsetLeft = safeInsets.left;
+        const offsetTop  = safeInsets.top;
+        return (
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: Animated.subtract(nativeDragPos.x, ghostW / 2 + offsetLeft),
+              top:  Animated.subtract(nativeDragPos.y, ghostH * 1.2 + offsetTop),
+              zIndex: 99999,
+              opacity: 0.88,
+              transform: [{ rotate: rot }, { scale: scl }],
+            }}
+          >
+            <TileHandImage tile={nativeDrag.tile} selected={true} playable={true} />
+          </Animated.View>
+        );
+      })()}
+
+      {/* ── Web drag ghost — floats above everything, outside the hand ScrollView ── */}
+      {Platform.OS === 'web' && webDrag && (() => {
+        const isDouble = webDrag.tile[0] === webDrag.tile[1];
+        // TileHandImage always renders vertically: width = short, height = long
+        const ghostW = TILE_DIMS.hand.short;
+        const ghostH = TILE_DIMS.hand.long;
+        // Animate "lie down" toward the side the pointer is on
+        const dy = webDrag.startY - webDrag.y;
+        const progress = Math.min(1, Math.max(0, (dy - 10) / 60));
+        const goingLeft = webDrag.x < boardScreenCenterXRef.current;
+        // CCW (−90°) when going left, CW (+90°) when going right
+        const rotDeg = isDouble ? 0 : progress * (goingLeft ? -90 : 90);
+        const sc = 1 + progress * 0.06;
+        return (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: webDrag.x - ghostW / 2,
+              top:  webDrag.y - ghostH * 1.2,
+              zIndex: 99999,
+              opacity: 0.88,
+              ...(Platform.OS === 'web' ? ({
+                pointerEvents: 'none',
+                transform: `rotate(${rotDeg}deg) scale(${sc})`,
+                transition: 'transform 0.12s ease',
+                transformOrigin: 'center center',
+              } as any) : null),
+            }}
+          >
+            <TileHandImage tile={webDrag.tile} selected={true} playable={true} />
+          </View>
+        );
+      })()}
 
       {/* ── Round banner overlay ── */}
       {roundBanner && (
@@ -2297,14 +2845,14 @@ const styles = StyleSheet.create({
     left: 0,
     top: '50%',
     zIndex: 15,
-    transform: [{ translateY: -24 }, { translateX: -90 }],
+    transform: [{ translateY: -52 }, { translateX: -36 }],
   },
   tableSideBadgeRight: {
     position: 'absolute',
     right: 0,
     top: '50%',
     zIndex: 15,
-    transform: [{ translateY: -24 }, { translateX: 90 }],
+    transform: [{ translateY: -52 }, { translateX: 36 }],
   },
   tableOuter: {
     width: '86%',
@@ -2352,6 +2900,24 @@ const styles = StyleSheet.create({
   boardRow: { flexDirection: 'row', alignItems: 'center' },
   snakeBoardFrame: { alignSelf: 'center' },
   snakeBoard: { alignSelf: 'center', gap: 0 },
+  ghostArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#fbbf24',
+    alignSelf: 'center',
+    marginBottom: 2,
+  },
+  ghostArrowActive: {
+    borderTopColor: '#f97316',
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderTopWidth: 9,
+  },
   snakeRow: { alignItems: 'center', gap: 0 },
   snakeCorner: { borderRadius: 4, backgroundColor: '#d4cfc6' },
   playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
@@ -2384,7 +2950,7 @@ const styles = StyleSheet.create({
     left: 0, right: 0, bottom: 0,
     flexDirection: 'column',
     paddingHorizontal: spacing.sm,
-    zIndex: 30,
+    zIndex: 200,
   },
   actionBar: {
     flexDirection: 'row',
@@ -2460,10 +3026,10 @@ const styles = StyleSheet.create({
   },
   handContent: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: 4,
     paddingHorizontal: spacing.xs,
-    paddingTop: 14,
+    paddingTop: 20,
     paddingBottom: 4,
   },
   handTileWrap: {
@@ -2472,10 +3038,18 @@ const styles = StyleSheet.create({
   handTileSelected: {
     transform: [{ translateY: -12 }],
   },
-  playIndicator: {
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: '#4ade80',
-    alignSelf: 'center', marginTop: 2,
+  // Downward-pointing triangle above a playable tile (same technique as ghostArrow)
+  handTileArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#4ade80',
+    alignSelf: 'center',
+    marginBottom: 3,
   },
 
   // Settings modal

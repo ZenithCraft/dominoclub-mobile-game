@@ -94,7 +94,22 @@ export function SplashScreen({ navigation }: Props) {
     loadFromStorage().then(async () => {
       if (!useAuthStore.getState().user && !useAuthStore.getState().accessToken && DEV_AUTO_LOGIN) {
         try {
-          const { data } = await api.post('/auth/dev/login', {});
+          // Use a session-stable unique phone so each browser tab (incl. incognito)
+          // gets a distinct dev user. Without this, both tabs log in as the same
+          // default user and can never be matched against each other.
+          let devPhone: string | undefined;
+          if (typeof window !== 'undefined' && window.sessionStorage) {
+            let stored = window.sessionStorage.getItem('dev_login_phone');
+            if (!stored) {
+              stored = `+5599${String(Date.now()).slice(-8)}`;
+              window.sessionStorage.setItem('dev_login_phone', stored);
+            }
+            devPhone = stored;
+          }
+          const { data } = await api.post(
+            '/auth/dev/login',
+            devPhone ? { phone: devPhone, name: `Dev ${devPhone.slice(-4)}` } : {},
+          );
           setTokens(data.accessToken, data.refreshToken);
           setUser(data.user);
         } catch {}

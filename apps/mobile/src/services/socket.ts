@@ -106,10 +106,13 @@ export async function connectSocket(): Promise<Socket> {
   }
 
   if (socket) {
+    if (socket.connected) return socket;
+    // Not yet connected — wait for it to connect or fail.
+    // On any failure (auth error, timeout, reconnection exhausted) disconnect and
+    // fall through to create a fresh socket with a possibly-refreshed token.
     try {
       return await waitForConnect(socket);
-    } catch (err: any) {
-      if (!isAuthSocketError(err)) throw err;
+    } catch {
       disconnectSocket();
     }
   }
