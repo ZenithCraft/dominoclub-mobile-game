@@ -1,14 +1,25 @@
 // ─────────────────────────────────────────────────────────────────
 // DominoClub — Brazilian Domino Engine
-// Supports: Carroça, L e L, Cruzada
-// Scoring: Simples=1, Carroça=2, Lá e Lô=3, Cruzada=4 — first to 6 pts wins
+//
+// Variants (rule sets):
+//   CARROCA — standard blocked-game resolution (lower pip total wins, 1 pt)
+//   L_E_L   — doubles count double in blocked-game pip totals
+//   CRUZADA — reserved; currently plays like CARROCA
+//
+// Scoring (win types — apply to ALL variants):
+//   Simples (1 pt)  — plain win
+//   Carroça (2 pts) — winning tile is a double
+//   Lá e Lô (3 pts) — winning tile makes both open ends equal
+//   Cruzada (4 pts) — winning tile is a double AND both ends equal
+//
+// First to reach TARGET_SCORE (6) wins the match.
 // ─────────────────────────────────────────────────────────────────
 
 export type Tile = [number, number]; // [left, right] pips
 
 export interface PlacedTile {
-  tile: Tile;
-  side: 'left' | 'right' | 'top' | 'bottom'; // for Cruzada
+  tile:    Tile;
+  side:    'left' | 'right';
   flipped: boolean; // whether tile was placed right-to-left
 }
 
@@ -32,10 +43,8 @@ export interface GameState {
   players: PlayerState[];
   board: PlacedTile[];
   boneyard: Tile[];
-  leftOpen: number;    // pip value open on the left end
-  rightOpen: number;   // pip value open on the right end
-  topOpen?: number;    // only for CRUZADA
-  bottomOpen?: number; // only for CRUZADA
+  leftOpen:  number;   // pip value open on the left end  (-1 = board empty)
+  rightOpen: number;   // pip value open on the right end (-1 = board empty)
   currentPlayerIndex: number;
   turnCount: number;
   consecutivePasses: number;
@@ -123,7 +132,7 @@ export function initGame(
   };
 }
 
-// Find player with highest double (goes first) or highest normal tile if no doubles
+// Find player with highest double (goes first); falls back to highest pip tile
 function findFirstPlayer(players: PlayerState[]): { index: number; tile: Tile } {
   let firstPlayerIndex = 0;
   let highestDouble = -1;
@@ -198,46 +207,56 @@ export function initNextRound(state: GameState): GameState {
 }
 
 /**
- * Detect the win type based on the last tile played.
+ * Detect the win type based on the FINAL board state after the last tile is placed.
  *
  * Rules (Brazilian domino scoring):
- *  - Cruzada  (4 pts): last tile is a double AND both ends had equal pips (tile fits either end)
- *  - Lá e Lô  (3 pts): last tile is NOT a double AND both ends had equal pips (tile fits either end)
+ *  - Cruzada  (4 pts): last tile is a double AND both open ends are equal after placement
+ *  - Lá e Lô  (3 pts): last tile is NOT a double AND both open ends are equal after placement
  *  - Carroça  (2 pts): last tile is a double
  *  - Simples  (1 pt) : plain win
+ *
+ * NOTE: leftOpen / rightOpen must be the POST-MOVE values.
  */
-function detectWinType(tile: Tile, leftOpen: number, rightOpen: number, firstPlayMade: boolean): WinType {
-  if (!firstPlayMade) return 'simples'; // very first tile of the game
-  const isDouble = tile[0] === tile[1];
+function detectWinType(
+  tile: Tile,
+  leftOpen: number,
+  rightOpen: number,
+  boardWasEmpty: boolean
+): WinType {
+  if (boardWasEmpty) return 'simples'; // only tile on the board — no end conditions to check
+  const isDouble     = tile[0] === tile[1];
   const bothEndsEqual = leftOpen === rightOpen;
   if (isDouble && bothEndsEqual) return 'cruzada';
-  if (isDouble) return 'carroca';
-  if (bothEndsEqual) return 'lelo';
+  if (isDouble)                  return 'carroca';
+  if (bothEndsEqual)             return 'lelo';
   return 'simples';
 }
 
-export function canPlayTile(state: GameState, tile: Tile): { side: 'left' | 'right' | 'top' | 'bottom'; flipped: boolean }[] {
+export function canPlayTile(state: GameState, tile: Tile): { side: 'left' | 'right'; flipped: boolean }[] {
   if (!state.firstPlayMade) {
     // If there is a required first tile, only that tile can be played
     if (state.requiredFirstTile) {
-      if ((tile[0] === state.requiredFirstTile[0] && tile[1] === state.requiredFirstTile[1]) ||
-          (tile[0] === state.requiredFirstTile[1] && tile[1] === state.requiredFirstTile[0])) {
-        return [{ side: 'left', flipped: false }]; // first tile goes anywhere, 'left' is default
+      if (
+        (tile[0] === state.requiredFirstTile[0] && tile[1] === state.requiredFirstTile[1]) ||
+        (tile[0] === state.requiredFirstTile[1] && tile[1] === state.requiredFirstTile[0])
+      ) {
+        return [{ side: 'left', flipped: false }];
       }
-      return []; // Not the required tile
+      return [];
     }
-    return [{ side: 'left', flipped: false }]; // fallback
+    return [{ side: 'left', flipped: false }];
   }
 
-  const plays: { side: 'left' | 'right' | 'top' | 'bottom'; flipped: boolean }[] = [];
+  const plays: { side: 'left' | 'right'; flipped: boolean }[] = [];
 
-  const checkEnd = (open: number, side: 'left' | 'right' | 'top' | 'bottom') => {
+  const checkEnd = (open: number, side: 'left' | 'right') => {
     if (open === -1) return;
-    const isLeftLike = side === 'left' || side === 'top';
-    if (isLeftLike) {
+    if (side === 'left') {
+      // connecting tile[1] to the left open; tile[0] becomes the new left open
       if (tile[1] === open) plays.push({ side, flipped: false });
       if (tile[0] === open && tile[0] !== tile[1]) plays.push({ side, flipped: true });
     } else {
+      // connecting tile[0] to the right open; tile[1] becomes the new right open
       if (tile[0] === open) plays.push({ side, flipped: false });
       if (tile[1] === open && tile[0] !== tile[1]) plays.push({ side, flipped: true });
     }
@@ -245,10 +264,6 @@ export function canPlayTile(state: GameState, tile: Tile): { side: 'left' | 'rig
 
   checkEnd(state.leftOpen, 'left');
   checkEnd(state.rightOpen, 'right');
-  if (state.variant === 'CRUZADA') {
-    if (state.topOpen !== undefined) checkEnd(state.topOpen, 'top');
-    if (state.bottomOpen !== undefined) checkEnd(state.bottomOpen, 'bottom');
-  }
 
   return plays;
 }
@@ -264,7 +279,7 @@ export function applyMove(
   state: GameState,
   playerIndex: number,
   tile: Tile,
-  side: 'left' | 'right' | 'top' | 'bottom',
+  side: 'left' | 'right',
   flipped: boolean
 ): GameState {
   const s = JSON.parse(JSON.stringify(state)) as GameState;
@@ -276,17 +291,12 @@ export function applyMove(
       throw new Error('Illegal move');
     }
   } else {
-    // first play check
     const allowed = canPlayTile(s, tile);
-    if (allowed.length === 0) {
-       throw new Error('Illegal first move');
-    }
+    if (allowed.length === 0) throw new Error('Illegal first move');
   }
 
-  // Capture open ends BEFORE placing (needed for win type detection)
-  const prevLeftOpen  = s.leftOpen;
-  const prevRightOpen = s.rightOpen;
-  const wasFirstPlay  = s.firstPlayMade;
+  // Was the board empty before this move? (needed for win-type detection)
+  const boardWasEmpty = !s.firstPlayMade;
 
   // Remove tile from hand
   const idx = player.hand.findIndex((t) => t[0] === tile[0] && t[1] === tile[1]);
@@ -300,28 +310,14 @@ export function applyMove(
 
   if (!s.firstPlayMade) {
     s.board.push(placed);
-    s.leftOpen = effectiveTile[0];
+    s.leftOpen  = effectiveTile[0];
     s.rightOpen = effectiveTile[1];
     s.firstPlayMade = true;
-
-    // In Cruzada, if first tile is a double, the cross opens immediately
-    if (s.variant === 'CRUZADA' && tile[0] === tile[1]) {
-      s.topOpen = tile[0];
-      s.bottomOpen = tile[0];
-    }
   } else {
     s.board.push(placed);
     switch (side) {
-      case 'left':  s.leftOpen   = effectiveTile[0]; break;
-      case 'right': s.rightOpen  = effectiveTile[1]; break;
-      case 'top':   s.topOpen    = effectiveTile[0]; break;
-      case 'bottom':s.bottomOpen = effectiveTile[1]; break;
-    }
-
-    // Cruzada: first double played opens perpendicular sides
-    if (s.variant === 'CRUZADA' && tile[0] === tile[1] && s.topOpen === undefined) {
-      s.topOpen    = tile[0];
-      s.bottomOpen = tile[0];
+      case 'left':  s.leftOpen  = effectiveTile[0]; break;
+      case 'right': s.rightOpen = effectiveTile[1]; break;
     }
   }
 
@@ -330,17 +326,17 @@ export function applyMove(
 
   // Check win condition: player emptied hand
   if (player.hand.length === 0) {
-    const winType = detectWinType(tile, prevLeftOpen, prevRightOpen, wasFirstPlay);
+    // detectWinType uses POST-MOVE open ends (s.leftOpen / s.rightOpen already updated above)
+    const winType = detectWinType(tile, s.leftOpen, s.rightOpen, boardWasEmpty);
     const points  = WIN_POINTS[winType];
-    s.status    = 'finished';
-    s.winnerId  = player.userId;
+    s.status     = 'finished';
+    s.winnerId   = player.userId;
     s.winnerTeam = player.team;
-    s.winType   = winType;
+    s.winType    = winType;
     s.matchScores = {
       ...s.matchScores,
       [player.team]: (s.matchScores[player.team] ?? 0) + points,
     };
-    // Check if match is over
     if (s.matchScores[player.team] >= s.targetScore) {
       s.matchWinnerTeam = player.team;
     }
@@ -361,7 +357,7 @@ export function applyPass(state: GameState, playerIndex: number): GameState {
 
   // All players passed — game is blocked
   if (s.consecutivePasses >= s.players.length) {
-    s.status = 'finished';
+    s.status  = 'finished';
     s.winType = 'simples';
     resolveBlockedGame(s);
   }
@@ -379,19 +375,16 @@ export function drawFromBoneyard(state: GameState, playerIndex: number): GameSta
 }
 
 function resolveBlockedGame(state: GameState): void {
-  // Count pips for each team
+  // Count pips per team; L_E_L variant: doubles count double
   const teamPips: Record<number, number> = { 1: 0, 2: 0 };
   state.players.forEach((p) => {
-    const pips = p.hand.reduce((sum, tile) => sum + tile[0] + tile[1], 0);
-    teamPips[p.team] = (teamPips[p.team] || 0) + pips;
-
-    // L e L variant: doubles count double
+    let pips = p.hand.reduce((sum, t) => sum + t[0] + t[1], 0);
     if (state.variant === 'L_E_L') {
-      const doubleBonus = p.hand
-        .filter((t) => t[0] === t[1])
-        .reduce((sum, t) => sum + t[0] + t[1], 0);
-      teamPips[p.team] += doubleBonus;
+      // Doubles count their face value a second time
+      const doubleBonus = p.hand.filter((t) => t[0] === t[1]).reduce((sum, t) => sum + t[0] + t[1], 0);
+      pips += doubleBonus;
     }
+    teamPips[p.team] = (teamPips[p.team] || 0) + pips;
   });
 
   const teams = Object.keys(teamPips).map(Number);
@@ -406,7 +399,7 @@ function resolveBlockedGame(state: GameState): void {
     state.winnerTeam = lower;
     const winningPlayer = state.players.find((p) => p.team === lower);
     state.winnerId = winningPlayer?.userId;
-    // Blocked game always scores simples (1 pt)
+    // Blocked game always scores 1 pt (simples)
     state.matchScores = {
       ...state.matchScores,
       [lower]: (state.matchScores[lower] ?? 0) + 1,
@@ -420,7 +413,7 @@ function resolveBlockedGame(state: GameState): void {
 export function getBotMove(state: GameState, playerIndex: number): {
   action: 'play' | 'pass' | 'draw';
   tile?: Tile;
-  side?: 'left' | 'right' | 'top' | 'bottom';
+  side?: 'left' | 'right';
   flipped?: boolean;
 } {
   const validMoves = getValidMoves(state, playerIndex);

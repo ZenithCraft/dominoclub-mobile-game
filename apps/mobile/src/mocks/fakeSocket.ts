@@ -135,6 +135,12 @@ class FakeSocket {
       }
 
       case 'game:join': {
+        // If state was pre-seeded (e.g. by the dev mock useEffect), just re-emit it
+        if (this.state !== null) {
+          setTimeout(() => this._trigger('game:state', this.state), 200);
+          break;
+        }
+
         const gameId = args[0]?.gameId ?? 'demo-1';
         const myId   = useAuthStore.getState().user?.id ?? 'p1';
         const myName = useAuthStore.getState().user?.name ?? 'Você';
@@ -287,6 +293,10 @@ class FakeSocket {
     (this.listeners.get(event) ?? []).forEach((cb) => cb(...args));
     (this.onceMap.get(event) ?? []).forEach((cb) => cb(...args));
     this.onceMap.delete(event);
+  }
+
+  setInitialState(state: any) {
+    this.state = state;
   }
 
   disconnect() {}

@@ -11,9 +11,10 @@ import {
   AlertTriangle, Circle, ArrowUpRight, ArrowDownRight,
   Activity, Ban, CheckCircle2, Clock, XCircle, PlayCircle,
   Loader2, PanelLeftClose, PanelLeftOpen, TrendingUp, Gift, Link2,
+  Users2, DoorOpen, Lock, Unlock, Trash2,
 } from 'lucide-react';
 import { adminApi } from '../lib/api';
-import logo from '../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
+const logo = { src: '/logo.png' };
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
@@ -24,7 +25,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '.
 import { DateTimePicker } from '../components/ui/date-time-picker';
 import { cn } from '../lib/utils';
 
-type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments' | 'fraud' | 'pairBlocks' | 'bonus' | 'config';
+type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments' | 'fraud' | 'pairBlocks' | 'teamPairs' | 'bonus' | 'rooms' | 'config';
 
 const formatInt  = (v: number) => new Intl.NumberFormat('pt-BR').format(v);
 const formatMoney = (v: number) =>
@@ -106,7 +107,9 @@ export default function AdminDashboard() {
     { id: 'tournaments', label: 'Torneios',     Icon: Trophy },
     { id: 'fraud',       label: 'Fraudes',      Icon: ShieldAlert },
     { id: 'pairBlocks',  label: 'Bloqueios',    Icon: Link2 },
+    { id: 'teamPairs',   label: 'Duplas 2v2',   Icon: Users2 },
     { id: 'bonus',       label: 'Bônus',        Icon: Gift },
+    { id: 'rooms',       label: 'Salas',        Icon: DoorOpen },
     { id: 'config',      label: 'Config.',      Icon: Settings2 },
   ];
 
@@ -194,7 +197,9 @@ export default function AdminDashboard() {
           {tab === 'tournaments'  && <TournamentsTab />}
           {tab === 'fraud'        && <FraudTab />}
           {tab === 'pairBlocks'   && <PairBlocksTab />}
+          {tab === 'teamPairs'    && <TeamPairsTab />}
           {tab === 'bonus'        && <BonusTab />}
+          {tab === 'rooms'        && <GameRoomsTab />}
           {tab === 'config'       && <ConfigTab />}
         </div>
       </main>
@@ -575,11 +580,146 @@ function gameStatusBadge(s: string) {
   return <Badge variant={x.variant}><x.Icon className="w-3 h-3" />{x.label}</Badge>;
 }
 
+const WIN_TYPE_PT: Record<string, string> = {
+  domino: 'Dominó', lelo: 'Lelo', blocked: 'Bloqueado', carroca: 'Carroça', la_e_lo: 'Lá-e-Ló', cruzada: 'Cruzada',
+};
+
+function GameLogsPanel({ gameId, players }: { gameId: string; players: { userId: string; name: string; isBot: boolean }[] }) {
+  const [logs, setLogs] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    adminApi.get(`/games/${gameId}/logs`)
+      .then(({ data }) => setLogs(data.logs ?? []))
+      .catch((err) => setError(err.response?.data?.error || 'Erro ao carregar logs'))
+      .finally(() => setLoading(false));
+  }, [gameId]);
+
+  const nameOf = (userId: string) => {
+    const p = players.find((p) => p.userId === userId);
+    return p ? (p.name || userId.slice(0, 8)) : userId.slice(0, 8);
+  };
+
+  if (loading) return (
+    <div className="flex items-center gap-2 py-4 px-2 text-muted-foreground text-xs">
+      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando logs…
+    </div>
+  );
+  if (error) return <p className="py-3 px-2 text-xs text-red-400">{error}</p>;
+  if (!logs || logs.length === 0) return (
+    <p className="py-3 px-2 text-xs text-muted-foreground">Nenhum log registrado para esta partida.</p>
+  );
+
+  const start = logs.find((l) => l.event === 'match_start');
+  const rounds = logs.filter((l) => l.event === 'round_end');
+  const end = logs.find((l) => l.event === 'match_end');
+
+  return (
+    <div className="px-4 pb-4 pt-2 space-y-4">
+      {/* ── Match start ── */}
+      {start && (
+        <div className="rounded-md border border-border/50 bg-accent/10 p-3 text-xs space-y-1">
+          <p className="font-semibold text-foreground flex items-center gap-1.5">
+            <PlayCircle className="w-3.5 h-3.5 text-blue-400" /> Início da partida
+            <span className="ml-auto text-muted-foreground font-normal">{new Date(start.timestamp).toLocaleString('pt-BR')}</span>
+          </p>
+          <p className="text-muted-foreground">
+            Variante: <span className="text-foreground">{start.variant}</span>
+            {' · '}Aposta: <span className="text-yellow-400">{formatMoney(Number(start.betAmount ?? 0))}</span>
+          </p>
+          <p className="text-muted-foreground">
+            Jogadores:{' '}
+            {(start.players ?? []).map((p: any) => (
+              <span key={p.userId} className="inline-flex items-center gap-1 mr-2">
+                <span className="text-foreground">{nameOf(p.userId)}</span>
+                <span className="text-muted-foreground/60">(time {p.team}{p.isBot ? ', bot' : ''})</span>
+              </span>
+            ))}
+          </p>
+        </div>
+      )}
+
+      {/* ── Rounds ── */}
+      {rounds.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Rodadas</p>
+          {rounds.map((r, i) => {
+            const scores = r.matchScores ?? {};
+            const scoreStr = Object.entries(scores).map(([t, s]) => `T${t}: ${s}`).join(' · ');
+            return (
+              <div key={i} className="flex items-center gap-3 rounded-md border border-border/40 bg-card px-3 py-2 text-xs">
+                <span className="font-semibold text-muted-foreground w-14 shrink-0">Rodada {r.round}</span>
+                <span className={cn('font-medium', r.winnerTeam ? 'text-green-400' : 'text-muted-foreground')}>
+                  {r.winnerTeam ? `Time ${r.winnerTeam} venceu` : 'Empate'}
+                </span>
+                <span className="text-muted-foreground">
+                  {WIN_TYPE_PT[r.winType] || r.winType}
+                  {r.points != null ? ` · ${r.points}pts` : ''}
+                </span>
+                {r.winnerId && (
+                  <span className="text-muted-foreground/70">{nameOf(r.winnerId)}</span>
+                )}
+                <span className="ml-auto tabular-nums text-muted-foreground/60">{scoreStr}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Match end ── */}
+      {end && (
+        <div className={cn(
+          'rounded-md border p-3 text-xs space-y-1',
+          end.status === 'FINISHED' ? 'border-green-500/30 bg-green-500/5' :
+          end.status === 'ABANDONED' ? 'border-red-500/30 bg-red-500/5' :
+          'border-border/50 bg-accent/10',
+        )}>
+          <p className="font-semibold text-foreground flex items-center gap-1.5">
+            {end.status === 'FINISHED'
+              ? <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+              : <XCircle className="w-3.5 h-3.5 text-red-400" />}
+            Resultado final
+            <span className="ml-auto text-muted-foreground font-normal">{new Date(end.timestamp).toLocaleString('pt-BR')}</span>
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-muted-foreground">
+            {end.matchWinnerTeam != null && (
+              <span>Vencedor: <span className="text-green-400 font-medium">Time {end.matchWinnerTeam}</span></span>
+            )}
+            {end.winnerId && (
+              <span>MVP: <span className="text-foreground">{nameOf(end.winnerId)}</span></span>
+            )}
+            <span>Rodadas: <span className="text-foreground">{end.rounds}</span></span>
+            <span>Lances: <span className="text-foreground">{end.totalMoves}</span></span>
+            {Number(end.prizePerWinner ?? 0) > 0 && (
+              <span>Prêmio/vencedor: <span className="text-yellow-400">{formatMoney(Number(end.prizePerWinner))}</span></span>
+            )}
+          </div>
+          {end.players && (
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-muted-foreground pt-0.5">
+              {end.players.map((p: any) => (
+                <span key={p.userId}>
+                  {nameOf(p.userId)}: <span className="text-foreground tabular-nums">{p.pips} pips restantes</span>
+                  {p.isBot ? ' (bot)' : ''}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GamesTab() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const url = `/games?page=${page}${statusFilter !== 'ALL' ? `&status=${statusFilter}` : ''}`;
   const { data, loading, error, reload } = useData<any>(url, [page, statusFilter]);
+
+  const toggleExpand = (id: string) => setExpandedId((prev) => (prev === id ? null : id));
 
   return (
     <div>
@@ -599,29 +739,52 @@ function GamesTab() {
       </PageHeader>
 
       {error ? <ErrorState msg={error} onRetry={reload} /> : loading ? (
-        <Card><CardContent className="p-0"><TableSkeleton cols={10} /></CardContent></Card>
+        <Card><CardContent className="p-0"><TableSkeleton cols={11} /></CardContent></Card>
       ) : (
         <>
           <TableWrapper>
             <thead>
-              <tr>{['ID', 'Modo', 'Status', 'Aposta', 'Prêmio', 'Taxa', 'Jogadores', 'Vencedor', 'Criada em', 'Duração'].map(h => <Th key={h}>{h}</Th>)}</tr>
+              <tr>{['', 'ID', 'Modo', 'Status', 'Aposta', 'Prêmio', 'Taxa', 'Jogadores', 'Vencedor', 'Criada em', 'Duração'].map(h => <Th key={h}>{h}</Th>)}</tr>
             </thead>
             <tbody>
-              {(data?.games ?? []).map((g: any) => (
-                <tr key={g.id} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
-                  <Td><span className="font-mono text-xs text-muted-foreground">{g.id.slice(0, 8)}</span></Td>
-                  <Td><span className="text-foreground text-xs">{MODE_LABEL[g.mode] || g.mode}</span></Td>
-                  <Td>{gameStatusBadge(g.status)}</Td>
-                  <Td><span className="tabular-nums text-yellow-400 font-medium text-xs">{formatMoney(Number(g.bet_amount ?? 0))}</span></Td>
-                  <Td><span className="tabular-nums text-xs">{formatMoney(Number(g.prize_pool ?? 0))}</span></Td>
-                  <Td><span className="tabular-nums text-xs text-muted-foreground">{formatMoney(Number(g.house_fee ?? 0))}</span></Td>
-                  <Td><span className="text-xs text-muted-foreground">{g.players.map((p: any) => p.user.name || '?').join(', ')}</span></Td>
-                  <Td><span className="text-xs">{g.winner?.name || '—'}</span></Td>
-                  <Td><span className="text-xs text-muted-foreground">{new Date(g.created_at).toLocaleString('pt-BR')}</span></Td>
-                  <Td><span className="text-xs text-muted-foreground">{g.duration || '—'}</span></Td>
-                </tr>
-              ))}
-              {(data?.games ?? []).length === 0 && <EmptyRow cols={10} msg="Nenhuma partida encontrada" />}
+              {(data?.games ?? []).map((g: any) => {
+                const isExpanded = expandedId === g.id;
+                const playerList = (g.players ?? []).map((p: any) => ({
+                  userId: p.user.id,
+                  name: p.user.name || '',
+                  isBot: p.is_bot,
+                }));
+                return (
+                  <React.Fragment key={g.id}>
+                    <tr
+                      className={cn('border-b border-border/40 hover:bg-accent/20 transition-colors cursor-pointer', isExpanded && 'bg-accent/10')}
+                      onClick={() => toggleExpand(g.id)}
+                    >
+                      <Td>
+                        <ChevronRight className={cn('w-3.5 h-3.5 text-muted-foreground transition-transform', isExpanded && 'rotate-90')} />
+                      </Td>
+                      <Td><span className="font-mono text-xs text-muted-foreground">{g.id.slice(0, 8)}</span></Td>
+                      <Td><span className="text-foreground text-xs">{MODE_LABEL[g.mode] || g.mode}</span></Td>
+                      <Td>{gameStatusBadge(g.status)}</Td>
+                      <Td><span className="tabular-nums text-yellow-400 font-medium text-xs">{formatMoney(Number(g.bet_amount ?? 0))}</span></Td>
+                      <Td><span className="tabular-nums text-xs">{formatMoney(Number(g.prize_pool ?? 0))}</span></Td>
+                      <Td><span className="tabular-nums text-xs text-muted-foreground">{formatMoney(Number(g.house_fee ?? 0))}</span></Td>
+                      <Td><span className="text-xs text-muted-foreground">{g.players.map((p: any) => p.user.name || '?').join(', ')}</span></Td>
+                      <Td><span className="text-xs">{g.winner?.name || '—'}</span></Td>
+                      <Td><span className="text-xs text-muted-foreground">{new Date(g.created_at).toLocaleString('pt-BR')}</span></Td>
+                      <Td><span className="text-xs text-muted-foreground">{g.duration || '—'}</span></Td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="border-b border-border/40 bg-accent/5">
+                        <td colSpan={11} className="p-0">
+                          <GameLogsPanel gameId={g.id} players={playerList} />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {(data?.games ?? []).length === 0 && <EmptyRow cols={11} msg="Nenhuma partida encontrada" />}
             </tbody>
           </TableWrapper>
           <Pagination page={page} pages={data?.pages ?? 1} onChange={setPage} />
@@ -1307,6 +1470,208 @@ function PairBlocksTab() {
   );
 }
 
+function TeamPairsTab() {
+  const [days,       setDays]       = useState('30');
+  const [minGames,   setMinGames]   = useState('5');
+  const [threshold,  setThreshold]  = useState('70');
+  const [blocking,   setBlocking]   = useState<string | null>(null);
+
+  const url = `/team-pair-stats?days=${days}&minGames=${minGames}&threshold=${(parseFloat(threshold) / 100).toFixed(2)}`;
+  const { data, loading, error, reload } = useData<any>(url, [days, minGames, threshold]);
+
+  const block = async (userAId: string, userBId: string) => {
+    const key = `${userAId}:${userBId}`;
+    setBlocking(key);
+    try {
+      await adminApi.post('/pair-blocks', {
+        userAId,
+        userBId,
+        reason: 'Alta taxa de vitória em dupla 2v2',
+      });
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao bloquear');
+    } finally {
+      setBlocking(null);
+    }
+  };
+
+  const pairs: any[] = data?.pairs ?? [];
+
+  return (
+    <div>
+      <PageHeader
+        title="Duplas suspeitas — 2v2"
+        subtitle="Pares que jogam frequentemente no mesmo time com taxa de vitória elevada."
+      >
+        <Button variant="outline" size="icon" onClick={reload} disabled={loading}>
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </Button>
+      </PageHeader>
+
+      {/* Filters */}
+      <Card className="mb-6 card-gradient">
+        <CardContent className="pt-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Período (dias)</label>
+              <Input
+                type="number"
+                min={1} max={365}
+                value={days}
+                onChange={e => setDays(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Mín. partidas juntos</label>
+              <Input
+                type="number"
+                min={1}
+                value={minGames}
+                onChange={e => setMinGames(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Taxa mínima (%)</label>
+              <Input
+                type="number"
+                min={1} max={100}
+                value={threshold}
+                onChange={e => setThreshold(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Legend */}
+      <div className="mb-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
+        <span><span className="font-semibold text-foreground">Taxa vitória:</span> win rate jogando no mesmo time</span>
+        <span><span className="font-semibold text-foreground">Solo A/B:</span> % das partidas 2v2 jogadas SEM este parceiro</span>
+        <span><span className="font-semibold text-foreground">Horários:</span> % das horas do dia (0-23) em que jogaram juntos</span>
+        <span><span className="font-semibold text-foreground">Cooldown:</span> partidas restantes no bloqueio de time</span>
+      </div>
+
+      {error ? (
+        <ErrorState msg={error} onRetry={reload} />
+      ) : loading ? (
+        <Card><CardContent className="p-0"><TableSkeleton cols={9} /></CardContent></Card>
+      ) : (
+        <>
+          <TableWrapper>
+            <thead>
+              <tr>
+                {['Jogador A', 'Jogador B', 'Juntos', 'Taxa vitória', 'Solo A', 'Solo B', 'Horários', 'Cooldown', ''].map(h => (
+                  <Th key={h}>{h}</Th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pairs.map((p: any) => {
+                const blockKey = `${p.userA.id}:${p.userB.id}`;
+                const wr = (p.winRate * 100).toFixed(0);
+                const wrHigh = p.winRate >= (parseFloat(threshold) / 100);
+                return (
+                  <tr key={blockKey} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                    {/* Player A */}
+                    <Td>
+                      <p className="font-medium text-foreground text-xs">{p.userA.name || '?'}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{p.userA.phone || p.userA.id.slice(0, 8)}</p>
+                    </Td>
+                    {/* Player B */}
+                    <Td>
+                      <p className="font-medium text-foreground text-xs">{p.userB.name || '?'}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{p.userB.phone || p.userB.id.slice(0, 8)}</p>
+                    </Td>
+                    {/* Games together */}
+                    <Td>
+                      <span className="tabular-nums text-xs">{p.gamesTogether} partidas</span>
+                      <p className="text-xs text-muted-foreground">{p.winsTogether}V</p>
+                    </Td>
+                    {/* Win rate */}
+                    <Td>
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn('text-sm font-semibold tabular-nums', wrHigh ? 'text-destructive' : 'text-foreground')}>
+                          {wr}%
+                        </span>
+                        {wrHigh && (
+                          <Badge variant="destructive" className="text-[10px] px-1 py-0">ALERTA</Badge>
+                        )}
+                      </div>
+                    </Td>
+                    {/* Solo ratios */}
+                    <Td>
+                      <span className={cn('tabular-nums text-xs', p.userASoloRatio < 30 ? 'text-yellow-400' : 'text-muted-foreground')}>
+                        {p.userASoloRatio}%
+                      </span>
+                      <p className="text-[10px] text-muted-foreground">{p.userATotalGames} totais</p>
+                    </Td>
+                    <Td>
+                      <span className={cn('tabular-nums text-xs', p.userBSoloRatio < 30 ? 'text-yellow-400' : 'text-muted-foreground')}>
+                        {p.userBSoloRatio}%
+                      </span>
+                      <p className="text-[10px] text-muted-foreground">{p.userBTotalGames} totais</p>
+                    </Td>
+                    {/* Hour overlap */}
+                    <Td>
+                      <span className={cn('tabular-nums text-xs', p.hourOverlapPct >= 50 ? 'text-yellow-400' : 'text-muted-foreground')}>
+                        {p.hourOverlapPct}%
+                      </span>
+                      <p className="text-[10px] text-muted-foreground">das horas</p>
+                    </Td>
+                    {/* Cooldown */}
+                    <Td>
+                      {p.cooldownRemaining > 0 ? (
+                        <Badge variant="secondary" className="text-[10px] whitespace-nowrap">
+                          -{p.cooldownRemaining} partidas
+                        </Badge>
+                      ) : p.consecutiveSameTeam > 0 ? (
+                        <span className="text-xs text-muted-foreground">{p.consecutiveSameTeam}/3 seguidas</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {new Date(p.lastPlayedAt).toLocaleDateString('pt-BR')}
+                      </p>
+                    </Td>
+                    {/* Block action */}
+                    <Td>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={blocking === blockKey}
+                        onClick={() => block(p.userA.id, p.userB.id)}
+                      >
+                        {blocking === blockKey
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><Ban className="w-3 h-3 mr-1" />Bloquear</>
+                        }
+                      </Button>
+                    </Td>
+                  </tr>
+                );
+              })}
+              {pairs.length === 0 && (
+                <EmptyRow cols={9} msg="Nenhuma dupla suspeita encontrada com os filtros atuais" />
+              )}
+            </tbody>
+          </TableWrapper>
+
+          {pairs.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-3">
+              {pairs.length} dupla{pairs.length !== 1 ? 's' : ''} encontrada{pairs.length !== 1 ? 's' : ''} ·
+              {' '}Solo baixo (&lt;30%) e horários altos (≥50%) são sinais de conluio.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function BonusTab() {
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
@@ -1426,6 +1791,193 @@ function BonusTab() {
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const MODE_LABELS: Record<string, string> = {
+  ARENA_1V1:        'Arena 1v1',
+  CUP_1V1:          'Copa 1v1',
+  TOURNAMENT_2V2:   'Torneio 2v2',
+  RECREATIONAL_2V2: 'Recreativo 2v2',
+};
+
+// ─── Game Rooms Tab ───────────────────────────────────────────────────────────
+
+function GameRoomsTab() {
+  const { data, loading, error, reload } = useData<{ rooms: any[] }>('/game-rooms');
+  const [creating, setCreating]   = useState(false);
+  const [actioning, setActioning] = useState<string | null>(null);
+  const [form, setForm] = useState({ mode: 'ARENA_1V1', betAmount: '', label: '' });
+
+  const rooms: any[] = data?.rooms ?? [];
+
+  const create = async (e: FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      await adminApi.post('/game-rooms', {
+        mode:      form.mode,
+        betAmount: parseFloat(form.betAmount),
+        label:     form.label.trim() || undefined,
+      });
+      setForm(p => ({ ...p, betAmount: '', label: '' }));
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao criar sala');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const toggleLock = async (id: string, locked: boolean) => {
+    setActioning(id);
+    try {
+      await adminApi.patch(`/game-rooms/${id}`, { locked: !locked });
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro');
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm('Remover esta sala?')) return;
+    setActioning(id);
+    try {
+      await adminApi.delete(`/game-rooms/${id}`);
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao remover sala');
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Salas de jogo"
+        subtitle="Defina os valores de aposta disponíveis por modo. Travar uma sala impede novas partidas naquele slot."
+      >
+        <Button variant="outline" size="icon" onClick={reload} disabled={loading}>
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </Button>
+      </PageHeader>
+
+      {/* Create form */}
+      <Card className="mb-6 card-gradient">
+        <CardHeader className="pb-0">
+          <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nova sala</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <form onSubmit={create} className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+            <div className="space-y-1.5">
+              <Label>Modo</Label>
+              <Select value={form.mode} onValueChange={v => setForm(p => ({ ...p, mode: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(MODE_LABELS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Valor da aposta (R$)</Label>
+              <Input
+                value={form.betAmount}
+                onChange={e => setForm(p => ({ ...p, betAmount: e.target.value }))}
+                inputMode="decimal"
+                placeholder="Ex: 10.00"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Rótulo (opcional)</Label>
+              <Input
+                value={form.label}
+                onChange={e => setForm(p => ({ ...p, label: e.target.value }))}
+                placeholder="Ex: Sala VIP"
+              />
+            </div>
+            <div>
+              <Button type="submit" disabled={creating}>
+                {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Criar sala'}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {error ? (
+        <ErrorState msg={error} onRetry={reload} />
+      ) : loading ? (
+        <Card><CardContent className="p-0"><TableSkeleton cols={5} /></CardContent></Card>
+      ) : (
+        <>
+          <TableWrapper>
+            <thead>
+              <tr>{['Modo', 'Aposta', 'Rótulo', 'Status', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
+            </thead>
+            <tbody>
+              {rooms.map((r: any) => (
+                <tr key={r.id} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                  <Td><span className="text-xs">{MODE_LABELS[r.mode] ?? r.mode}</span></Td>
+                  <Td>
+                    <span className="font-semibold tabular-nums text-sm text-foreground">
+                      {formatMoney(r.bet_amount)}
+                    </span>
+                  </Td>
+                  <Td><span className="text-xs text-muted-foreground">{r.label || '—'}</span></Td>
+                  <Td>
+                    {r.locked
+                      ? <Badge variant="destructive" className="gap-1"><Lock className="w-2.5 h-2.5" />Travada</Badge>
+                      : <Badge variant="secondary"   className="gap-1"><Unlock className="w-2.5 h-2.5" />Aberta</Badge>
+                    }
+                  </Td>
+                  <Td>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant={r.locked ? 'outline' : 'destructive'}
+                        disabled={actioning === r.id}
+                        onClick={() => toggleLock(r.id, r.locked)}
+                      >
+                        {actioning === r.id
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : r.locked
+                            ? <><Unlock className="w-3 h-3 mr-1" />Abrir</>
+                            : <><Lock   className="w-3 h-3 mr-1" />Travar</>
+                        }
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={actioning === r.id}
+                        onClick={() => remove(r.id)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </Td>
+                </tr>
+              ))}
+              {rooms.length === 0 && <EmptyRow cols={5} msg="Nenhuma sala configurada. Crie salas para controlar quais apostas ficam disponíveis." />}
+            </tbody>
+          </TableWrapper>
+
+          {rooms.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Salas travadas bloqueiam novas partidas naquele modo + valor mas não afetam partidas já em andamento.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 const CONFIG_META = [
   { key: 'houseEdgePercent',        label: 'House Edge',               description: 'Percentual da casa em cada aposta.',                       unit: '%',  min: 0,  max: 50,  step: 0.5  },

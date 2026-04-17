@@ -3,9 +3,7 @@
     "name": "DominoClub",
     "slug": "dominoclub",
     "version": "1.0.0",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "orientation": "landscape",
     "icon": "./assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png",
     "userInterfaceStyle": "dark",
@@ -60,15 +58,15 @@
       "termsUrl": "https://dominoclub.com.br/termos",
       "supportEmail": "suporte@dominoclub.com.br",
       "eas": {
-        "projectId": "d24cb654-5c37-4e8c-87b4-5f6b0c30c683"
+        "projectId": "a1bd4eff-ab83-4101-825d-1972317f28c9"
       }
     },
     "updates": {
       "enabled": true,
       "fallbackToCacheTimeout": 0,
       "checkAutomatically": "ON_LOAD",
-      "url": "https://u.expo.dev/d24cb654-5c37-4e8c-87b4-5f6b0c30c683"
+      "url": "https://u.expo.dev/a1bd4eff-ab83-4101-825d-1972317f28c9"
     },
-    "owner": "valenco"
+    "owner": "jojoyoro"
   }
 }

@@ -129,7 +129,7 @@ export async function joinTournamentHandler(req: Request, res: Response) {
         where: { id },
         data: {
           current_players: { increment: 1 },
-          prize_pool: { increment: tournament.entry_fee * 0.9 },
+          prize_pool: { increment: Number(tournament.entry_fee) * 0.9 },
           status: isFull ? 'FULL' : 'OPEN',
         },
       }),
@@ -185,7 +185,7 @@ export async function leaveTournamentHandler(req: Request, res: Response) {
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) return res.status(400).json({ error: 'Wallet not found' });
 
-    const poolDelta = tournament.entry_fee * 0.9;
+    const poolDelta = Number(tournament.entry_fee) * 0.9;
 
     await prisma.$transaction([
       prisma.tournamentPlayer.deleteMany({ where: { tournamentId: id, userId } }),

@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 import { config } from '../config';
 import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
@@ -335,6 +337,31 @@ export async function getGameReplayAdminHandler(req: Request, res: Response) {
   }
 }
 
+// ─── Game Logs ────────────────────────────────────────────────────────────────
+
+export async function getGameLogsHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const logFile = path.join(process.cwd(), 'logs', 'matches.log');
+
+    if (!fs.existsSync(logFile)) {
+      return res.json({ logs: [] });
+    }
+
+    const raw = fs.readFileSync(logFile, 'utf-8');
+    const logs = raw
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .filter((e): e is Record<string, any> => e !== null && e.matchId === id)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    res.json({ logs });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 // ─── Tournaments ──────────────────────────────────────────────────────────────
 
 export async function getTournamentsAdminHandler(req: Request, res: Response) {
@@ -418,7 +445,7 @@ export async function createDemoTournamentAdminHandler(req: Request, res: Respon
 
     for (const u of users) {
       const wallet = await prisma.wallet.findUnique({ where: { userId: u.id } });
-      if (!wallet || wallet.real_balance < entryFee) continue;
+      if (!wallet || Number(wallet.real_balance) < entryFee) continue;
       await prisma
         .$transaction([
           prisma.wallet.update({
@@ -921,5 +948,214 @@ export async function resolveFraudLogHandler(req: Request, res: Response) {
     res.json(log);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
+  }
+}
+
+// ─── Game Rooms ───────────────────────────────────────────────────────────────
+// Admin-managed slots: a room = mode + bet_amount combination.
+// Locking a room prevents new matches from being created in that slot.
+
+export async function getGameRoomsAdminHandler(req: Request, res: Response) {
+  try {
+    const rooms = await prisma.gameRoom.findMany({ orderBy: [{ mode: 'asc' }, { bet_amount: 'asc' }] });
+    res.json({ rooms: rooms.map((r) => ({ ...r, bet_amount: Number(r.bet_amount) })) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function createGameRoomAdminHandler(req: Request, res: Response) {
+  try {
+    const { mode, betAmount, label } = req.body as any;
+    if (!mode || betAmount === undefined) return res.status(400).json({ error: 'mode and betAmount are required' });
+    const parsed = parseFloat(String(betAmount));
+    if (!Number.isFinite(parsed) || parsed < 0) return res.status(400).json({ error: 'betAmount must be a non-negative number' });
+
+    const room = await prisma.gameRoom.upsert({
+      where: { mode_bet_amount: { mode, bet_amount: parsed } },
+      update: { label: label ? String(label) : undefined },
+      create: { mode, bet_amount: parsed, label: label ? String(label) : undefined },
+    });
+    logger.info('[Admin] Game room created/updated', { mode, betAmount: parsed });
+    res.status(201).json({ ...room, bet_amount: Number(room.bet_amount) });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function updateGameRoomAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { locked, label } = req.body as any;
+    const patch: any = {};
+    if (locked !== undefined) patch.locked = !!locked;
+    if (label  !== undefined) patch.label  = label ? String(label) : null;
+    const room = await prisma.gameRoom.update({ where: { id }, data: patch });
+    logger.info('[Admin] Game room updated', { id, patch });
+    res.json({ ...room, bet_amount: Number(room.bet_amount) });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function deleteGameRoomAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    await prisma.gameRoom.delete({ where: { id } });
+    logger.info('[Admin] Game room deleted', { id });
+    res.json({ message: 'Room deleted' });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+// ─── 2v2 Team Pair Stats ──────────────────────────────────────────────────────
+// Returns pairs that frequently play on the SAME team in 2v2, with win-rate and
+// solo-play data for collusion analysis. Also returns active cooldown state.
+
+export async function getTeamPairStatsAdminHandler(req: Request, res: Response) {
+  try {
+    const days      = Math.max(1,   parseInt(req.query.days      as string) || 30);
+    const minGames  = Math.max(1,   parseInt(req.query.minGames  as string) || 5);
+    const threshold = Math.max(0, Math.min(1, parseFloat(req.query.threshold as string) || 0.70));
+
+    // ── Step 1: same-team pair aggregation ───────────────────────────────────
+    const rows = await prisma.$queryRaw<{
+      userAId: string; userAName: string | null; userAPhone: string | null;
+      userBId: string; userBName: string | null; userBPhone: string | null;
+      gamesTogether: number; winsTogether: number; lastPlayedAt: Date;
+      userATotalGames: number; userBTotalGames: number;
+    }[]>`
+      WITH team_games AS (
+        SELECT
+          LEAST(p1."userId",    p2."userId")    AS "userAId",
+          GREATEST(p1."userId", p2."userId")    AS "userBId",
+          g.id                                  AS game_id,
+          g.created_at,
+          CASE WHEN g.winning_team = p1.team THEN 1 ELSE 0 END AS won
+        FROM "Game" g
+        JOIN "GamePlayer" p1 ON p1."gameId" = g.id AND p1.is_bot = false
+        JOIN "GamePlayer" p2 ON p2."gameId" = g.id AND p2.is_bot = false
+          AND p2."userId" > p1."userId"
+          AND p2.team = p1.team
+        WHERE g.mode IN ('TOURNAMENT_2V2', 'RECREATIONAL_2V2')
+          AND g.status = 'FINISHED'
+          AND g.created_at >= NOW() - (${days} || ' days')::interval
+      ),
+      pair_agg AS (
+        SELECT
+          "userAId",
+          "userBId",
+          COUNT(*)::int         AS "gamesTogether",
+          SUM(won)::int         AS "winsTogether",
+          MAX(created_at)       AS "lastPlayedAt"
+        FROM team_games
+        GROUP BY "userAId", "userBId"
+        HAVING COUNT(*) >= ${minGames}
+      ),
+      individual_games AS (
+        SELECT p."userId", COUNT(*)::int AS total_games
+        FROM "GamePlayer" p
+        JOIN "Game" g ON g.id = p."gameId"
+        WHERE g.mode IN ('TOURNAMENT_2V2', 'RECREATIONAL_2V2')
+          AND g.status = 'FINISHED'
+          AND g.created_at >= NOW() - (${days} || ' days')::interval
+          AND p.is_bot = false
+        GROUP BY p."userId"
+      )
+      SELECT
+        pa."userAId",
+        ua.name    AS "userAName",
+        ua.phone   AS "userAPhone",
+        pa."userBId",
+        ub.name    AS "userBName",
+        ub.phone   AS "userBPhone",
+        pa."gamesTogether",
+        pa."winsTogether",
+        pa."lastPlayedAt",
+        COALESCE(ia.total_games, 0)::int AS "userATotalGames",
+        COALESCE(ib.total_games, 0)::int AS "userBTotalGames"
+      FROM pair_agg pa
+      JOIN "User" ua ON ua.id = pa."userAId"
+      JOIN "User" ub ON ub.id = pa."userBId"
+      LEFT JOIN individual_games ia ON ia."userId" = pa."userAId"
+      LEFT JOIN individual_games ib ON ib."userId" = pa."userBId"
+      WHERE pa."winsTogether"::float / pa."gamesTogether" >= ${threshold}
+      ORDER BY (pa."winsTogether"::float / pa."gamesTogether") DESC, pa."gamesTogether" DESC
+      LIMIT 50
+    `;
+
+    // ── Step 2: per-pair hourly overlap ──────────────────────────────────────
+    // Compute common hours (0-23) they each played, as an overlap score 0-100
+    const hourRows = await prisma.$queryRaw<{
+      userAId: string; userBId: string; overlap: number;
+    }[]>`
+      WITH hours_a AS (
+        SELECT
+          LEAST(p1."userId", p2."userId")    AS "userAId",
+          GREATEST(p1."userId", p2."userId") AS "userBId",
+          EXTRACT(HOUR FROM g.created_at)::int AS hr
+        FROM "Game" g
+        JOIN "GamePlayer" p1 ON p1."gameId" = g.id AND p1.is_bot = false
+        JOIN "GamePlayer" p2 ON p2."gameId" = g.id AND p2.is_bot = false
+          AND p2."userId" > p1."userId"
+          AND p2.team = p1.team
+        WHERE g.mode IN ('TOURNAMENT_2V2', 'RECREATIONAL_2V2')
+          AND g.status = 'FINISHED'
+          AND g.created_at >= NOW() - (${days} || ' days')::interval
+      )
+      SELECT
+        "userAId",
+        "userBId",
+        (COUNT(DISTINCT hr)::float / 24 * 100)::int AS overlap
+      FROM hours_a
+      GROUP BY "userAId", "userBId"
+    `;
+    const overlapMap = new Map(hourRows.map((r) => [`${r.userAId}:${r.userBId}`, Number(r.overlap)]));
+
+    // ── Step 3: fetch cooldown records ────────────────────────────────────────
+    const pairKeys = rows.map((r) => ({ userAId: r.userAId, userBId: r.userBId }));
+    const cooldowns = pairKeys.length
+      ? await prisma.partnerCooldown.findMany({
+          where: { OR: pairKeys },
+          select: { userAId: true, userBId: true, consecutive_same_team: true, cooldown_remaining: true },
+        })
+      : [];
+    const cdMap = new Map(cooldowns.map((c) => [`${c.userAId}:${c.userBId}`, c]));
+
+    res.json({
+      days,
+      minGames,
+      threshold,
+      pairs: rows.map((r) => {
+        const gt       = Number(r.gamesTogether);
+        const wt       = Number(r.winsTogether);
+        const aTot     = Number(r.userATotalGames);
+        const bTot     = Number(r.userBTotalGames);
+        const winRate  = gt > 0 ? wt / gt : 0;
+        const cdKey    = `${r.userAId}:${r.userBId}`;
+        const cd       = cdMap.get(cdKey);
+        return {
+          userA: { id: r.userAId, name: r.userAName, phone: r.userAPhone },
+          userB: { id: r.userBId, name: r.userBName, phone: r.userBPhone },
+          gamesTogether:        gt,
+          winsTogether:         wt,
+          winRate,
+          lastPlayedAt:         r.lastPlayedAt,
+          // solo ratio: proportion of their 2v2 games played WITHOUT this partner
+          userASoloRatio:       aTot > 0 ? Math.round((1 - gt / aTot) * 100) : 0,
+          userBSoloRatio:       bTot > 0 ? Math.round((1 - gt / bTot) * 100) : 0,
+          userATotalGames:      aTot,
+          userBTotalGames:      bTot,
+          // % of hours in the day (0-23) where they played together
+          hourOverlapPct:       overlapMap.get(cdKey) ?? 0,
+          consecutiveSameTeam:  cd?.consecutive_same_team  ?? 0,
+          cooldownRemaining:    cd?.cooldown_remaining     ?? 0,
+          alert:                winRate >= threshold,
+        };
+      }),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 }

@@ -46,6 +46,7 @@ interface GameStateView {
   bottomOpen?: number;
   currentPlayerIndex: number;
   firstPlayMade: boolean;
+  requiredFirstTile?: [number, number]; // tile that MUST be played first
   boneyard: null[]; // tiles hidden; length = count
   matchScores: Record<number, number>;
   roundNumber: number;
@@ -99,9 +100,14 @@ function pickMove(
   const hand = state.players[myIndex].hand.filter((t): t is [number, number] => t !== null);
 
   if (!state.firstPlayMade) {
-    // First move — play any tile on the left side
+    // First move — must play the requiredFirstTile (highest double in hand)
     if (hand.length === 0) return { type: 'pass' };
-    return { type: 'play', tile: hand[0], side: 'left', flipped: false };
+    const required = state.requiredFirstTile;
+    const firstTile = required
+      ? hand.find((t) => t[0] === required[0] && t[1] === required[1]) ?? null
+      : null;
+    if (!firstTile) return null; // not my turn to open (other player has the required tile)
+    return { type: 'play', tile: firstTile, side: 'left', flipped: false };
   }
 
   const openEnds: Array<{ side: Side; value: number }> = [];

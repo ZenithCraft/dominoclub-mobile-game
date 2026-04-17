@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import logo from '../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
+const logo = { src: '/logo.png' };
 
 export const metadata: Metadata = {
   title: 'DominoClub Admin',

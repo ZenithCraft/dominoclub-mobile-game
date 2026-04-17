@@ -52,7 +52,7 @@ export async function startTournament(tournamentId: string): Promise<void> {
   });
 
   const playerIds = shuffle(tournament.players.map((p) => p.userId));
-  await createRoundGames(tournament, playerIds, 1);
+  await createRoundGames({ ...tournament, prize_pool: Number(tournament.prize_pool), entry_fee: Number(tournament.entry_fee) }, playerIds, 1);
 
   // Notify each player of their game
   const round1Games = await prisma.game.findMany({
@@ -262,7 +262,7 @@ export async function advanceTournamentBracket(
   }
 
   if (active.length === 1) {
-    await finishTournament(tournament, active[0].userId);
+    await finishTournament({ ...tournament, prize_pool: Number(tournament.prize_pool) }, active[0].userId);
     return;
   }
 
@@ -274,7 +274,7 @@ export async function advanceTournamentBracket(
   });
 
   const playerIds = shuffle(active.map((p) => p.userId));
-  await createRoundGames(tournament, playerIds, nextRound);
+  await createRoundGames({ ...tournament, prize_pool: Number(tournament.prize_pool), entry_fee: Number(tournament.entry_fee) }, playerIds, nextRound);
 
   // Notify advancing players of their next game
   const nextGames = await prisma.game.findMany({

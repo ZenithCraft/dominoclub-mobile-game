@@ -117,7 +117,7 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
         <View style={styles.infoCard}>
           <Text style={styles.infoLabel}>Seu saldo atual</Text>
           <Text style={styles.infoValue}>
-            R$ {(user?.wallet?.real_balance || 0).toFixed(2)}
+            R$ {Number(user?.wallet?.real_balance || 0).toFixed(2)}
           </Text>
           <Text style={styles.infoHint}>Defina limites antes de jogar. Nunca aposte mais do que está disposto a perder.</Text>
         </View>

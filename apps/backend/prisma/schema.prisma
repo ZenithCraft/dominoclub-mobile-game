@@ -28,10 +28,20 @@ enum GameStatus {
   ABANDONED
 }
 
+// Scoring system (win types) — all variants support all four outcomes.
+// The variant label describes the RULE SET that differs between game modes:
+//   CARROCA : standard pip-count blocked-game resolution
+//   L_E_L   : doubles count double in blocked-game pip totals
+//   CRUZADA : (reserved for future rule variant; currently plays like CARROCA)
+// Win types that occur during any game:
+//   Simples (1 pt)  — plain win
+//   Carroça (2 pts) — winning tile is a double
+//   Lá e Lô (3 pts) — winning tile makes both open ends equal
+//   Cruzada (4 pts) — winning tile is a double AND both ends equal
 enum DominoVariant {
-  CARROCA    // Blocked game — traditional (Carroça)
-  L_E_L      // Doubles count double
-  CRUZADA    // Cross layout
+  CARROCA
+  L_E_L
+  CRUZADA
 }
 
 enum TransactionType {
@@ -110,9 +120,9 @@ model User {
 model Wallet {
   id                  String   @id @default(uuid())
   userId              String   @unique
-  real_balance        Float    @default(0)
-  bonus_balance       Float    @default(0)
-  rollover_remaining  Float    @default(0)  // wagering requirement remaining
+  real_balance        Decimal  @default(0) @db.Decimal(12, 2)
+  bonus_balance       Decimal  @default(0) @db.Decimal(12, 2)
+  rollover_remaining  Decimal  @default(0) @db.Decimal(12, 2)  // wagering requirement remaining
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 
@@ -123,19 +133,19 @@ model Wallet {
 }
 
 model Transaction {
-  id           String            @id @default(uuid())
-  walletId     String
-  type         TransactionType
-  amount       Float
-  balance_after Float?           // snapshot of balance after transaction
-  pix_id       String?           // Inter txid / e2eid
-  pix_qr_code  String?           @db.Text
-  pix_key      String?           // destination pix key for withdrawals
-  description  String?
-  status       TransactionStatus @default(PENDING)
-  metadata     Json?             // extra Inter API response data
-  created_at   DateTime          @default(now())
-  updated_at   DateTime          @updatedAt
+  id            String            @id @default(uuid())
+  walletId      String
+  type          TransactionType
+  amount        Decimal           @db.Decimal(12, 2)
+  balance_after Decimal?          @db.Decimal(12, 2)  // snapshot of balance after transaction
+  pix_id        String?           // Inter txid / e2eid
+  pix_qr_code   String?           @db.Text
+  pix_key       String?           // destination pix key for withdrawals
+  description   String?
+  status        TransactionStatus @default(PENDING)
+  metadata      Json?             // extra Inter API response data
+  created_at    DateTime          @default(now())
+  updated_at    DateTime          @updatedAt
 
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
@@ -150,9 +160,9 @@ model Game {
   mode             GameMode
   variant          DominoVariant @default(CARROCA)
   status           GameStatus    @default(WAITING)
-  bet_amount       Float         @default(0)
-  prize_pool       Float         @default(0)
-  house_fee        Float         @default(0)
+  bet_amount       Decimal       @default(0) @db.Decimal(12, 2)
+  prize_pool       Decimal       @default(0) @db.Decimal(12, 2)
+  house_fee        Decimal       @default(0) @db.Decimal(12, 2)
   winner_id        String?
   winning_team     Int?          // 1 or 2 for 2v2
   replay_data      Json?         // full game history for replay
@@ -199,8 +209,8 @@ model Tournament {
   mode            GameMode
   variant         DominoVariant    @default(CARROCA)
   status          TournamentStatus @default(OPEN)
-  entry_fee       Float
-  prize_pool      Float            @default(0)
+  entry_fee       Decimal          @db.Decimal(12, 2)
+  prize_pool      Decimal          @default(0) @db.Decimal(12, 2)
   max_players     Int
   current_players Int              @default(0)
   current_round   Int              @default(0)  // 0 = not started
@@ -222,7 +232,7 @@ model TournamentPlayer {
   userId         String
   eliminated_at  DateTime?
   final_position Int?
-  prize_won      Float     @default(0)
+  prize_won      Decimal   @default(0) @db.Decimal(12, 2)
   joined_at      DateTime  @default(now())
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
@@ -274,26 +284,26 @@ model PairBlock {
 }
 
 model Coupon {
-  id              String   @id @default(uuid())
-  code            String   @unique
-  bonus_amount    Float
-  min_deposit_amount Float @default(0)
-  rollover_times  Int      @default(0)
-  max_players     Int?
-  is_active       Boolean  @default(true)
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  code               String   @unique
+  bonus_amount       Decimal  @db.Decimal(12, 2)
+  min_deposit_amount Decimal  @default(0) @db.Decimal(12, 2)
+  rollover_times     Int      @default(0)
+  max_players        Int?
+  is_active          Boolean  @default(true)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
 
   redemptions CouponRedemption[]
 }
 
 model CouponRedemption {
-  id              String   @id @default(uuid())
-  couponId        String
-  userId          String
-  bonus_amount    Float
-  rollover_added  Float
-  created_at      DateTime @default(now())
+  id             String   @id @default(uuid())
+  couponId       String
+  userId         String
+  bonus_amount   Decimal  @db.Decimal(12, 2)
+  rollover_added Decimal  @db.Decimal(12, 2)
+  created_at     DateTime @default(now())
 
   coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -301,4 +311,37 @@ model CouponRedemption {
   @@unique([couponId, userId])
   @@index([couponId])
   @@index([userId])
+}
+
+// ─── Partner Cooldown (2v2 anti-collusion) ────────────────────────────────────
+// Tracks consecutive same-team games for 2v2 pairs.
+// After 3 consecutive same-team games, they are forced to opposing teams for 3 games.
+model PartnerCooldown {
+  id                    String   @id @default(uuid())
+  userAId               String
+  userBId               String
+  consecutive_same_team Int      @default(0)  // consecutive FINISHED games on same team
+  cooldown_remaining    Int      @default(0)  // games left where they must be on opposing teams
+  updated_at            DateTime @updatedAt
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+// ─── Game Rooms (admin-configurable bet slots) ────────────────────────────────
+// Admin creates rooms with a specific mode + bet amount.
+// Locking a room prevents matchmaking from pairing new games in that slot.
+model GameRoom {
+  id         String   @id @default(uuid())
+  mode       GameMode
+  bet_amount Decimal  @db.Decimal(12, 2)
+  label      String?  // optional display name, e.g. "Sala VIP R$50"
+  locked     Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([mode, bet_amount])
+  @@index([locked])
+  @@index([mode])
 }
