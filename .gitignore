@@ -1,3 +1,6 @@
+# Claude Code runtime files
+.claude/scheduled_tasks.lock
+
 # Dependencies
 node_modules/
 
