@@ -24,12 +24,18 @@ import {
   createPairBlockAdminHandler,
   updatePairBlockAdminHandler,
   getUserPairStatsAdminHandler,
+  getTeamPairStatsAdminHandler,
   getCouponsAdminHandler,
   createCouponAdminHandler,
   updateCouponAdminHandler,
   getCouponRedemptionsAdminHandler,
   getFraudLogsHandler,
   resolveFraudLogHandler,
+  getGameRoomsAdminHandler,
+  createGameRoomAdminHandler,
+  updateGameRoomAdminHandler,
+  deleteGameRoomAdminHandler,
+  getGameLogsHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -46,6 +52,7 @@ router.get('/users', getUsersHandler);
 router.patch('/users/:id/ban', banUserHandler);
 
 router.get('/games', getGamesHandler);
+router.get('/games/:id/logs', getGameLogsHandler);
 router.get('/games/:id/replay', getGameReplayAdminHandler);
 
 router.get('/transactions', getTransactionsHandler);
@@ -68,6 +75,7 @@ router.get('/pair-blocks', getPairBlocksAdminHandler);
 router.post('/pair-blocks', createPairBlockAdminHandler);
 router.patch('/pair-blocks/:id', updatePairBlockAdminHandler);
 router.get('/users/:id/pair-stats', getUserPairStatsAdminHandler);
+router.get('/team-pair-stats', getTeamPairStatsAdminHandler);
 
 router.get('/coupons', getCouponsAdminHandler);
 router.post('/coupons', createCouponAdminHandler);
@@ -76,5 +84,10 @@ router.get('/coupons/:id/redemptions', getCouponRedemptionsAdminHandler);
 
 router.get('/fraud-logs', getFraudLogsHandler);
 router.patch('/fraud-logs/:id/resolve', resolveFraudLogHandler);
+
+router.get('/game-rooms', getGameRoomsAdminHandler);
+router.post('/game-rooms', createGameRoomAdminHandler);
+router.patch('/game-rooms/:id', updateGameRoomAdminHandler);
+router.delete('/game-rooms/:id', deleteGameRoomAdminHandler);
 
 export default router;

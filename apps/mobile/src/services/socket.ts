@@ -21,7 +21,12 @@ function getSocketUrl(): string {
     ? (isLocalhostWeb ? 'http://localhost:3001' : location.origin)
     : 'http://localhost:3001';
 }
-const IS_MOCK    = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
+function isMockMode(): boolean {
+  return (
+    process.env.EXPO_PUBLIC_MOCK_MODE === 'true' ||
+    (typeof window !== 'undefined' && !!(window as any).__MOCK_GAME__)
+  );
+}
 
 let socket: Socket | null = null;
 
@@ -95,16 +100,19 @@ function createSocket(token: string | null) {
 }
 
 export async function connectSocket(): Promise<Socket> {
-  if (IS_MOCK) {
+  if (isMockMode()) {
     const { fakeSocket } = require('../mocks/fakeSocket');
     return fakeSocket as unknown as Socket;
   }
 
   if (socket) {
+    if (socket.connected) return socket;
+    // Not yet connected — wait for it to connect or fail.
+    // On any failure (auth error, timeout, reconnection exhausted) disconnect and
+    // fall through to create a fresh socket with a possibly-refreshed token.
     try {
       return await waitForConnect(socket);
-    } catch (err: any) {
-      if (!isAuthSocketError(err)) throw err;
+    } catch {
       disconnectSocket();
     }
   }

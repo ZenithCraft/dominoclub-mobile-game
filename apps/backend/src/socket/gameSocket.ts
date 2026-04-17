@@ -17,7 +17,7 @@ import {
   DominoVariant,
   WIN_POINTS,
 } from '../game/domino.engine';
-import { volatileMatches } from '../services/matchmaking.service';
+import { volatileMatches, updatePartnerCooldownsAfterGame } from '../services/matchmaking.service';
 
 export const activeGames = new Map<string, GameState>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
@@ -182,7 +182,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       return;
     }
 
-    const isPlayer = game.players.some((p) => p.userId === user.id);
+    const isPlayer = game.players.some((p: any) => p.userId === user.id);
     if (!isPlayer) {
       socket.emit('game:error', { message: 'You are not in this game' });
       return;
@@ -209,7 +209,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
 
     // Initialize game state if not already active
     if (!activeGames.has(gameId)) {
-      await startGame(gameId, game.variant as DominoVariant, game.players, game.bet_amount, io);
+      await startGame(gameId, game.variant as DominoVariant, game.players, Number(game.bet_amount), io);
     } else {
       // Send current state to rejoining/reconnecting player
       const state = activeGames.get(gameId)!;
@@ -226,7 +226,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       socket.emit('game:error', { message: 'Game not active' });
       return;
     }
-    const isPlayer = state.players.some((p) => p.userId === user.id);
+    const isPlayer = state.players.some((p: any) => p.userId === user.id);
     if (!isPlayer) return;
 
     const seq = gameStateSeq.get(gameId) ?? 0;
@@ -664,11 +664,11 @@ async function handleGameEnd(
 async function finalizeMatch(
   gameId: string,
   state: GameState,
-  game: { prize_pool: number; mode: string; bet_amount: number; tournamentId: string | null },
+  game: { prize_pool: number | any; mode: string; bet_amount: number | any; tournamentId: string | null },
   io: SocketServer,
   status: 'FINISHED' | 'ABANDONED'
 ) {
-  const prizePool = game.prize_pool;
+  const prizePool = Number(game.prize_pool);
 
   // The overall match winner is whoever reached 7 pts (or team that didn't forfeit)
   const matchWinnerTeam = state.matchWinnerTeam ?? state.winnerTeam;
@@ -705,10 +705,18 @@ async function finalizeMatch(
     });
   }
 
+  // Update partner-cooldown counters for 2v2 modes
+  if (game.mode.includes('2V2')) {
+    updatePartnerCooldownsAfterGame(
+      game.mode,
+      state.players.map((p) => ({ userId: p.userId, team: p.team, isBot: p.isBot ?? false }))
+    ).catch((err) => logger.error('[Cooldown] Update failed', { gameId, err: err.message }));
+  }
+
   io.to(`game:${gameId}`).emit('game:ended', {
     status,
     mode:          game.mode,
-    betAmount:     game.bet_amount,
+    betAmount:     Number(game.bet_amount),
     winnerId:      state.winnerId,
     winnerTeam:    matchWinnerTeam,
     matchScores:   state.matchScores,

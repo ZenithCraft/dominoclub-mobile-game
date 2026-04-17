@@ -73,10 +73,10 @@ interface Tournament {
   starts_at: string;
 }
 
-const fmtBrl = (n: number) =>
-  n % 1 === 0
-    ? `R$ ${n}`
-    : `R$ ${n.toFixed(1).replace('.', ',')}`;
+const fmtBrl = (n: number | string | null | undefined) => {
+  const v = Number(n ?? 0);
+  return v % 1 === 0 ? `R$ ${v}` : `R$ ${v.toFixed(1).replace('.', ',')}`;
+};
 
 // ── Room Card ───────────────────────────────────────────────────────────────
 
@@ -312,7 +312,22 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
       if (!user && canAutoDevLogin) {
         try {
-          const { data } = await api.post('/auth/dev/login', {});
+          // Generate a session-stable unique phone so each browser tab (incl. incognito)
+          // auto-logs in as a distinct dev user. Without this, both tabs would receive
+          // the same default user and matchmaking would never find a match.
+          // Note: do NOT check existingToken here — an expired/invalid token would cause
+          // refreshUser() to call logout() and wipe credentials, leaving the socket with
+          // no token at all. Always call dev/login when user is null.
+          let devPhone: string | undefined;
+          if (typeof window !== 'undefined' && window.sessionStorage) {
+            let stored = window.sessionStorage.getItem('dev_login_phone');
+            if (!stored) {
+              stored = `+5599${String(Date.now()).slice(-8)}`;
+              window.sessionStorage.setItem('dev_login_phone', stored);
+            }
+            devPhone = stored;
+          }
+          const { data } = await api.post('/auth/dev/login', devPhone ? { phone: devPhone, name: `Dev ${devPhone.slice(-4)}` } : {});
           setTokens(data.accessToken, data.refreshToken);
           setUser(data.user);
         } catch {}
@@ -605,7 +620,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             {confirmTour && (
               <>
-                <Text style={styles.modalTitle}>Comprar entrada por R$ {confirmTour.entry_fee.toFixed(2)}?</Text>
+                <Text style={styles.modalTitle}>Comprar entrada por R$ {Number(confirmTour.entry_fee).toFixed(2)}?</Text>
                 <Text style={styles.modalTourName}>{confirmTour.name}</Text>
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Prêmio total</Text>
@@ -614,12 +629,12 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                 <View style={styles.modalDivider} />
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Saldo atual</Text>
-                  <Text style={styles.modalValue}>R$ {(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
+                  <Text style={styles.modalValue}>R$ {Number(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
                 </View>
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Saldo após entrar</Text>
                   <Text style={[styles.modalValue, { color: '#4ade80' }]}>
-                    R$ {Math.max(0, (user?.wallet?.real_balance ?? 0) - confirmTour.entry_fee).toFixed(2)}
+                    R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) - Number(confirmTour.entry_fee)).toFixed(2)}
                   </Text>
                 </View>
                 <View style={styles.modalActions}>
@@ -655,7 +670,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                 <Text style={styles.modalTitle}>
                   {confirmRoom.room.buyIn === null
                     ? `Entrar na partida ${confirmRoom.section === '2v2' ? '(2x2)' : '(1x1)'}?`
-                    : `Comprar entrada por R$ ${confirmRoom.room.buyIn.toFixed(2)}?`}
+                    : `Comprar entrada por R$ ${Number(confirmRoom.room.buyIn).toFixed(2)}?`}
                 </Text>
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Buy in</Text>
@@ -670,12 +685,12 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                     <View style={styles.modalDivider} />
                     <View style={styles.modalRow}>
                       <Text style={styles.modalLabel}>Saldo atual</Text>
-                      <Text style={styles.modalValue}>R$ {(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
+                      <Text style={styles.modalValue}>R$ {Number(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
                     </View>
                     <View style={styles.modalRow}>
                       <Text style={styles.modalLabel}>Saldo após entrar</Text>
                       <Text style={[styles.modalValue, { color: '#4ade80' }]}>
-                        R$ {Math.max(0, (user?.wallet?.real_balance ?? 0) - confirmRoom.room.buyIn).toFixed(2)}
+                        R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) - Number(confirmRoom.room.buyIn)).toFixed(2)}
                       </Text>
                     </View>
                   </>

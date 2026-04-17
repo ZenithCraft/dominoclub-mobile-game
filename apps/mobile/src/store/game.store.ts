@@ -51,6 +51,7 @@ export interface GameState {
   turnStartedAt?: number;
   boneyard: null[];
   firstPlayMade: boolean;
+  requiredFirstTile?: [number, number]; // tile that MUST open the round (highest double)
   // Match scoring
   matchScores: Record<number, number>;  // { 1: pts, 2: pts }
   roundNumber: number;

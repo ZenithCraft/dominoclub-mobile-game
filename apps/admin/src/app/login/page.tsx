@@ -3,7 +3,7 @@ import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, AlertCircle, Lock } from 'lucide-react';
 import { adminApi } from '../../lib/api';
-import logo from '../../../../mobile/assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png';
+const logo = { src: '/logo.png' };
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';

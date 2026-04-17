@@ -13,7 +13,9 @@ async function ensureDevWalletBalance(userId: string, minBalance: number) {
     create: { userId },
   });
 
-  const total = (wallet.real_balance ?? 0) + (wallet.bonus_balance ?? 0);
+  const realBal  = Number(wallet.real_balance  ?? 0);
+  const bonusBal = Number(wallet.bonus_balance ?? 0);
+  const total    = realBal + bonusBal;
   if (total >= minBalance) return;
 
   const topUp = minBalance - total;
@@ -28,7 +30,7 @@ async function ensureDevWalletBalance(userId: string, minBalance: number) {
         type: 'BONUS',
         amount: topUp,
         status: 'COMPLETED',
-        balance_after: (wallet.real_balance ?? 0) + topUp,
+        balance_after: realBal + topUp,
         description: 'Dev test balance top-up',
       },
     }),

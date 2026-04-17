@@ -18,7 +18,7 @@
       "ios": { "simulator": false },
       "android": { "buildType": "apk" },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api-staging.dominoclub.com.br/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://backend-production-5fdb.up.railway.app/api/v1"
       }
     },
     "production": {

@@ -158,7 +158,7 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       if (data.betAmount > 0) {
         try {
           const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } });
-          if (!wallet || wallet.real_balance + wallet.bonus_balance < data.betAmount) {
+          if (!wallet || Number(wallet.real_balance) + Number(wallet.bonus_balance) < data.betAmount) {
             socket.emit('queue:error', { message: 'Saldo insuficiente' });
             return;
           }
