@@ -5,16 +5,20 @@
  * of the app running on a genuine device.
  *
  * Android — Google Play Integrity API
- *   Flow: app calls PlayIntegrity.requestIntegrityToken(nonce)
- *         → sends token in queue:join payload
- *         → backend decodes via Google API and checks verdicts
+ *   Flow: server issues nonce via GET /api/v1/game/integrity-nonce
+ *         → app calls PlayIntegrity.requestIntegrityToken({ cloudProjectNumber, nonce })
+ *         → sends { token, platform: 'android', nonce } in queue:join
+ *         → backend decodes via Google API, checks verdicts, verifies nonce binding
  *
- * iOS — Apple DeviceCheck API
- *   Flow: app calls DCDevice.current.generateToken()
- *         → sends token in queue:join payload
- *         → backend validates via Apple API (confirms device identity)
+ * iOS — Apple App Attest (primary, iOS 14+)
+ *   Flow: server issues challenge (nonce)
+ *         → app calls DCAppAttestService.shared.attestKey(keyId, SHA-256(nonce))
+ *         → sends { attestationObject, keyId, nonce, platform: 'ios', attestationType: 'app_attest' }
+ *         → backend validates with Apple App Attest API
+ *   Fallback: Apple DeviceCheck (iOS < 14) — sends { token, platform: 'ios', attestationType: 'device_check' }
  *
  * Development: INTEGRITY_MOCK_MODE=true accepts any token matching INTEGRITY_MOCK_TOKEN.
+ * Nonce binding is also skipped in mock mode.
  */
 
 import axios from 'axios';
@@ -25,21 +29,32 @@ import { logger } from '../utils/logger';
 export interface IntegrityResult {
   valid: boolean;
   platform: 'android' | 'ios' | 'mock';
+  attestationType?: string;
   verdict?: string;
   reason?: string;
 }
+
+// ─── Google OAuth2 token cache ────────────────────────────────────────────────
+// The token is valid for 3600s. We cache it and refresh 60s before expiry.
+let _googleToken: { token: string; expiresAt: number } | null = null;
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
 /**
  * Verify an integrity token produced by the mobile app.
  *
- * @param token    Raw token string from the device
- * @param platform 'android' | 'ios'
+ * @param token          Raw token string from the device (or base64 attestation object)
+ * @param platform       'android' | 'ios'
+ * @param nonce          Server-issued nonce that was bound to this token request
+ * @param attestationType For iOS: 'app_attest' | 'device_check' (default: 'device_check')
+ * @param keyId          iOS App Attest key ID (only for attestationType='app_attest')
  */
 export async function verifyIntegrityToken(
   token: string,
-  platform: 'android' | 'ios'
+  platform: 'android' | 'ios',
+  nonce?: string,
+  attestationType?: string,
+  keyId?: string,
 ): Promise<IntegrityResult> {
   if (!token) {
     return { valid: false, platform, reason: 'Token ausente' };
@@ -57,8 +72,11 @@ export async function verifyIntegrityToken(
   }
 
   try {
-    if (platform === 'android') return verifyPlayIntegrity(token);
-    if (platform === 'ios')     return verifyDeviceCheck(token);
+    if (platform === 'android') return verifyPlayIntegrity(token, nonce);
+    if (platform === 'ios') {
+      if (attestationType === 'app_attest') return verifyAppAttest(token, keyId ?? '', nonce ?? '');
+      return verifyDeviceCheck(token);
+    }
     return { valid: false, platform, reason: 'Plataforma desconhecida' };
   } catch (err: any) {
     logger.error('[Integrity] Verification error', { platform, message: err.message });
@@ -68,16 +86,12 @@ export async function verifyIntegrityToken(
 
 // ─── Android — Google Play Integrity ─────────────────────────────────────────
 
-/**
- * Accepted Play Integrity device verdicts (from weakest to strongest).
- * We require at least MEETS_DEVICE_INTEGRITY so emulators are blocked.
- */
 const ACCEPTED_DEVICE_VERDICTS = new Set([
   'MEETS_STRONG_INTEGRITY',
   'MEETS_DEVICE_INTEGRITY',
 ]);
 
-async function verifyPlayIntegrity(token: string): Promise<IntegrityResult> {
+async function verifyPlayIntegrity(token: string, nonce?: string): Promise<IntegrityResult> {
   const platform = 'android' as const;
 
   if (!config.integrity.googleServiceAccountJson) {
@@ -105,12 +119,20 @@ async function verifyPlayIntegrity(token: string): Promise<IntegrityResult> {
   );
 
   const payload = res.data?.tokenPayloadExternal;
-  const appVerdict    = payload?.appIntegrity?.appRecognitionVerdict as string | undefined;
+  const appVerdict     = payload?.appIntegrity?.appRecognitionVerdict as string | undefined;
   const deviceVerdicts: string[] = payload?.deviceIntegrity?.deviceRecognitionVerdict ?? [];
+
+  // Verify nonce binding — the nonce embedded in the token must match what we issued
+  if (nonce) {
+    const tokenNonce = payload?.requestDetails?.nonce as string | undefined;
+    if (!tokenNonce || tokenNonce !== nonce) {
+      logger.warn('[Integrity] Nonce mismatch on Android token', { expected: nonce, got: tokenNonce });
+      return { valid: false, platform, verdict: 'nonce_mismatch', reason: 'Nonce inválido no token' };
+    }
+  }
 
   const appOk    = appVerdict === 'PLAY_RECOGNIZED';
   const deviceOk = deviceVerdicts.some((v) => ACCEPTED_DEVICE_VERDICTS.has(v));
-
   const verdictStr = `app:${appVerdict ?? 'none'} device:${deviceVerdicts.join(',') || 'none'}`;
 
   if (!appOk || !deviceOk) {
@@ -121,12 +143,16 @@ async function verifyPlayIntegrity(token: string): Promise<IntegrityResult> {
   return { valid: true, platform, verdict: verdictStr };
 }
 
-/** Obtain a short-lived OAuth2 access token using the Google service account. */
+/** Obtain a short-lived Google OAuth2 access token. Cached until 60s before expiry. */
 async function getGoogleAccessToken(serviceAccount: {
   client_email: string;
   private_key: string;
 }): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
+
+  if (_googleToken && now < _googleToken.expiresAt - 60) {
+    return _googleToken.token;
+  }
 
   const assertion = jwt.sign(
     {
@@ -149,33 +175,106 @@ async function getGoogleAccessToken(serviceAccount: {
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 5000 }
   );
 
-  return res.data.access_token as string;
+  const token = res.data.access_token as string;
+  _googleToken = { token, expiresAt: now + 3600 };
+  return token;
 }
 
-// ─── iOS — Apple DeviceCheck ──────────────────────────────────────────────────
+// ─── iOS — Apple App Attest (primary, iOS 14+) ───────────────────────────────
+
+/**
+ * Verify an App Attest attestation object against Apple's API.
+ *
+ * Apple App Attest provides cryptographic proof of:
+ *   - Device genuineness (Secure Enclave key)
+ *   - App identity (App ID binding)
+ *   - Challenge freshness (server-issued nonce bound into the attestation)
+ *
+ * The attestation object is a CBOR-encoded structure signed by Apple.
+ * Apple validates it server-side at: https://data.appattest.apple.com/v1/attestationData
+ *
+ * NOTE: App Attest has two phases:
+ *   1. Attestation (first launch): calls DCAppAttestService.attestKey()
+ *      → validated here, keyId stored in DeviceBind
+ *   2. Assertion (subsequent sessions): calls DCAppAttestService.generateAssertion()
+ *      → TODO: implement assertion validation in Milestone 5
+ */
+async function verifyAppAttest(
+  attestationObject: string,
+  keyId: string,
+  nonce: string,
+): Promise<IntegrityResult> {
+  const platform = 'ios' as const;
+  const attestationType = 'app_attest';
+
+  if (!config.integrity.appleTeamId || !config.integrity.appleKeyId || !config.integrity.applePrivateKey) {
+    logger.warn('[Integrity] Apple keys not configured — skipping App Attest check');
+    return { valid: true, platform, attestationType, verdict: 'skipped_no_key' };
+  }
+
+  if (!keyId || !nonce) {
+    return { valid: false, platform, attestationType, reason: 'keyId ou nonce ausente para App Attest' };
+  }
+
+  const env = config.integrity.appleAppAttestEnv;
+  const baseUrl = env === 'production'
+    ? 'https://data.appattest.apple.com'
+    : 'https://data.appattest.apple.com'; // Apple has no separate sandbox; use mock in dev
+
+  const developerJwt = buildAppleJwt();
+
+  try {
+    await axios.post(
+      `${baseUrl}/v1/attestationData`,
+      {
+        attestationObject,
+        keyId,
+        challenge: nonce,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${developerJwt}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 6000,
+      }
+    );
+
+    return { valid: true, platform, attestationType, verdict: 'app_attest_pass' };
+  } catch (err: any) {
+    const status = err.response?.status;
+    const body   = err.response?.data;
+    logger.warn('[Integrity] App Attest failed', { status, body, keyId });
+    return {
+      valid: false,
+      platform,
+      attestationType,
+      verdict: `app_attest_fail:${status}`,
+      reason: 'Dispositivo iOS não verificado (App Attest)',
+    };
+  }
+}
+
+// ─── iOS — Apple DeviceCheck (legacy fallback, iOS < 14) ─────────────────────
 
 async function verifyDeviceCheck(token: string): Promise<IntegrityResult> {
   const platform = 'ios' as const;
+  const attestationType = 'device_check';
 
   if (!config.integrity.appleTeamId || !config.integrity.appleKeyId || !config.integrity.applePrivateKey) {
     logger.warn('[Integrity] Apple DeviceCheck keys not configured — skipping iOS check');
-    return { valid: true, platform, verdict: 'skipped_no_key' };
+    return { valid: true, platform, attestationType, verdict: 'skipped_no_key' };
   }
 
   const developerJwt = buildAppleJwt();
 
-  // Apple DeviceCheck validation endpoint
-  const url = 'https://api.devicecheck.apple.com/v1/validate_device_token';
-
   try {
-    // 200 = token valid; 200 + specific body content = device bits readable
-    // Apple returns 200 on success and 400/401 on failure
     await axios.post(
-      url,
+      'https://api.devicecheck.apple.com/v1/validate_device_token',
       {
-        device_token:     token,
-        transaction_id:   generateTransactionId(),
-        timestamp:        Date.now(),
+        device_token:   token,
+        transaction_id: generateTransactionId(),
+        timestamp:      Date.now(),
       },
       {
         headers: {
@@ -186,12 +285,18 @@ async function verifyDeviceCheck(token: string): Promise<IntegrityResult> {
       }
     );
 
-    return { valid: true, platform, verdict: 'device_check_pass' };
+    return { valid: true, platform, attestationType, verdict: 'device_check_pass' };
   } catch (err: any) {
     const status = err.response?.status;
     const body   = err.response?.data;
     logger.warn('[Integrity] Apple DeviceCheck failed', { status, body });
-    return { valid: false, platform, verdict: `device_check_fail:${status}`, reason: 'Dispositivo iOS inválido' };
+    return {
+      valid: false,
+      platform,
+      attestationType,
+      verdict: `device_check_fail:${status}`,
+      reason: 'Dispositivo iOS inválido',
+    };
   }
 }
 

@@ -3,7 +3,23 @@ import { prisma } from '../services/prisma.service';
 import { createGameSchema } from '../utils/validators';
 import { activeGames } from '../socket/gameSocket';
 import { startTournament } from '../services/tournament.service';
+import { issueNonce } from '../services/nonce.service';
 import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * GET /api/v1/game/integrity-nonce
+ * Issues a single-use server nonce for Play Integrity / App Attest token requests.
+ * The client must use this nonce when requesting the integrity token from the platform SDK,
+ * then include it alongside the token in queue:join for replay-attack protection.
+ */
+export async function getIntegrityNonceHandler(req: Request, res: Response) {
+  try {
+    const { nonce, expiresAt } = await issueNonce();
+    res.json({ nonce, expiresAt });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Falha ao gerar nonce de integridade' });
+  }
+}
 
 export async function getGameHistoryHandler(req: Request, res: Response) {
   try {

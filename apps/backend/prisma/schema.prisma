@@ -78,6 +78,10 @@ enum FraudType {
   BOT_PATTERN
   COLLUSION_SUSPECTED
   UNUSUAL_WIN_RATE
+  IMPOSSIBLE_MOVEMENT
+  INTEGRITY_FAIL
+  VELOCITY_ABUSE
+  DEVICE_LIMIT_EXCEEDED
 }
 
 // ─── Models ──────────────────────────────────────────────────────
@@ -89,13 +93,16 @@ model User {
   email         String?  @unique
   name          String?
   avatar        String?
-  gps_lat       Float?
-  gps_lng       Float?
-  device_id     String?
-  ip_address    String?
-  is_banned     Boolean  @default(false)
-  ban_reason    String?
-  bot_score     Float    @default(0)   // 0–1 probability of being a bot
+  gps_lat        Float?
+  gps_lng        Float?
+  gps_accuracy   Float?
+  gps_updated_at DateTime?
+  device_id      String?
+  ip_address     String?
+  is_banned      Boolean  @default(false)
+  ban_reason     String?
+  bot_score      Float    @default(0)    // 0–1 probability of being a bot
+  trust_score    Float    @default(1.0)  // 1.0 = fully trusted; decrements on abuse signals
   cpf_verified  Boolean  @default(false)
   phone_verified Boolean @default(false)
   otp_code      String?
@@ -110,6 +117,7 @@ model User {
   fraudLogs         FraudLog[]
   couponRedemptions CouponRedemption[]
   wonGames          Game[]             @relation("GameWinner")
+  deviceBinds       DeviceBind[]
 
   @@index([phone])
   @@index([cpf])
@@ -244,21 +252,40 @@ model TournamentPlayer {
 }
 
 model FraudLog {
-  id         String    @id @default(uuid())
-  userId     String
-  type       FraudType
-  details    Json
-  ip_address String?
-  device_id  String?
-  resolved   Boolean   @default(false)
-  created_at DateTime  @default(now())
+  id          String    @id @default(uuid())
+  userId      String
+  type        FraudType
+  reason_code String?   // structured code: e.g. "BOT_PATTERN:ema_threshold"
+  details     Json
+  ip_address  String?
+  device_id   String?
+  resolved    Boolean   @default(false)
+  created_at  DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([type])
+  @@index([reason_code])
   @@index([resolved])
   @@index([created_at])
+}
+
+model DeviceBind {
+  id            String   @id @default(uuid())
+  userId        String
+  device_id     String
+  platform      String?  // 'android' | 'ios'
+  attest_key_id String?  // App Attest keyId for iOS
+  first_seen    DateTime @default(now())
+  last_seen     DateTime @default(now())
+  is_active     Boolean  @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, device_id])
+  @@index([device_id])
+  @@index([userId])
 }
 
 // ─── Dynamic system configuration (admin-editable at runtime) ────────────────
