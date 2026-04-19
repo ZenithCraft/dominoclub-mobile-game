@@ -1460,7 +1460,7 @@ export function GameScreen({ navigation, route }: Props) {
       id: 'dev-mock-2v2',
       mode: 'TOURNAMENT_2V2',
       variant: 'CARROCA',
-      status: 'playing',
+      status: 'playing' as const,
       currentPlayerIndex: 0,
       turnCount: 20,
       firstPlayMade: true,
