@@ -37,12 +37,12 @@
     "react-native-svg": "14.1.0",
     "react-native-web": "~0.19.6",
     "socket.io-client": "^4.7.2",
-    "zustand": "^4.4.7"
+    "zustand": "^4.5.7"
   },
   "devDependencies": {
-    "@expo/cli": "55.0.24",
     "@babel/core": "^7.20.0",
     "@babel/runtime": "^7.29.2",
+    "@expo/cli": "55.0.24",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^12.4.2",
     "@types/jest": "^29.5.14",

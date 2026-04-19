@@ -47,15 +47,21 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     return { filePath: path.resolve(projectRoot, 'shims', 'DevLoadingView.js'), type: 'sourceFile' };
   }
 
+  // Force zustand to CJS version (avoids import.meta in ESM build)
+  const forcedPath = FORCE_LOCAL_PATHS[moduleName];
+  if (forcedPath) {
+    const localResolved = path.resolve(projectRoot, 'node_modules', forcedPath);
+    const rootResolved = path.resolve(workspaceRoot, 'node_modules', forcedPath);
+    const target = fs.existsSync(localResolved) ? localResolved : fs.existsSync(rootResolved) ? rootResolved : null;
+    if (target) return { filePath: target, type: 'sourceFile' };
+  }
+
   if (hasLocalNodeModules) {
-    const forcedPath = FORCE_LOCAL_PATHS[moduleName];
-    if (forcedPath) {
-      const resolved = path.resolve(projectRoot, 'node_modules', forcedPath);
-      return { filePath: require.resolve(resolved), type: 'sourceFile' };
-    }
     if (FORCE_LOCAL.includes(moduleName)) {
       const resolved = path.resolve(projectRoot, 'node_modules', moduleName);
-      return { filePath: require.resolve(resolved), type: 'sourceFile' };
+      if (fs.existsSync(resolved)) {
+        return { filePath: require.resolve(resolved), type: 'sourceFile' };
+      }
     }
   }
 
