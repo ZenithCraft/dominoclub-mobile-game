@@ -40,6 +40,7 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@expo/cli": "55.0.24",
     "@babel/core": "^7.20.0",
     "@babel/runtime": "^7.29.2",
     "@testing-library/jest-native": "^5.4.3",
