@@ -64,8 +64,12 @@ export async function applyTrustSignal(userId: string, signal: TrustSignal): Pro
     });
     if (!user) return 1.0;
 
-    // EMA-style: larger drops when trust is high, smaller when already low
-    const newScore = Math.max(0, user.trust_score + weight * (1 - user.trust_score));
+    // Asymptotic decay: negative signals scale with current score (larger drop when trust is high),
+    // positive signals scale with remaining headroom (approaches 1 from below).
+    const delta = weight < 0
+      ? weight * user.trust_score        // negative: proportional to current (approaches 0)
+      : weight * (1 - user.trust_score); // positive: proportional to headroom (approaches 1)
+    const newScore = Math.max(0, Math.min(1, user.trust_score + delta));
     const rounded = Math.round(newScore * 10000) / 10000;
 
     await prisma.user.update({

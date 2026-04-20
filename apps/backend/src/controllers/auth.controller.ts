@@ -50,6 +50,7 @@ export async function devLoginHandler(req: Request, res: Response) {
     const phone = String(req.body?.phone || config.devAuthDefaultPhone);
     const name = String(req.body?.name || 'Dev User');
     const result = await devLogin(phone, name, deviceId, ip);
+    checkMultiAccount(result.user.id, ip, deviceId).catch(() => {});
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -244,6 +245,8 @@ export async function getMeHandler(req: Request, res: Response) {
           cpf_verified: true,
           phone_verified: true,
           created_at: true,
+          trust_score: true,
+          is_banned: true,
           wallet: { select: { real_balance: true, bonus_balance: true, rollover_remaining: true } },
         },
       });
