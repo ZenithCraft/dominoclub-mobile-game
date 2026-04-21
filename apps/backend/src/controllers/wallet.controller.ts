@@ -3,6 +3,9 @@ import { getWallet, deposit, withdraw, getTransaction } from '../services/wallet
 import { redeemCoupon } from '../services/coupon.service';
 import { confirmPixDeposit, verifyPixWebhookSignature } from '../services/pix.service';
 import { depositSchema, redeemCouponSchema, withdrawSchema } from '../utils/validators';
+import { checkUserVelocity } from '../middleware/antifraud.middleware';
+import { applyTrustSignal } from '../services/trust.service';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 
 export async function getWalletHandler(req: Request, res: Response) {
@@ -29,6 +32,21 @@ export async function depositHandler(req: Request, res: Response) {
 export async function withdrawHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).user?.userId;
+
+    const velocity = await checkUserVelocity(
+      userId, 'wallet_withdraw',
+      config.antifraud.velocityWithdrawWindowMs,
+      config.antifraud.velocityWithdrawMax,
+    );
+    if (velocity.blocked) {
+      logger.warn('[Wallet] Withdraw velocity exceeded', { userId, count: velocity.count });
+      await applyTrustSignal(userId, 'velocity_abuse');
+      return res.status(429).json({
+        error: 'Limite de saques atingido. Tente novamente mais tarde.',
+        code: 'VELOCITY_EXCEEDED',
+      });
+    }
+
     const { amount, pixKey } = withdrawSchema.parse(req.body);
     const transactionId = await withdraw(userId, amount, pixKey);
     res.status(201).json({ transactionId, message: 'Withdrawal requested' });

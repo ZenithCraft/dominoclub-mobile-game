@@ -19,7 +19,9 @@ import {
 } from '../services/matchmaking.service';
 import { getRedisClient, getRedisSubscriber, isRedisAvailable } from '../services/redis.service';
 import { verifyIntegrityToken } from '../services/integrity.service';
-import { validateGpsBounds, updateUserGps, GpsCoords } from '../middleware/antifraud.middleware';
+import { consumeNonce } from '../services/nonce.service';
+import { validateGpsBounds, updateUserGps, GpsCoords, checkUserVelocity } from '../middleware/antifraud.middleware';
+import { applyTrustSignal, getUserTrustLevel } from '../services/trust.service';
 import { getRuntimeConfig } from '../services/runtime-config.service';
 
 const VALID_MODES = ['ARENA_1V1', 'CUP_1V1', 'TOURNAMENT_2V2', 'RECREATIONAL_2V2'] as const;
@@ -105,6 +107,9 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       variant?: string;
       platform?: 'android' | 'ios';
       integrityToken?: string;
+      integrityNonce?: string;
+      attestationType?: string; // 'app_attest' | 'device_check' (iOS only)
+      keyId?: string;           // iOS App Attest keyId
       gps?: { lat: number; lng: number; accuracy?: number };
     }) => {
       // Validate mode
@@ -127,16 +132,82 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
 
       const isPaidGame = data.betAmount > 0;
 
+      // ── Per-user velocity check ─────────────────────────────────────────────
+      const velocity = await checkUserVelocity(
+        user.id, 'queue_join',
+        config.antifraud.velocityQueueJoinWindowMs,
+        config.antifraud.velocityQueueJoinMax,
+      );
+      if (velocity.blocked) {
+        logger.warn('[Socket] Queue join velocity exceeded', { userId: user.id, count: velocity.count });
+        await applyTrustSignal(user.id, 'velocity_abuse');
+        socket.emit('queue:error', {
+          message: 'Muitas tentativas de entrar na fila. Aguarde alguns minutos.',
+          code: 'VELOCITY_EXCEEDED',
+        });
+        return;
+      }
+
+      // ── Trust level check (paid games) ──────────────────────────────────────
+      if (isPaidGame) {
+        const { score, level } = await getUserTrustLevel(user.id);
+        if (level === 'LOW') {
+          logger.warn('[Socket] Low-trust user blocked from paid game', { userId: user.id, trust_score: score });
+          socket.emit('queue:error', {
+            message: 'Conta em análise de segurança. Jogos pagos temporariamente indisponíveis.',
+            code: 'ACCOUNT_UNDER_REVIEW',
+          });
+          return;
+        }
+        if (level === 'MEDIUM') {
+          logger.warn('[Socket] Medium-trust user in paid game — flagged', { userId: user.id, trust_score: score });
+        }
+      }
+
       // ── Device integrity check (paid games only) ────────────────────────────
       if (isPaidGame && config.integrity.requireForPaidGames) {
         if (!data.integrityToken || !data.platform) {
-          socket.emit('queue:error', { message: 'Verificação do dispositivo necessária' });
+          socket.emit('queue:error', { message: 'Verificação do dispositivo necessária', code: 'INTEGRITY_REQUIRED' });
           return;
         }
-        const integrityResult = await verifyIntegrityToken(data.integrityToken, data.platform);
+
+        // Consume the server-issued nonce (replay protection)
+        if (data.integrityNonce) {
+          const nonceValid = await consumeNonce(data.integrityNonce);
+          if (!nonceValid) {
+            logger.warn('[Socket] Integrity nonce invalid or already used', { userId: user.id });
+            socket.emit('queue:error', { message: 'Nonce de integridade inválido. Tente novamente.', code: 'NONCE_INVALID' });
+            return;
+          }
+        }
+
+        const integrityResult = await verifyIntegrityToken(
+          data.integrityToken,
+          data.platform,
+          data.integrityNonce,
+          data.attestationType,
+          data.keyId,
+        );
         if (!integrityResult.valid) {
           logger.warn('[Socket] Integrity check failed', { userId: user.id, verdict: integrityResult.verdict });
-          socket.emit('queue:error', { message: 'Falha na verificação do dispositivo. Use a versão oficial do app.' });
+          await applyTrustSignal(user.id, 'integrity_fail');
+          await prisma.fraudLog.create({
+            data: {
+              userId: user.id,
+              type: 'INTEGRITY_FAIL',
+              reason_code: `INTEGRITY_FAIL:${integrityResult.verdict ?? 'unknown'}`,
+              details: {
+                platform: data.platform,
+                attestationType: data.attestationType ?? 'unknown',
+                verdict: integrityResult.verdict,
+                reason: integrityResult.reason,
+              },
+            },
+          }).catch(() => {});
+          socket.emit('queue:error', {
+            message: 'Falha na verificação do dispositivo. Use a versão oficial do app.',
+            code: 'INTEGRITY_FAIL',
+          });
           return;
         }
       }
@@ -145,12 +216,20 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       if (data.gps) {
         const gpsCheck = validateGpsBounds(data.gps);
         if (!gpsCheck.valid) {
-          socket.emit('queue:error', { message: gpsCheck.reason ?? 'Localização inválida' });
+          socket.emit('queue:error', { message: gpsCheck.reason ?? 'Localização inválida', code: 'GPS_INVALID' });
           return;
         }
-        await updateUserGps(user.id, data.gps);
+        const movementCheck = await updateUserGps(user.id, data.gps);
+        if (movementCheck.suspicious) {
+          socket.emit('queue:error', { message: movementCheck.reason ?? 'Localização suspeita detectada.', code: 'GPS_SUSPICIOUS' });
+          return;
+        }
+        if (gpsCheck.lowConfidence) {
+          logger.warn('[Socket] Low-confidence GPS accepted', { userId: user.id, reason: gpsCheck.reason });
+          await applyTrustSignal(user.id, 'low_accuracy_gps');
+        }
       } else if (isPaidGame && config.antifraud.gpsRequiredForPaidGames) {
-        socket.emit('queue:error', { message: 'Localização necessária para jogos pagos' });
+        socket.emit('queue:error', { message: 'Localização necessária para jogos pagos', code: 'GPS_REQUIRED' });
         return;
       }
 

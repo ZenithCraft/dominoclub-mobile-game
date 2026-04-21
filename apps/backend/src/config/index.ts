@@ -86,17 +86,20 @@ export const config = {
     mockToken: process.env.INTEGRITY_MOCK_TOKEN || 'dev-integrity-token',
     // Whether a valid token is required before entering a paid queue
     requireForPaidGames: process.env.INTEGRITY_REQUIRE_FOR_PAID_GAMES !== 'false',
+    // TTL in ms for server-issued integrity nonces (default: 2 minutes)
+    nonceTtlMs: parseInt(process.env.INTEGRITY_NONCE_TTL_MS || '120000', 10),
 
     // Android — Play Integrity
     androidPackageName: process.env.ANDROID_PACKAGE_NAME || 'com.dominoclub.app',
     // Full JSON of the Google service account (used to get OAuth2 token for Play Integrity API)
     googleServiceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '',
 
-    // iOS — Apple DeviceCheck
-    appleBundleId: process.env.APPLE_BUNDLE_ID || 'com.dominoclub.app',
-    appleTeamId:   process.env.APPLE_TEAM_ID   || '',
-    appleKeyId:    process.env.APPLE_KEY_ID     || '',
-    // PEM private key for signing DeviceCheck JWTs
+    // iOS — App Attest (primary, iOS 14+) + DeviceCheck (legacy fallback)
+    appleBundleId:      process.env.APPLE_BUNDLE_ID       || 'com.dominoclub.app',
+    appleTeamId:        process.env.APPLE_TEAM_ID         || '',
+    appleKeyId:         process.env.APPLE_KEY_ID          || '',
+    appleAppAttestEnv: (process.env.APPLE_APP_ATTEST_ENV  || 'development') as 'development' | 'production',
+    // PEM private key for signing DeviceCheck / App Attest JWTs
     applePrivateKey: (process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
   },
 
@@ -105,6 +108,11 @@ export const config = {
     gpsRequiredForPaidGames: process.env.GPS_REQUIRED_FOR_PAID_GAMES === 'true',
     // Maximum distance in metres between two matched players before a collusion flag is raised
     gpsCollusionDistanceM: parseInt(process.env.GPS_COLLUSION_DISTANCE_M || '100', 10),
+    // GPS accuracy above this threshold is treated as low-confidence (still valid, but flagged)
+    gpsMaxAccuracyM: parseInt(process.env.GPS_MAX_ACCURACY_M || '500', 10),
+    // Speed thresholds for impossible movement detection
+    impossibleSpeedKmh: parseInt(process.env.GPS_IMPOSSIBLE_SPEED_KMH || '900', 10),
+    suspiciousSpeedKmh: parseInt(process.env.GPS_SUSPICIOUS_SPEED_KMH || '250', 10),
     // A move completed faster than this (ms) counts as suspiciously fast
     botMinMoveMs: parseInt(process.env.BOT_MIN_MOVE_MS || '800', 10),
     // If ≥ this fraction of moves are suspiciously fast, flag the player
@@ -113,6 +121,14 @@ export const config = {
     botMinSampleSize: parseInt(process.env.BOT_MIN_SAMPLE_SIZE || '5', 10),
     // bot_score at or above this threshold triggers a FraudLog write
     botScoreLogThreshold: parseFloat(process.env.BOT_SCORE_LOG_THRESHOLD || '0.65'),
+    // Max active bound devices per user account before flagging
+    maxDevicesPerAccount: parseInt(process.env.MAX_DEVICES_PER_ACCOUNT || '3', 10),
+    // Per-user queue join velocity limits
+    velocityQueueJoinMax:       parseInt(process.env.VELOCITY_QUEUE_JOIN_MAX       || '10',      10),
+    velocityQueueJoinWindowMs:  parseInt(process.env.VELOCITY_QUEUE_JOIN_WINDOW_MS || '300000',  10),
+    // Per-user withdrawal velocity limits
+    velocityWithdrawMax:        parseInt(process.env.VELOCITY_WITHDRAW_MAX         || '3',       10),
+    velocityWithdrawWindowMs:   parseInt(process.env.VELOCITY_WITHDRAW_WINDOW_MS   || '3600000', 10),
   },
 };
 

@@ -12,7 +12,8 @@
     "mobile": "npm run start --workspace=apps/mobile",
     "admin": "npm run dev --workspace=apps/admin",
     "dev": "concurrently \"npm run backend\" \"npm run admin\"",
-    "install:all": "npm install --workspaces"
+    "install:all": "npm install --workspaces",
+    "postinstall": "node -e \"var f=require('fs'),p=require('path'),d=process.cwd(),b=p.join(d,'apps/mobile/node_modules/.bin'),x=p.join(d,'apps/mobile/node_modules/expo/bin/cli');if(!f.existsSync(x)){console.log('EAS bin fix: expo@55 not found at '+x+', skip');process.exit(0)}f.mkdirSync(b,{recursive:true});var l=p.join(b,'expo'),r=p.relative(b,x);try{f.unlinkSync(l)}catch(e){}f.symlinkSync(r,l);console.log('EAS bin fix: '+l+' -> '+r)\""
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
