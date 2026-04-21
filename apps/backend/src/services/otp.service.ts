@@ -1,19 +1,25 @@
 import axios from 'axios';
+import { createHash, timingSafeEqual } from 'crypto';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
 // ─── OTP Store ────────────────────────────────────────────────────────────────
 // In-memory for development. In production replace with Redis
 // (SET phone:otp:+5511... JSON EX 300) so it survives restarts.
+// OTP codes are stored as SHA-256 hashes — plaintext is never kept in memory.
 
 interface OtpEntry {
-  code: string;
+  codeHash: string;   // SHA-256 hex of the plaintext OTP
   expiresAt: Date;
   sentAt: Date;       // enforces resend cooldown
   attempts: number;   // counts failed verifications
 }
 
 const otpStore = new Map<string, OtpEntry>();
+
+function hashOtp(code: string): string {
+  return createHash('sha256').update(code).digest('hex');
+}
 
 // ─── Generation ───────────────────────────────────────────────────────────────
 
@@ -39,7 +45,7 @@ export async function sendOtp(phone: string): Promise<void> {
   const code = generateOtp();
   const expiresAt = new Date(Date.now() + config.otp.expirySeconds * 1000);
 
-  otpStore.set(phone, { code, expiresAt, sentAt: new Date(), attempts: 0 });
+  otpStore.set(phone, { codeHash: hashOtp(code), expiresAt, sentAt: new Date(), attempts: 0 });
 
   await dispatchSms(phone, code);
 }
@@ -61,7 +67,11 @@ export function verifyOtp(phone: string, code: string): boolean {
     throw new Error('Código bloqueado por excesso de tentativas. Solicite um novo código.');
   }
 
-  if (entry.code !== code) {
+  const inputHash = Buffer.from(hashOtp(code), 'hex');
+  const storedHash = Buffer.from(entry.codeHash, 'hex');
+  const match = inputHash.length === storedHash.length && timingSafeEqual(inputHash, storedHash);
+
+  if (!match) {
     entry.attempts++;
     const remaining = config.otp.maxAttempts - entry.attempts;
     if (remaining === 0) {

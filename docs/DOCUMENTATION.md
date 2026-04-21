@@ -1,6 +1,7 @@
 # DominoClub — Technical Documentation
 
 > Brazilian real-money domino platform. React Native (Expo) mobile app + Node.js/Express backend + PostgreSQL.
+> Last updated: **2026-04-21** — Milestones 1–5 complete (security hardening included).
 
 ---
 
@@ -23,37 +24,38 @@
 
 ```
 ┌─────────────────────────────────┐
-│   Mobile App (Expo / React Native)  │  http://localhost:8083
-│   apps/mobile/                  │
+│  Mobile App (Expo / React Native)│  http://localhost:8083
+│  apps/mobile/                   │
 └────────────┬────────────────────┘
              │  REST (axios)  +  WebSocket (socket.io-client)
              ▼
 ┌─────────────────────────────────┐
-│   Backend (Express + Socket.io) │  http://localhost:3001
-│   apps/backend/src/             │
-│   ├── routes/       (REST)      │
-│   ├── controllers/              │
-│   ├── services/                 │
-│   ├── socket/      (WS)         │
-│   └── game/        (engine)     │
+│  Backend (Express + Socket.io)  │  http://localhost:3001
+│  apps/backend/src/              │
+│  ├── routes/        (REST)      │
+│  ├── controllers/               │
+│  ├── services/                  │
+│  ├── socket/        (WS)        │
+│  └── game/          (engine)    │
 └────────────┬────────────────────┘
              │  Prisma ORM
              ▼
 ┌─────────────────────────────────┐
-│   PostgreSQL (Laragon)          │  localhost:5432 / db: dominoclub
+│  PostgreSQL (Laragon / Docker)  │  localhost:5432 / db: dominoclub
 └─────────────────────────────────┘
              │  optional
              ▼
 ┌─────────────────────────────────┐
-│   Redis (Socket.io adapter)     │  optional — horizontal scaling only
+│  Redis (Socket.io adapter)      │  optional — horizontal scaling only
 └─────────────────────────────────┘
 ```
 
 **Key design decisions:**
 - Game state lives **in-memory** (`activeGames` Map on the server). DB is only updated at game start/end.
 - Each user gets their own Socket.io room `user:<userId>` for direct push events.
-- PIX payments via Banco Inter API (mTLS in production, mock auto-confirm in development).
+- PIX payments via Banco Inter API (mTLS in production, mock auto-confirm in dev).
 - No Redis required for single-server deployments.
+- Token blacklist uses Redis when available; falls back to an in-memory Map.
 
 ---
 
@@ -65,11 +67,11 @@
 |------|--------|
 | `GameMode` | `ARENA_1V1`, `CUP_1V1`, `TOURNAMENT_2V2`, `RECREATIONAL_2V2` |
 | `GameStatus` | `WAITING`, `PLAYING`, `FINISHED`, `CANCELLED`, `ABANDONED` |
-| `DominoVariant` | `CARROCA` (traditional blocked), `L_E_L` (doubles double), `CRUZADA` (cross) |
+| `DominoVariant` | `CARROCA` (standard), `L_E_L` (doubles double), `CRUZADA` (cross) |
 | `TransactionType` | `DEPOSIT`, `WITHDRAWAL`, `BET`, `WIN`, `BONUS`, `REFUND`, `FEE` |
 | `TransactionStatus` | `PENDING`, `COMPLETED`, `FAILED`, `CANCELLED` |
 | `TournamentStatus` | `OPEN`, `FULL`, `IN_PROGRESS`, `FINISHED`, `CANCELLED` |
-| `FraudType` | `MULTI_ACCOUNT_DEVICE`, `MULTI_ACCOUNT_IP`, `SUSPICIOUS_GPS`, `GEOLOCATION_OUTSIDE_BRAZIL`, `RAPID_FIRE_BETS`, `BOT_PATTERN`, `COLLUSION_SUSPECTED`, `UNUSUAL_WIN_RATE` |
+| `FraudType` | `MULTI_ACCOUNT_DEVICE`, `MULTI_ACCOUNT_IP`, `SUSPICIOUS_GPS`, `GEOLOCATION_OUTSIDE_BRAZIL`, `RAPID_FIRE_BETS`, `BOT_PATTERN`, `COLLUSION_SUSPECTED`, `UNUSUAL_WIN_RATE`, `IMPOSSIBLE_MOVEMENT`, `INTEGRITY_FAIL`, `VELOCITY_ABUSE`, `DEVICE_LIMIT_EXCEEDED`, `ADMIN_ACTION` |
 
 ---
 
@@ -84,21 +86,22 @@
 | `name` | String? | Display name |
 | `avatar` | String? | URI |
 | `gps_lat`, `gps_lng` | Float? | Last known location |
+| `gps_accuracy` | Float? | GPS accuracy in metres |
+| `gps_updated_at` | DateTime? | Timestamp of last GPS update |
 | `device_id` | String? | For multi-account fraud detection |
 | `ip_address` | String? | Last login IP |
 | `is_banned` | Boolean | Default false |
 | `ban_reason` | String? | Reason code or text |
-| `bot_score` | Float | 0–1 probability of bot behavior |
+| `bot_score` | Float | 0–1 probability of bot behavior (EMA) |
+| `trust_score` | Float | 1.0 = fully trusted; decrements on abuse signals (EMA) |
 | `cpf_verified` | Boolean | Serpro validation passed |
 | `phone_verified` | Boolean | OTP verified |
-| `otp_code` | String? | Current OTP (hashed in production) |
+| `otp_code` | String? | SHA-256 hash of current OTP |
 | `otp_expires_at` | DateTime? | OTP TTL |
 | `refresh_token` | String? | Stored for token rotation |
 | `created_at`, `updated_at` | DateTime | |
 
-**Relations:** `wallet` (1:1), `gamePlayers` (1:N), `tournamentPlayers` (1:N), `fraudLogs` (1:N), `wonGames` (1:N)
-
-**Indexes:** `phone`, `cpf`, `device_id`, `ip_address`
+**Relations:** `wallet` (1:1), `gamePlayers` (1:N), `tournamentPlayers` (1:N), `fraudLogs` (1:N), `couponRedemptions` (1:N), `deviceBinds` (1:N), `wonGames` (1:N)
 
 ---
 
@@ -108,12 +111,10 @@
 |--------|------|-------|
 | `id` | UUID PK | |
 | `userId` | String UNIQUE FK | One wallet per user |
-| `real_balance` | Float | Cash balance in BRL |
-| `bonus_balance` | Float | Bonus credits (wagering requirement applies) |
-| `rollover_remaining` | Float | Amount still to be wagered before withdrawal allowed |
+| `real_balance` | Decimal(12,2) | Cash balance in BRL |
+| `bonus_balance` | Decimal(12,2) | Bonus credits (wagering requirement applies) |
+| `rollover_remaining` | Decimal(12,2) | Amount still to be wagered before withdrawal allowed |
 | `created_at`, `updated_at` | DateTime | |
-
-**Relations:** `user` (N:1), `transactions` (1:N)
 
 ---
 
@@ -124,8 +125,8 @@
 | `id` | UUID PK | |
 | `walletId` | String FK | |
 | `type` | TransactionType | |
-| `amount` | Float | Positive = credit, negative = debit |
-| `balance_after` | Float? | Snapshot of balance after this transaction |
+| `amount` | Decimal(12,2) | Positive = credit, negative = debit |
+| `balance_after` | Decimal? | Snapshot of balance after this transaction |
 | `pix_id` | String? | Banco Inter `txid` / `e2eid` |
 | `pix_qr_code` | Text? | PIX Copia e Cola string |
 | `pix_key` | String? | Destination key (withdrawals) |
@@ -133,8 +134,6 @@
 | `status` | TransactionStatus | |
 | `metadata` | Json? | Raw Banco Inter API response |
 | `created_at`, `updated_at` | DateTime | |
-
-**Indexes:** `walletId`, `pix_id`, `status`, `created_at`
 
 ---
 
@@ -146,9 +145,9 @@
 | `mode` | GameMode | |
 | `variant` | DominoVariant | Default `CARROCA` |
 | `status` | GameStatus | |
-| `bet_amount` | Float | Per-player buy-in |
-| `prize_pool` | Float | Total payout (after house fee) |
-| `house_fee` | Float | House edge taken |
+| `bet_amount` | Decimal(12,2) | Per-player buy-in |
+| `prize_pool` | Decimal(12,2) | Total payout (after house fee) |
+| `house_fee` | Decimal(12,2) | House edge taken |
 | `winner_id` | String? FK → User | |
 | `winning_team` | Int? | 1 or 2 (for 2v2 modes) |
 | `replay_data` | Json? | Full move history for replay |
@@ -156,8 +155,6 @@
 | `tournamentId` | String? FK | Null for non-tournament games |
 | `tournament_round` | Int? | Which bracket round (1-based) |
 | `created_at`, `updated_at`, `finished_at` | DateTime | |
-
-**Indexes:** `status`, `mode`, `created_at`, `tournamentId`
 
 ---
 
@@ -188,16 +185,14 @@
 | `mode` | GameMode | |
 | `variant` | DominoVariant | |
 | `status` | TournamentStatus | |
-| `entry_fee` | Float | Per-player buy-in |
-| `prize_pool` | Float | Accumulated (90% of collected fees) |
-| `max_players` | Int | Must be power of 2 (2, 4, 8, 16...) |
+| `entry_fee` | Decimal(12,2) | Per-player buy-in |
+| `prize_pool` | Decimal(12,2) | Accumulated (90% of collected fees) |
+| `max_players` | Int | Must be power of 2 (2, 4, 8, 16…) |
 | `current_players` | Int | Live count |
 | `current_round` | Int | 0 = not started |
 | `starts_at` | DateTime | Scheduled start |
 | `finished_at` | DateTime? | |
 | `created_at`, `updated_at` | DateTime | |
-
-**Indexes:** `status`, `starts_at`
 
 ---
 
@@ -210,7 +205,7 @@
 | `userId` | String FK | |
 | `eliminated_at` | DateTime? | Null = still active |
 | `final_position` | Int? | 1 = champion |
-| `prize_won` | Float | Amount credited |
+| `prize_won` | Decimal(12,2) | Amount credited |
 | `joined_at` | DateTime | |
 
 **Unique constraint:** `(tournamentId, userId)`
@@ -224,6 +219,7 @@
 | `id` | UUID PK | |
 | `userId` | String FK | |
 | `type` | FraudType | |
+| `reason_code` | String? | Structured sub-code, e.g. `"BOT_PATTERN:ema_threshold"` |
 | `details` | Json | Evidence details |
 | `ip_address` | String? | |
 | `device_id` | String? | |
@@ -232,16 +228,123 @@
 
 ---
 
-### Entity Relationship Diagram
+### `DeviceBind`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `userId` | String FK | |
+| `device_id` | String | |
+| `platform` | String? | `'android'` or `'ios'` |
+| `attest_key_id` | String? | App Attest keyId (iOS) |
+| `first_seen` | DateTime | |
+| `last_seen` | DateTime | |
+| `is_active` | Boolean | |
+
+**Unique constraint:** `(userId, device_id)`
+
+---
+
+### `SystemConfig`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `key` | String PK | Config key name |
+| `value` | String | Stored value |
+| `updated_at` | DateTime | |
+
+Runtime-editable keys (via admin): `houseEdgePercent`, `botInjectWaitSeconds`, `turnTimeoutSeconds`, `disconnectGraceSeconds`.
+
+---
+
+### `PairBlock`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `userAId` | String | Lower UUID of the pair (enforced) |
+| `userBId` | String | Higher UUID of the pair |
+| `reason` | String? | |
+| `active` | Boolean | |
+| `created_at`, `updated_at` | DateTime | |
+
+**Unique constraint:** `(userAId, userBId)` — matchmaking never pairs blocked users.
+
+---
+
+### `Coupon`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `code` | String UNIQUE | Uppercase alphanumeric |
+| `bonus_amount` | Decimal(12,2) | Bonus credited on redemption |
+| `min_deposit_amount` | Decimal(12,2) | Minimum deposit required |
+| `rollover_times` | Int | Bonus × this = rollover requirement |
+| `max_players` | Int? | Null = unlimited redemptions |
+| `is_active` | Boolean | |
+| `created_at`, `updated_at` | DateTime | |
+
+---
+
+### `CouponRedemption`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `couponId` | String FK | |
+| `userId` | String FK | |
+| `bonus_amount` | Decimal(12,2) | Amount credited |
+| `rollover_added` | Decimal(12,2) | Rollover added to wallet |
+| `created_at` | DateTime | |
+
+**Unique constraint:** `(couponId, userId)` — one redemption per user per coupon.
+
+---
+
+### `PartnerCooldown`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `userAId`, `userBId` | String | Canonical pair (lower/higher UUID) |
+| `consecutive_same_team` | Int | Consecutive FINISHED games on same team |
+| `cooldown_remaining` | Int | Games left where pair must be on opposing teams |
+| `updated_at` | DateTime | |
+
+**Unique constraint:** `(userAId, userBId)` — after 3 consecutive same-team games, `cooldown_remaining` is set to 3.
+
+---
+
+### `GameRoom`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `mode` | GameMode | |
+| `bet_amount` | Decimal(12,2) | |
+| `label` | String? | Display name, e.g. "Sala VIP R$50" |
+| `locked` | Boolean | Locked rooms block new matchmaking |
+| `created_at`, `updated_at` | DateTime | |
+
+**Unique constraint:** `(mode, bet_amount)`
+
+---
+
+### Entity Relationships
 
 ```
 User ──────── Wallet ──────── Transaction
   │
-  ├─── GamePlayer ──── Game ──── GamePlayer
-  │                     │
-  │               TournamentPlayer ── Tournament ── Game
+  ├── DeviceBind
+  ├── CouponRedemption ── Coupon
+  ├── FraudLog
+  ├── GamePlayer ──── Game ──── GameRoom (mode/bet)
+  │                   │
+  │             TournamentPlayer ── Tournament ── Game
   │
-  └─── FraudLog
+  └── (PartnerCooldown — userA ↔ userB)
+      (PairBlock       — userA ↔ userB)
 ```
 
 ---
@@ -250,7 +353,7 @@ User ──────── Wallet ──────── Transaction
 
 Base URL: `http://localhost:3001/api/v1`
 
-All protected endpoints require: `Authorization: Bearer <access_token>`
+Protected endpoints require: `Authorization: Bearer <access_token>`
 
 ---
 
@@ -260,50 +363,19 @@ All protected endpoints require: `Authorization: Bearer <access_token>`
 |--------|------|------|-------------|
 | `POST` | `/auth/otp/send` | ❌ | Send OTP SMS to phone number |
 | `POST` | `/auth/otp/verify` | ❌ | Verify OTP, returns tokens + user |
-| `POST` | `/auth/dev/login` | ❌ | Dev-only login (localhost only) |
-| `POST` | `/auth/token/refresh` | ❌ | Refresh access token |
-| `POST` | `/auth/logout` | ✅ | Invalidate refresh token |
-| `GET` | `/auth/me` | ✅ | Get current user + wallet balances |
+| `POST` | `/auth/dev/login` | ❌ | Dev-only login (localhost or `DEV_AUTH_BYPASS=true`) |
+| `POST` | `/auth/token/refresh` | ❌ | Rotate refresh token, returns new pair |
+| `POST` | `/auth/logout` | ✅ | Blacklist access token, clear refresh token |
+| `GET` | `/auth/me` | ✅ | Current user + wallet + trust_score |
 | `PUT` | `/auth/profile` | ✅ | Update name, avatar, GPS, CPF |
 | `POST` | `/auth/cpf/verify` | ✅ | Verify CPF via Serpro API |
-| `DELETE` | `/auth/account` | ✅ | LGPD: soft-delete account |
-| `POST` | `/auth/data-export` | ✅ | LGPD: export personal data |
-| `POST` | `/auth/self-exclusion` | ✅ | Responsible gambling: self-ban |
+| `DELETE` | `/auth/account` | ✅ | LGPD step 1 — sends OTP for deletion confirmation |
+| `POST` | `/auth/account/confirm-deletion` | ✅ | LGPD step 2 — verify OTP and soft-delete account |
+| `POST` | `/auth/data-export` | ✅ | LGPD: export all personal data |
+| `POST` | `/auth/self-exclusion` | ✅ | Responsible gambling: temporary or permanent self-ban |
 
-#### `POST /auth/otp/send`
+#### `GET /auth/me` — response
 ```json
-// Request
-{ "phone": "+5511999990001" }
-
-// Response 200
-{ "message": "OTP sent", "expiresIn": 300 }
-```
-
-#### `POST /auth/otp/verify`
-```json
-// Request
-{ "phone": "+5511999990001", "otp": "123456" }
-
-// Response 200
-{
-  "accessToken": "eyJ...",
-  "refreshToken": "eyJ...",
-  "user": { "id": "uuid", "phone": "...", "name": "...", "wallet": { "real_balance": 0, ... } }
-}
-```
-
-#### `POST /auth/token/refresh`
-```json
-// Request
-{ "refreshToken": "eyJ..." }
-
-// Response 200
-{ "accessToken": "eyJ...", "refreshToken": "eyJ..." }
-```
-
-#### `GET /auth/me`
-```json
-// Response 200
 {
   "id": "uuid",
   "phone": "+5511999990001",
@@ -313,6 +385,8 @@ All protected endpoints require: `Authorization: Bearer <access_token>`
   "cpf_verified": false,
   "phone_verified": true,
   "created_at": "2026-01-01T00:00:00.000Z",
+  "trust_score": 0.95,
+  "is_banned": false,
   "wallet": {
     "real_balance": 150.00,
     "bonus_balance": 0.00,
@@ -321,22 +395,13 @@ All protected endpoints require: `Authorization: Bearer <access_token>`
 }
 ```
 
-#### `PUT /auth/profile`
-```json
-// Request (all fields optional)
-{ "name": "João", "avatar": "https://...", "gps_lat": -23.5, "gps_lng": -46.6, "cpf": "123.456.789-09" }
-
-// Response 200 — updated user object
+#### LGPD account deletion (2-step)
 ```
-
-#### `POST /auth/self-exclusion`
-```json
-// Request
-{ "type": "temporary" }  // or "permanent"
-
-// Response 200
-{ "message": "SELF_EXCLUSION_30_DAYS" }
+DELETE /auth/account          → 202  { "message": "Código enviado. Use POST /auth/account/confirm-deletion" }
+POST   /auth/account/confirm-deletion  body: { "otp": "123456" }
+                              → 200  { "message": "Conta excluída com sucesso." }
 ```
+Soft-delete: PII anonymised, financial records retained for legal obligation.
 
 ---
 
@@ -345,64 +410,10 @@ All protected endpoints require: `Authorization: Bearer <access_token>`
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/wallet` | ✅ | Balance + last 20 transactions |
-| `POST` | `/wallet/deposit` | ✅ | Create PIX charge, returns QR code |
-| `POST` | `/wallet/withdraw` | ✅ | Request PIX withdrawal |
+| `POST` | `/wallet/deposit` | ✅ | Create PIX charge (min R$10), returns QR code |
+| `POST` | `/wallet/withdraw` | ✅ | Request PIX withdrawal (min R$20, rollover must be 0) |
 | `GET` | `/wallet/transaction/:id` | ✅ | Poll transaction status |
 | `POST` | `/wallet/pix/webhook` | ❌ | Banco Inter webhook (PIX confirmed) |
-
-#### `POST /wallet/deposit`
-```json
-// Request
-{ "amount": 50.00 }  // minimum R$ 10.00
-
-// Response 200
-{
-  "txid": "abc123...",
-  "qrCode": "00020126580014BR.GOV.BCB.PIX...",
-  "transactionId": "uuid"
-}
-// Dev mode: payment auto-confirmed after 3 seconds
-// Production: Banco Inter calls /wallet/pix/webhook on payment
-```
-
-#### `POST /wallet/withdraw`
-```json
-// Request
-{ "amount": 50.00, "pixKey": "joao@email.com" }
-// Requires: balance >= amount, rollover_remaining == 0, minimum R$ 20
-
-// Response 200
-{ "transactionId": "uuid" }
-```
-
-#### `GET /wallet/transaction/:id`
-```json
-// Response 200
-{
-  "id": "uuid",
-  "type": "DEPOSIT",
-  "amount": 50.00,
-  "status": "COMPLETED",  // PENDING | PROCESSING | COMPLETED | FAILED
-  "balance_after": 150.00,
-  "created_at": "2026-01-01T00:00:00.000Z"
-}
-```
-
-#### `GET /wallet`
-```json
-// Response 200
-{
-  "id": "uuid",
-  "real_balance": 150.00,
-  "bonus_balance": 0.00,
-  "rollover_remaining": 0.00,
-  "transactions": [
-    { "id": "uuid", "type": "DEPOSIT", "amount": 50.00, "status": "COMPLETED", "created_at": "..." },
-    { "id": "uuid", "type": "BET",     "amount": -2.00, "status": "COMPLETED", "created_at": "..." },
-    { "id": "uuid", "type": "WIN",     "amount":  3.60, "status": "COMPLETED", "created_at": "..." }
-  ]
-}
-```
 
 ---
 
@@ -414,79 +425,19 @@ All protected endpoints require: `Authorization: Bearer <access_token>`
 | `GET` | `/game/active` | ✅ | Current active/waiting game (for reconnect) |
 | `GET` | `/game/:id/replay` | ✅ | Full replay data for a finished game |
 | `GET` | `/game/tournaments` | ✅ | List open/full tournaments |
-| `POST` | `/game/tournaments/:id/join` | ✅ | Join a tournament (deducts entry fee) |
+| `POST` | `/game/tournaments/:id/join` | ✅ | Join a tournament (deducts entry fee, Serializable tx) |
 | `GET` | `/game/tournaments/:id/bracket` | ✅ | Tournament bracket with all rounds |
+| `GET` | `/game/eligibility` | ✅ | Check if user may enter paid games (`?betAmount=N`) |
 
-#### `GET /game/history?page=1`
+#### `GET /game/eligibility?betAmount=10`
 ```json
-// Response 200
-{
-  "page": 1,
-  "games": [
-    {
-      "id": "uuid",
-      "mode": "ARENA_1V1",
-      "variant": "CARROCA",
-      "status": "FINISHED",
-      "bet_amount": 2.00,
-      "prize_pool": 3.60,
-      "winner_id": "uuid",
-      "finished_at": "2026-01-01T00:00:00.000Z",
-      "players": [
-        { "userId": "uuid", "team": 1, "seat": 0, "final_score": 0, "user": { "id": "...", "name": "João", "avatar": null } }
-      ]
-    }
-  ]
-}
-```
+// 200 — allowed
+{ "eligible": true, "trust_level": "HIGH", "trust_score": 0.95 }
 
-#### `GET /game/active`
-```json
-// Response 200 — game in progress
-{
-  "game": {
-    "id": "uuid",
-    "mode": "ARENA_1V1",
-    "status": "PLAYING",
-    "players": [ ... ]
-  }
-}
-
-// Response 200 — no active game
-{ "game": null }
+// 403 — blocked
+{ "error": "ACCOUNT_UNDER_REVIEW", "trust_level": "LOW", "trust_score": 0.38 }
 ```
-
-#### `POST /game/tournaments/:id/join`
-```json
-// Response 200
-{
-  "message": "Joined tournament successfully",
-  "starting": false,         // true if this player filled the last spot
-  "balance": 998.00,         // updated wallet balance
-  "tournament": { "id": "...", "status": "OPEN", "current_players": 3, ... }
-}
-```
-
-#### `GET /game/tournaments/:id/bracket`
-```json
-// Response 200
-{
-  "tournament": {
-    "id": "uuid", "name": "Torneio R$10", "status": "IN_PROGRESS",
-    "current_round": 2, "max_players": 8, "prize_pool": 72.00,
-    "entry_fee": 10.00, "starts_at": "2026-01-01T20:00:00.000Z"
-  },
-  "players": [
-    { "userId": "uuid", "eliminated_at": null, "final_position": null, "prize_won": 0,
-      "user": { "id": "uuid", "name": "João", "avatar": null } }
-  ],
-  "games": [
-    { "id": "uuid", "status": "FINISHED", "tournament_round": 1,
-      "players": [ { "userId": "uuid", "user": { ... } } ] }
-  ],
-  "myStatus": { "eliminated": false, "finalPosition": null, "prizeWon": 0 }
-}
-```
+Users with `trust_score < 0.45` (LOW) are blocked from paid games. Free games are always accessible.
 
 ---
 
@@ -494,63 +445,82 @@ All protected endpoints require: `Authorization: Bearer <access_token>`
 
 All routes except `/admin/login` require `Authorization: Bearer <admin_jwt>`.
 
+#### Auth & Stats
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/admin/login` | Get admin JWT token |
-| `GET` | `/admin/stats` | Platform stats (users, revenue, active games) |
-| `GET` | `/admin/users` | List all users (paginated, filterable) |
-| `PATCH` | `/admin/users/:id/ban` | Ban / unban user |
-| `GET` | `/admin/games` | List games with filters |
+| `POST` | `/admin/login` | Get admin JWT (12h), timing-safe credential check |
+| `GET` | `/admin/stats` | Platform overview: users, revenue, games, 7-day chart |
+
+#### Users
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/users` | List users (paginated, search by name/phone/CPF) |
+| `GET` | `/admin/users/low-trust` | Users with `trust_score < 0.75`, sorted by lowest first |
+| `PATCH` | `/admin/users/:id/ban` | Ban or unban user with reason |
+| `PATCH` | `/admin/users/:id/restore-trust` | Manually restore trust_score; logs `ADMIN_ACTION` FraudLog |
+| `GET` | `/admin/users/:id/pair-stats` | Win-rate stats against each opponent (collusion analysis) |
+
+#### Games
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/games` | List games (paginated, filter by status) |
 | `GET` | `/admin/games/:id/replay` | Full replay JSON |
-| `GET` | `/admin/transactions` | List transactions with filters |
-| `PATCH` | `/admin/transactions/:id/approve` | Approve pending withdrawal |
-| `PATCH` | `/admin/transactions/:id/reject` | Reject and refund withdrawal |
-| `GET` | `/admin/tournaments` | List all tournaments |
+| `GET` | `/admin/games/:id/logs` | Structured match log lines from `logs/matches.log` |
+
+#### Transactions
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/transactions` | List transactions (paginated, filter by type/status) |
+| `PATCH` | `/admin/transactions/:id/approve` | Mark withdrawal COMPLETED |
+| `PATCH` | `/admin/transactions/:id/reject` | Mark withdrawal FAILED + refund balance |
+
+#### Tournaments
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/tournaments` | List all tournaments (paginated, filter by status) |
 | `POST` | `/admin/tournaments` | Create tournament |
-| `POST` | `/admin/tournaments/:id/start` | Force-start tournament |
-| `POST` | `/admin/tournaments/:id/cancel` | Cancel + refund all players |
+| `POST` | `/admin/tournaments/demo` | Create demo tournament with test players pre-enrolled |
+| `POST` | `/admin/tournaments/:id/start` | Force-start a FULL tournament |
+| `POST` | `/admin/tournaments/:id/cancel` | Cancel OPEN/FULL + refund all entry fees |
+| `POST` | `/admin/tournaments/:id/emergency-cancel` | Cancel IN_PROGRESS + refund active players |
+| `GET` | `/admin/tournaments/:id/players` | Player list with join/elimination timestamps |
+| `GET` | `/admin/tournaments/:id/bracket` | Full bracket with per-round game results |
 
-#### `POST /admin/login`
-```json
-// Request
-{ "username": "admin", "password": "admin123" }
+#### Runtime Config
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/config` | Current runtime config values |
+| `PATCH` | `/admin/config` | Update editable keys (`houseEdgePercent`, `botInjectWaitSeconds`, `turnTimeoutSeconds`, `disconnectGraceSeconds`) |
 
-// Response 200
-{ "token": "eyJ..." }   // valid 12 hours
-```
+#### Anti-Collusion / Pair Blocks
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/pair-blocks` | List pair blocks (filter by active) |
+| `POST` | `/admin/pair-blocks` | Create pair block (prevents matchmaking pairing) |
+| `PATCH` | `/admin/pair-blocks/:id` | Update active/reason |
+| `GET` | `/admin/team-pair-stats` | All 2v2 pairs with high same-team win rate |
 
-#### `GET /admin/stats`
-```json
-// Response 200
-{
-  "totalUsers": 1500,
-  "bannedUsers": 12,
-  "activeGamesNow": 8,
-  "deposits24h": { "count": 45, "amount": 2250.00 },
-  "withdrawals24h": { "count": 12, "amount": 600.00 },
-  "revenue24h": 180.00,       // house edge collected
-  "revenueWeek": [
-    { "day": "Mon", "revenue": 320.00, "games": 160 },
-    { "day": "Tue", "revenue": 410.00, "games": 205 }
-  ]
-}
-```
+#### Coupons / Bonus
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/coupons` | List coupons |
+| `POST` | `/admin/coupons` | Create coupon |
+| `PATCH` | `/admin/coupons/:id` | Toggle `is_active` |
+| `GET` | `/admin/coupons/:id/redemptions` | Redemption history |
 
-#### `POST /admin/tournaments`
-```json
-// Request
-{
-  "name": "Torneio Semanal R$10",
-  "mode": "ARENA_1V1",
-  "variant": "CARROCA",
-  "entryFee": 10.00,
-  "maxPlayers": 8,
-  "startsAt": "2026-01-08T20:00:00.000Z"
-}
+#### Fraud
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/fraud-logs` | List fraud logs (paginated, filter by type/resolved) |
+| `PATCH` | `/admin/fraud-logs/:id/resolve` | Mark as reviewed |
 
-// Response 201
-{ "id": "uuid", "name": "...", "status": "OPEN", ... }
-```
+#### Game Rooms
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin/game-rooms` | List all mode/bet rooms |
+| `POST` | `/admin/game-rooms` | Create room |
+| `PATCH` | `/admin/game-rooms/:id` | Lock/unlock or rename |
+| `DELETE` | `/admin/game-rooms/:id` | Delete room |
 
 ---
 
@@ -572,8 +542,9 @@ Each connection joins two rooms automatically:
 | `game:move` | `{ gameId, tile: [n,n], side, flipped }` | Play a tile |
 | `game:draw` | `{ gameId }` | Draw from boneyard |
 | `game:pass` | `{ gameId }` | Pass turn |
-| `game:leave` | `{ gameId }` | Forfeit game (counts as loss, opponent wins) |
-| `queue:join` | `{ mode, betAmount }` | Enter matchmaking queue |
+| `game:leave` | `{ gameId }` | Forfeit game |
+| `game:sync_request` | `{ gameId, seq }` | Request resync if sequence gap detected |
+| `queue:join` | `{ mode, betAmount, variant }` | Enter matchmaking queue |
 | `queue:leave` | — | Leave matchmaking queue |
 | `reaction` | `{ gameId, emoji }` | Send in-game emoji reaction |
 
@@ -584,15 +555,15 @@ Each connection joins two rooms automatically:
 #### Matchmaking
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `queue:joined` | `{ botWaitSeconds? }` | In queue, bot will join after N seconds if no match |
-| `queue:stats` | `{ ARENA_1V1: { total, byBet }, ... }` | Live queue counts (broadcast) |
-| `queue:error` | `{ message }` | Queue join rejected |
-| `game:found` | `{ gameId }` | Match found — navigate to game |
+| `queue:joined` | `{ botWaitSeconds? }` | In queue; bot will join after N seconds if no match |
+| `queue:stats` | `{ ARENA_1V1: { total, byBet }, … }` | Live queue counts (broadcast) |
+| `queue:error` | `{ message }` | Queue join rejected (trust LOW, room locked, etc.) |
+| `game:found` | `{ gameId }` | Match found — navigate to game screen |
 
 #### In-Game
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `game:state` | `GameState` | Full state update after every action |
+| `game:state` | `GameState` | Full state update after every action (with sequence number) |
 | `game:error` | `{ message }` | Invalid move or error |
 | `game:ended` | `{ status, winnerId, winnerTeam, prizePool, prizePerWinner, players }` | Game finished |
 | `game:forfeit` | `{ forfeitedUserId, reason, winnerId, winnerTeam }` | Player left or disconnected |
@@ -604,36 +575,37 @@ Each connection joins two rooms automatically:
 | `tournament:started` | `{ tournamentId, gameId, round, totalRounds }` | First round begins |
 | `tournament:next_game` | `{ tournamentId, gameId, round, totalRounds }` | Advance to next round |
 | `tournament:eliminated` | `{ tournamentId, finalPosition, prize, totalPlayers }` | Player is out |
-| `tournament:champion` | `{ tournamentId, prize }` | Player won the tournament |
-| `tournament:cancelled` | `{ tournamentId, refundAmount, reason }` | Tournament cancelled, refund issued |
+| `tournament:champion` | `{ tournamentId, prize }` | Player won |
+| `tournament:cancelled` | `{ tournamentId, refundAmount, reason }` | Cancelled, refund issued |
 
 ---
 
-### `GameState` object (sent via `game:state`)
+### `GameState` object
 
 ```typescript
 {
   id: string;
+  seq: number;                  // monotonically increasing; client detects gaps
   status: 'waiting' | 'playing' | 'finished';
   variant: 'CARROCA' | 'L_E_L' | 'CRUZADA';
   mode: string;
   currentPlayerIndex: number;
   turnCount: number;
   firstPlayMade: boolean;
-  leftOpen: number;       // left end of board (pip value)
-  rightOpen: number;      // right end of board (pip value)
+  leftOpen: number;
+  rightOpen: number;
+  topOpen?: number;             // CRUZADA only
+  bottomOpen?: number;          // CRUZADA only
   boardTiles: PlacedTile[];
-  boneyard: null[];       // hidden from players — only count visible
-  players: [
-    {
-      userId: string;
-      team: number;
-      seat: number;
-      isBot: boolean;
-      hand: ([number, number] | null)[];  // opponent hands are null
-      pipsInHand: number;
-    }
-  ];
+  boneyard: null[];             // count only — contents hidden
+  players: [{
+    userId: string;
+    team: number;
+    seat: number;
+    isBot: boolean;
+    hand: ([number, number] | null)[];   // opponent hands are null
+    pipsInHand: number;
+  }];
   winnerTeam?: number;
   winnerId?: string;
 }
@@ -645,28 +617,37 @@ Each connection joins two rooms automatically:
 
 Located at `apps/backend/src/game/domino.engine.ts`.
 
-### Rules (CARROCA variant)
-- Double-six set: 28 tiles total
-- Each player receives 7 tiles (1v1) or 7 tiles (2v2)
-- First play: must be double-six (or highest double if no one has it)
-- Valid move: tile must share a pip value with the open end being played on
-- Pass: only allowed when player has no valid moves AND boneyard is empty
-- Draw: player draws from boneyard until a playable tile is found
-- Win: empty hand, OR all players pass (blocked game) → team with fewest pips wins
-- Blocked game tie: team pip totals are compared; lower wins
+### Rules
 
-### Functions
+- Double-six set: 28 tiles total
+- Each player receives 7 tiles (1v1 or 2v2)
+- **First move rule**: must play the highest double in hand; if no doubles, highest-pip tile
+- Valid move: tile must share a pip value with the open end being played on
+- **Pass**: only allowed when no valid moves AND boneyard is empty
+- **Draw**: player draws from boneyard until a playable tile is found (or boneyard is empty)
+- **Win**: empty hand, OR all players consecutively pass (blocked game) → team with fewest pips wins
+- **Tie**: equal pip totals → draw
+
+### Variant scoring (win types)
+| Type | Points | Condition |
+|------|--------|-----------|
+| Simples | 1 | Plain win |
+| Carroça | 2 | Winning tile is a double |
+| Lá e Lô | 3 | Win tile makes both open ends equal |
+| Cruzada | 4 | Double AND both ends equal |
+
+### Engine functions
+
 | Function | Description |
 |----------|-------------|
-| `initGame(id, variant, players)` | Shuffle tiles, deal 7 to each player, set up state |
-| `applyMove(state, playerIndex, tile, side, flipped)` | Validate and apply tile placement |
+| `initGame(id, variant, players)` | Shuffle tiles, deal 7 each, set first player |
+| `applyMove(state, playerIndex, tile, side, flipped)` | Validate and apply tile |
 | `applyPass(state, playerIndex)` | Pass turn (only valid if no moves) |
-| `drawFromBoneyard(state, playerIndex)` | Draw tile from pile |
-| `getValidMoves(state, playerIndex)` | Returns all legal `{tile, side, flipped}` combinations |
-| `getBotMove(state)` | Simple bot — plays highest-value valid tile |
+| `drawFromBoneyard(state, playerIndex)` | Draw from pile |
+| `getValidMoves(state, playerIndex)` | All legal `{tile, side, flipped}` combos |
+| `getBotMove(state)` | Greedy bot — plays highest-value valid tile |
 
-### Server-side validation
-All moves are validated server-side. Invalid moves emit `game:error` and are rejected. The client never controls authoritative state.
+All moves are validated server-side. Invalid moves emit `game:error` and are rejected.
 
 ---
 
@@ -675,37 +656,38 @@ All moves are validated server-side. Invalid moves emit `game:error` and are rej
 ### Deposit (PIX)
 ```
 User requests deposit (min R$10)
-  → Backend creates Transaction (status: PENDING) + PIX charge via Banco Inter
-  → Returns QR code to client
-  → Client polls GET /wallet/transaction/:id every 3s
+  → Backend creates Transaction (PENDING) + PIX charge via Banco Inter
+  → Returns QR code / Copia e Cola string
   → Banco Inter calls POST /wallet/pix/webhook on payment
      (dev mode: auto-confirmed after 3 seconds)
-  → Backend credits wallet, updates Transaction (status: COMPLETED)
-  → Client sees updated balance
+  → Webhook verifies HMAC-SHA256 signature (hard-fail in production if secret missing)
+  → Backend credits wallet inside Serializable transaction
+  → If valid coupon in metadata: redemption applied atomically (max_players enforced)
 ```
 
 ### Game Bet
 ```
 Game starts
-  → Backend deducts bet_amount from each real player's wallet (BET transaction)
-  → prize_pool = sum of bets × (1 - house_edge%)   [default 10%]
+  → Backend debits bet_amount from each real player's wallet (BET transaction)
+  → prize_pool = sum of bets × (1 − house_edge%)   [default 10%, runtime-configurable]
   → house_fee  = sum of bets × house_edge%
 Game ends
-  → Backend credits prize_pool / winners to each winner's wallet (WIN transaction)
+  → Backend credits prize_pool / winners to each winner (WIN transaction)
 ```
 
 ### Withdrawal (PIX)
 ```
-User requests withdrawal (min R$20, rollover_remaining must be 0)
-  → Backend debits wallet atomically + creates Transaction (status: PENDING)
-  → Dispatches PIX transfer via Banco Inter (dev: auto-completes)
-  → Transaction updated to COMPLETED (or FAILED + refund on error)
+User requests withdrawal (min R$20, rollover_remaining must = 0)
+  → All checks AND debit run inside Serializable transaction (prevents double-spend race)
+  → Transaction status: PENDING
+  → PIX transfer dispatched via Banco Inter (dev: auto-completes)
+  → COMPLETED or FAILED + balance refund on error
 ```
 
 ### House Edge
-Default: **10%** (`HOUSE_EDGE_PERCENT` env var)
-- 1v1 — R$2 buy-in each: `prize_pool = 4 × 0.9 = R$3.60` to winner
-- 2v2 — R$2 buy-in each: `prize_pool = 8 × 0.9 = R$7.20` split between winning team
+Default: **10%** (runtime-configurable via admin)
+- 1v1 — R$2 each: `prize_pool = 4 × 0.9 = R$3.60` to winner
+- 2v2 — R$2 each: `prize_pool = 8 × 0.9 = R$7.20` split between winning team
 
 ---
 
@@ -713,63 +695,94 @@ Default: **10%** (`HOUSE_EDGE_PERCENT` env var)
 
 ### Lifecycle
 ```
-OPEN → (fills up) → FULL → (auto-start) → IN_PROGRESS → FINISHED
-                                                       ↘ CANCELLED
+OPEN → (fills) → FULL → (auto-start) → IN_PROGRESS → FINISHED
+                                                    ↘ CANCELLED
 ```
 
-- `OPEN`: accepting registrations
-- `FULL`: all spots filled, auto-starts immediately
-- Auto-cancel: scheduler runs every 60s, cancels OPEN/FULL tournaments past `starts_at` that have fewer than 2 players and refunds everyone
+- **OPEN**: accepting registrations (join uses Serializable tx to prevent over-enrollment)
+- **FULL**: all spots filled, starts immediately if `starts_at` has passed; otherwise waits
+- **Auto-cancel**: scheduler runs every 60s; cancels OPEN/FULL tournaments past `starts_at` with fewer than 2 players and refunds everyone
 
-### Bracket Structure
-- Single-elimination, must be power of 2 (`max_players`: 2, 4, 8, 16, 32)
-- Round labels: Round 1 → Quartas de final → Semifinal → Final
+### Bracket
+- Single-elimination, power of 2 (2, 4, 8, 16, 32 players)
 - Total rounds: `Math.ceil(Math.log2(max_players))`
-- Between rounds: server waits for all games to finish, then starts next round
+- Prize: champion takes 100% of `prize_pool`; eliminated players receive nothing
 
-### Prize Distribution
-- **Champion**: 100% of `prize_pool`
-- **Others**: eliminated with no prize (configurable per tournament in future)
-
-### Socket flow for players
-1. Join → navigate to `TournamentWaiting` screen with countdown
+### Socket flow
+1. Join → `TournamentWaiting` screen (countdown)
 2. `tournament:started` → navigate to `Game`
-3. Win game → wait on `TournamentBracket` screen
+3. Win → wait on `TournamentBracket` screen
 4. `tournament:next_game` → navigate to next `Game`
-5. `tournament:eliminated` → navigate to `TournamentResult`
-6. `tournament:champion` → navigate to `TournamentResult` with prize
+5. `tournament:eliminated` → `TournamentResult`
+6. `tournament:champion` → `TournamentResult` with prize
 
 ---
 
 ## 8. Authentication & Security
 
 ### JWT Tokens
-- **Access token**: expires 15 minutes, signed with `JWT_ACCESS_SECRET`
-- **Refresh token**: expires 7 days, signed with `JWT_REFRESH_SECRET`, stored in DB column `refresh_token`
-- Token rotation: new refresh token issued on every `/auth/token/refresh` call
+- **Access token**: expires 15 minutes; signed with `JWT_ACCESS_SECRET`; includes `jti` (UUID v4)
+- **Refresh token**: expires 7 days; signed with `JWT_REFRESH_SECRET`; stored in DB column
+- **Token rotation**: new refresh token issued on every `/auth/token/refresh` call; old JTI is blacklisted
+- **Token blacklist**: `jti` stored in Redis (or in-memory Map fallback) with TTL = remaining token lifetime; checked on every protected request
 
 ### OTP (SMS)
-- 6-digit code, expires in 5 minutes
+- 6-digit code, 5-minute expiry
+- **Stored as SHA-256 hash** — plaintext never persisted
+- **Comparison via `crypto.timingSafeEqual`** — prevents timing-based enumeration
 - Max 5 attempts, 60-second resend cooldown
 - Providers: `mock` (dev), `zenvia` (Brazil), `twilio` (international)
 
-### Anti-fraud Middleware
-Runs asynchronously on login — does not block auth:
-- **Multi-account detection**: same device_id or IP used by multiple accounts
-- Logs to `FraudLog` table for admin review
+### Admin Authentication
+- Separate secret (`ADMIN_JWT_SECRET`), 12-hour JWT
+- **Timing-safe credential check**: `crypto.timingSafeEqual` for both username and password
+- Dedicated rate limiter: max 5 attempts per 15 minutes per IP
+- JWT includes `username` field for audit trail in FraudLog entries
+
+### Trust Score System
+- `trust_score` per user: `1.0` (trusted) → `0.0` (untrusted)
+- Updated via Exponential Moving Average (EMA) on fraud signals:
+  - Negative signal: `score += weight × score` (proportional to current — approaches 0)
+  - Positive signal: `score += weight × (1 − score)` (proportional to headroom — approaches 1)
+- **Trust levels**: HIGH `≥ 0.75` · MEDIUM `0.45–0.74` · LOW `< 0.45`
+- Users with LOW trust are blocked from paid games (see `GET /game/eligibility`)
+- Admin can manually restore via `PATCH /admin/users/:id/restore-trust` (logs `ADMIN_ACTION`)
+
+### Device Attestation
+- **Android**: Google Play Integrity API — server-side JWT verification via OAuth2
+- **iOS**: Apple App Attest — server verifies receipt; `DeviceBind` stores `attest_key_id`
+- **Nonce replay protection**: server-issued nonce included in integrity verdict; expired/reused nonces are rejected
+- Required for all paid games (`bet_amount > 0`) in production; bypassed in dev
+
+### GPS & Movement Validation
+- GPS bounds: coordinates outside Brazil (approx. bounds) trigger `GEOLOCATION_OUTSIDE_BRAZIL`
+- **Impossible movement detection**: >900 km/h between consecutive GPS updates → `IMPOSSIBLE_MOVEMENT` FraudLog
+- Velocity throttle: accumulated abuse → `VELOCITY_ABUSE`
+
+### Anti-Fraud Pipeline (async, non-blocking)
+- **Multi-account**: same `device_id` or `ip_address` used by multiple users → `MULTI_ACCOUNT_DEVICE` / `MULTI_ACCOUNT_IP`
+- **Bot detection**: EMA of move interval → `bot_score`; threshold breach → `BOT_PATTERN`
+- **Collusion (2v2)**: partner always on same team with high win rate + Haversine proximity analysis → `COLLUSION_SUSPECTED`
+- **Device limit**: user binds more than 3 devices → `DEVICE_LIMIT_EXCEEDED`
+- **Self-exclusion**: `SELF_EXCLUSION_30_DAYS` or `SELF_EXCLUSION_PERMANENT` stored in `ban_reason`
 
 ### Rate Limiting
-- 100 requests per minute per IP (configurable)
-- Separate rate limiting on OTP send endpoint
+| Scope | Limit | Window |
+|-------|-------|--------|
+| Auth endpoints | 20 req | 15 min |
+| Admin login | 5 req | 15 min |
+| Admin API | 200 req | 15 min |
+| PIX webhook | 500 req | 1 min |
+| General | configurable | configurable |
 
-### Admin JWT
-- Separate secret (`ADMIN_JWT_SECRET`), expires 12 hours
-- Simple username/password check (no OTP)
+### PIX Webhook
+- HMAC-SHA256 signature on `x-inter-ae-in-ativa` header
+- **Hard-fail in production** if `INTER_WEBHOOK_SECRET` is not set (returns 500 at startup)
+- Idempotent: duplicate `txid` calls are silently ignored
 
-### PIX Webhook Verification
-- HMAC-SHA256 signature verification on Banco Inter webhook calls
-- Header: `x-inter-ae-in-ativa`
-- Skipped in dev mode (no secret set)
+### Secret Validation
+- Weak/default JWT or admin secrets: **warning in dev**, **fatal error in production**
+- All secrets validated at startup from `config/index.ts`
 
 ---
 
@@ -794,7 +807,7 @@ Runs asynchronously on login — does not block auth:
 | `INTER_KEY_PATH` | `./certs/inter.key` | mTLS key (production only) |
 | `INTER_PIX_KEY` | — | Your registered PIX key |
 | `INTER_WEBHOOK_URL` | — | Public URL for PIX callbacks |
-| `INTER_WEBHOOK_SECRET` | — | HMAC secret for webhook verification |
+| `INTER_WEBHOOK_SECRET` | — | HMAC secret — required in production |
 | `SERPRO_API_KEY` | — | CPF validation API key |
 | `SERPRO_MOCK_MODE` | `true` | Skip real CPF API in dev |
 | `SMS_PROVIDER` | `mock` | `mock` / `zenvia` / `twilio` |
@@ -802,22 +815,24 @@ Runs asynchronously on login — does not block auth:
 | `OTP_LENGTH` | `6` | |
 | `OTP_MAX_ATTEMPTS` | `5` | |
 | `OTP_RESEND_COOLDOWN_SECONDS` | `60` | |
-| `TURN_TIMEOUT_SECONDS` | `30` | Auto-pass if player doesn't move |
-| `BOT_INJECT_WAIT_SECONDS` | `15` | Seconds before bot fills empty slot |
-| `DISCONNECT_GRACE_SECONDS` | `60` | Grace period before forfeit on disconnect |
-| `HOUSE_EDGE_PERCENT` | `10` | % taken from prize pool |
-| `MATCHMAKING_BET_TOLERANCE` | `0.10` | ±10% bet range for matchmaking |
+| `TURN_TIMEOUT_SECONDS` | `30` | Auto-pass timeout (runtime-configurable) |
+| `BOT_INJECT_WAIT_SECONDS` | `15` | Seconds before bot fills empty slot (runtime-configurable) |
+| `DISCONNECT_GRACE_SECONDS` | `60` | Grace period before forfeit on disconnect (runtime-configurable) |
+| `HOUSE_EDGE_PERCENT` | `10` | % taken from prize pool (runtime-configurable) |
 | `ADMIN_USERNAME` | `admin` | |
 | `ADMIN_PASSWORD` | — | Change in production |
 | `ADMIN_JWT_SECRET` | — | Min 32 chars |
-| `CORS_ORIGINS` | localhost ports | Comma-separated allowed origins |
-| `REDIS_URL` | _(empty)_ | Optional — enables multi-server Socket.io |
+| `DEV_AUTH_BYPASS` | `false` | Allow dev login from non-localhost IPs |
+| `DEV_AUTH_DEFAULT_PHONE` | `+5511999990001` | Default phone for dev login |
+| `CORS_ORIGINS` | localhost ports | Comma-separated allowed origins (production) |
+| `REDIS_URL` | _(empty)_ | Optional — enables multi-server Socket.io + token blacklist |
 
 ### Mobile (`apps/mobile/.env`)
 
 | Variable | Description |
 |----------|-------------|
 | `EXPO_PUBLIC_API_URL` | Backend base URL including `/api/v1` |
+| `EXPO_PUBLIC_SOCKET_URL` | WebSocket server URL |
 | `EXPO_PUBLIC_DEV_AUTH_BYPASS` | `true` = auto-login on Splash screen |
 | `EXPO_PUBLIC_FORCE_DEV_LOGIN` | `true` = force dev login from local IPs |
 | `EXPO_PUBLIC_MOCK_GAME` | `true` = inject mock board for UI development |
@@ -831,10 +846,9 @@ Runs asynchronously on login — does not block auth:
 - PostgreSQL 14+ (Laragon recommended on Windows)
 - Git
 
-### 1. Start PostgreSQL
-```bash
-# Laragon (Windows)
-"c:/laragon/bin/postgresql/postgresql/bin/pg_ctl" start -D "c:/laragon/data/postgresql/"
+### 1. Start PostgreSQL (Laragon)
+```powershell
+& "c:/laragon/bin/postgresql/postgresql/bin/pg_ctl" start -D "c:/laragon/data/postgresql/"
 ```
 
 ### 2. Create database
@@ -849,24 +863,21 @@ cp .env.example .env
 # Edit .env — set DATABASE_URL, JWT secrets
 
 npm install
-npx prisma migrate deploy   # apply migrations
-npx prisma generate         # generate client
-npm run dev                 # starts on :3001
+npx prisma db push       # apply schema (dev) or migrate deploy (prod)
+npx prisma generate      # generate client
+npm run dev              # starts on :3001
 ```
 
-### 4. Mobile (web)
+### 4. Mobile
 ```bash
 cd apps/mobile
 # Edit .env — set EXPO_PUBLIC_API_URL=http://localhost:3001/api/v1
-
 npm install
 npx expo start --web --port 8083
-# Open http://localhost:8083
 ```
 
 ### 5. Admin Dashboard
 ```bash
-# Separate app at apps/admin (Next.js)
 cd apps/admin
 npm install
 npm run dev   # starts on :3000
@@ -874,7 +885,8 @@ npm run dev   # starts on :3000
 ```
 
 ### Dev shortcuts
-- Dev login auto-creates user `+5511999990001` with R$1,000 balance on first request
+- Dev login creates user `+5511999990001` with R$1,000 balance on first request
 - PIX deposits auto-confirm after 3 seconds
 - Bot joins after `BOT_INJECT_WAIT_SECONDS` if no second player
 - All CPF validation calls are mocked (`SERPRO_MOCK_MODE=true`)
+- OTP is logged to console in dev (not sent via SMS)

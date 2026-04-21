@@ -132,22 +132,28 @@ export const config = {
   },
 };
 
-// ── Production secret validation ────────────────────────────────────────────
-// Fail fast if weak defaults are still in place when running in production.
-if (process.env.NODE_ENV === 'production') {
-  const weak = [
-    ['JWT_ACCESS_SECRET', config.jwt.accessSecret, 'dev_access_secret_min_32_chars_here'],
-    ['JWT_REFRESH_SECRET', config.jwt.refreshSecret, 'dev_refresh_secret_min_32_chars_here'],
-    ['ADMIN_PASSWORD',    config.admin.password,     'changeme_in_production'],
-    ['ADMIN_JWT_SECRET',  config.admin.secret,       'admin_secret_change_in_production_32chars'],
-  ] as const;
+// ── Secret validation ────────────────────────────────────────────────────────
+// FATAL in production — weak defaults cannot be deployed.
+// WARNING in staging/dev — prevents accidentally deploying with dev creds.
+const _secretChecks = [
+  ['JWT_ACCESS_SECRET', config.jwt.accessSecret, 'dev_access_secret_min_32_chars_here'],
+  ['JWT_REFRESH_SECRET', config.jwt.refreshSecret, 'dev_refresh_secret_min_32_chars_here'],
+  ['ADMIN_PASSWORD',    config.admin.password,     'changeme_in_production'],
+  ['ADMIN_JWT_SECRET',  config.admin.secret,       'admin_secret_change_in_production_32chars'],
+] as const;
 
-  const bad = weak.filter(([, val, def]) => val === def || val.length < 32);
-  if (bad.length > 0) {
-    const names = bad.map(([name]) => name).join(', ');
+const _weakSecrets = _secretChecks.filter(([, val, def]) => val === def || val.length < 32);
+if (_weakSecrets.length > 0) {
+  const names = _weakSecrets.map(([name]) => name).join(', ');
+  if (process.env.NODE_ENV === 'production') {
     throw new Error(
-      `[Config] FATAL: Weak or default secrets detected in production: ${names}. ` +
-      'Set strong values (≥32 chars) in your environment before deploying.'
+      `[Config] FATAL: Weak or default secrets in production: ${names}. ` +
+      'Set strong values (≥32 chars) before deploying.'
+    );
+  } else {
+    console.warn(
+      `[Config] WARNING: Weak or default secrets detected (${names}). ` +
+      'These must be replaced before deploying to production.'
     );
   }
 }

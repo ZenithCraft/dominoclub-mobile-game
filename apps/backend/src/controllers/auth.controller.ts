@@ -6,6 +6,8 @@ import { checkMultiAccount } from '../middleware/antifraud.middleware';
 import { prisma } from '../services/prisma.service';
 import { config } from '../config';
 import { getDevUserById } from '../services/dev-user.store';
+import { sendOtp, verifyOtp } from '../services/otp.service';
+import { logger } from '../utils/logger';
 
 export async function sendOtpHandler(req: Request, res: Response) {
   try {
@@ -71,7 +73,8 @@ export async function refreshHandler(req: Request, res: Response) {
 export async function logoutHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).user?.userId;
-    if (userId) await logout(userId);
+    const accessToken = req.headers.authorization?.slice(7);
+    if (userId) await logout(userId, accessToken);
     res.json({ message: 'Logged out' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -134,10 +137,31 @@ export async function verifyCpfHandler(req: Request, res: Response) {
   }
 }
 
-// DELETE /auth/account — LGPD: permanent account deletion
+// DELETE /auth/account — LGPD: step 1 — sends OTP to user's phone for confirmation
 export async function deleteAccountHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).user?.userId;
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { phone: true } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    await sendOtp(user.phone);
+    res.status(202).json({ message: 'Código de confirmação enviado. Use POST /auth/account/confirm-deletion para concluir.' });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+// POST /auth/account/confirm-deletion — LGPD: step 2 — verifies OTP and soft-deletes
+export async function confirmDeleteAccountHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const { otp } = req.body as { otp?: string };
+    if (!otp) return res.status(400).json({ error: 'OTP code required' });
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { phone: true } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    verifyOtp(user.phone, otp); // throws on invalid / expired / exceeded attempts
 
     // Soft-delete: anonymise PII, keep financial records for 5 years (legal obligation)
     await prisma.user.update({
@@ -156,9 +180,10 @@ export async function deleteAccountHandler(req: Request, res: Response) {
       },
     });
 
+    logger.info('[Auth] Account deleted', { userId });
     res.json({ message: 'Conta excluída com sucesso.' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
   }
 }
 
