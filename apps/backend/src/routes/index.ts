@@ -3,6 +3,7 @@ import authRoutes from './auth.routes';
 import walletRoutes from './wallet.routes';
 import gameRoutes from './game.routes';
 import adminRoutes from './admin.routes';
+import kycRoutes from './kyc.routes';
 
 const router = Router();
 
@@ -10,6 +11,7 @@ router.use('/auth', authRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/game', gameRoutes);
 router.use('/admin', adminRoutes);
+router.use('/kyc', kycRoutes);
 
 router.get('/', (_req, res) => {
   res.json({ status: 'ok', service: 'DominoClub API', timestamp: new Date().toISOString() });

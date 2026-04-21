@@ -14,6 +14,7 @@ import {
   requestDataExportHandler,
   selfExclusionHandler,
 } from '../controllers/auth.controller';
+import { registerPushTokenHandler } from '../controllers/kyc.controller';
 
 const router = Router();
 
@@ -25,6 +26,8 @@ router.post('/logout', authMiddleware, logoutHandler);
 router.get('/me', authMiddleware, getMeHandler);
 router.put('/profile', authMiddleware, updateProfileHandler);
 router.post('/cpf/verify', authMiddleware, verifyCpfHandler);
+
+router.post('/push-token', authMiddleware, registerPushTokenHandler);
 
 // LGPD / Jogo Responsável
 router.delete('/account', authMiddleware, deleteAccountHandler);

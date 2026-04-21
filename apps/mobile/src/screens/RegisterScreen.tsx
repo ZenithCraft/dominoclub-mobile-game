@@ -57,6 +57,7 @@ export function RegisterScreen({ navigation, route }: Props) {
   const [email, setEmail]           = useState('');
   const [password, setPassword]     = useState('');
   const [confirm, setConfirm]       = useState('');
+  const [dob, setDob]               = useState('');
   const [loading, setLoading]       = useState(false);
   const [cpfLoading, setCpfLoading] = useState(false);
   const [cpfVerified, setCpfVerified] = useState(false);
@@ -91,16 +92,44 @@ export function RegisterScreen({ navigation, route }: Props) {
     }
   };
 
+  const formatDob = (t: string) => {
+    const d = t.replace(/\D/g, '').slice(0, 8);
+    if (d.length <= 2) return d;
+    if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+    return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
+  };
+
+  const parseDob = (formatted: string): Date | null => {
+    const parts = formatted.split('/');
+    if (parts.length !== 3 || parts[2].length < 4) return null;
+    const [day, month, year] = parts.map(Number);
+    const d = new Date(year, month - 1, day);
+    if (isNaN(d.getTime())) return null;
+    return d;
+  };
+
   const handleSubmit = async () => {
     const newErrors: Record<string, string> = {};
     if (!name.trim() || name.trim().length < 3) newErrors.name = 'Nome deve ter ao menos 3 caracteres';
     if (cpf && cpfFormatValid && !cpfVerified) newErrors.cpf = 'Verifique seu CPF antes de continuar';
+    if (!dob || dob.length < 10) {
+      newErrors.dob = 'Data de nascimento obrigatória';
+    } else {
+      const dobDate = parseDob(dob);
+      if (!dobDate) {
+        newErrors.dob = 'Data inválida';
+      } else {
+        const age = (Date.now() - dobDate.getTime()) / (365.25 * 24 * 3600 * 1000);
+        if (age < 18) newErrors.dob = 'Você precisa ter ao menos 18 anos para se cadastrar';
+      }
+    }
     setErrors(newErrors);
     if (Object.keys(newErrors).length) return;
 
     setLoading(true);
     try {
-      await api.put('/auth/profile', { name: name.trim() });
+      const dobDate = parseDob(dob)!;
+      await api.put('/auth/profile', { name: name.trim(), date_of_birth: dobDate.toISOString() });
       await refreshUser();
       navigation.replace('Main');
     } catch (err: any) {
@@ -199,6 +228,14 @@ export function RegisterScreen({ navigation, route }: Props) {
                     onChangeText={setEmail}
                     keyboardType="email-address"
                     autoCapitalize="none"
+                  />
+                  <Input
+                    label=""
+                    placeholder="Data de nascimento (DD/MM/AAAA)"
+                    value={dob}
+                    onChangeText={(t) => setDob(formatDob(t))}
+                    keyboardType="number-pad"
+                    error={errors.dob}
                   />
                   <Input
                     label=""

@@ -22,6 +22,8 @@ import { TournamentWaitingScreen } from '../screens/TournamentWaitingScreen';
 import { TournamentBracketScreen } from '../screens/TournamentBracketScreen';
 import { TournamentResultScreen } from '../screens/TournamentResultScreen';
 import { GlobalTournamentBar } from '../components/GlobalTournamentBar';
+import { KYCScreen } from '../screens/KYCScreen';
+import { LeaderboardScreen } from '../screens/LeaderboardScreen';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -32,6 +34,7 @@ export type RootStackParamList = {
   SetNewPassword: { token?: string } | undefined;
   Main: undefined;
   Wallet: undefined;
+  KYC: undefined;
   ModeSelect: { mode?: string } | undefined;
   Game: { gameId: string };
   History: undefined;
@@ -42,6 +45,7 @@ export type RootStackParamList = {
   TournamentWaiting: { tournamentId: string; tournamentName: string; startsAt: string; entryFee: number };
   TournamentBracket: { tournamentId: string };
   TournamentResult: { tournamentId: string; won: boolean; prize: number; finalPosition: number; totalPlayers?: number };
+  Leaderboard: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -139,6 +143,7 @@ export function AppNavigator() {
             <Stack.Screen name="SetNewPassword"       component={SetNewPasswordScreen} />
             <Stack.Screen name="Main"                 component={HomeScreen} />
             <Stack.Screen name="Wallet"               component={WalletScreen} />
+            <Stack.Screen name="KYC"                  component={KYCScreen} />
             <Stack.Screen name="ModeSelect"           component={ModeSelectScreen} />
             <Stack.Screen
               name="Game"
@@ -154,6 +159,7 @@ export function AppNavigator() {
             <Stack.Screen name="TournamentWaiting"    component={TournamentWaitingScreen} options={{ gestureEnabled: false }} />
             <Stack.Screen name="TournamentBracket"    component={TournamentBracketScreen} />
             <Stack.Screen name="TournamentResult"     component={TournamentResultScreen} options={{ gestureEnabled: false }} />
+            <Stack.Screen name="Leaderboard"          component={LeaderboardScreen} />
           </Stack.Navigator>
           <GlobalTournamentBar />
         </View>
