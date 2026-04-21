@@ -10,6 +10,7 @@ import {
   getMeHandler,
   verifyCpfHandler,
   deleteAccountHandler,
+  confirmDeleteAccountHandler,
   requestDataExportHandler,
   selfExclusionHandler,
 } from '../controllers/auth.controller';
@@ -27,6 +28,7 @@ router.post('/cpf/verify', authMiddleware, verifyCpfHandler);
 
 // LGPD / Jogo Responsável
 router.delete('/account', authMiddleware, deleteAccountHandler);
+router.post('/account/confirm-deletion', authMiddleware, confirmDeleteAccountHandler);
 router.post('/data-export', authMiddleware, requestDataExportHandler);
 router.post('/self-exclusion', authMiddleware, selfExclusionHandler);
 

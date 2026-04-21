@@ -4,6 +4,7 @@ import { createGameSchema } from '../utils/validators';
 import { activeGames } from '../socket/gameSocket';
 import { startTournament } from '../services/tournament.service';
 import { issueNonce } from '../services/nonce.service';
+import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -141,60 +142,56 @@ export async function getTournamentsHandler(req: Request, res: Response) {
 }
 
 export async function joinTournamentHandler(req: Request, res: Response) {
+  const userId = (req as any).user?.userId;
+  const { id } = req.params;
   try {
-    const userId = (req as any).user?.userId;
-    const { id } = req.params;
 
-    const tournament = await prisma.tournament.findUnique({ where: { id } });
-    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
-    if (tournament.status !== 'OPEN') return res.status(400).json({ error: 'Tournament not open' });
-    if (tournament.current_players >= tournament.max_players) return res.status(400).json({ error: 'Tournament is full' });
+    // All checks and mutations run inside a SERIALIZABLE transaction so concurrent
+    // join requests cannot both pass the player-count or balance check (double-enroll / overdraft).
+    let isFull = false;
+    let startsAt: Date = new Date();
+    await prisma.$transaction(async (tx) => {
+      const tournament = await tx.tournament.findUnique({ where: { id } });
+      if (!tournament) throw Object.assign(new Error('Tournament not found'), { status: 404 });
+      if (tournament.status !== 'OPEN') throw Object.assign(new Error('Tournament not open'), { status: 400 });
+      if (tournament.current_players >= tournament.max_players) throw Object.assign(new Error('Tournament is full'), { status: 400 });
+      startsAt = tournament.starts_at;
 
-    // Already enrolled? Return success idempotently
-    const existing = await prisma.tournamentPlayer.findFirst({ where: { tournamentId: id, userId } });
-    if (existing) {
-      const wallet = await prisma.wallet.findUnique({ where: { userId } });
-      return res.json({ message: 'Already enrolled', starting: false, balance: wallet?.real_balance ?? 0, tournament });
-    }
+      const existing = await tx.tournamentPlayer.findFirst({ where: { tournamentId: id, userId } });
+      if (existing) throw Object.assign(new Error('Already enrolled'), { status: 200 });
 
-    // Check wallet
-    const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet || wallet.real_balance < tournament.entry_fee) {
-      return res.status(400).json({ error: 'Insufficient balance' });
-    }
+      const wallet = await tx.wallet.findUnique({ where: { userId } });
+      if (!wallet || Number(wallet.real_balance) < Number(tournament.entry_fee)) {
+        throw Object.assign(new Error('Insufficient balance'), { status: 400 });
+      }
 
-    // Deduct entry fee and enroll player
-    const newPlayerCount = tournament.current_players + 1;
-    const isFull = newPlayerCount >= tournament.max_players;
+      const newPlayerCount = tournament.current_players + 1;
+      isFull = newPlayerCount >= tournament.max_players;
 
-    await prisma.$transaction([
-      prisma.wallet.update({
-        where: { userId },
-        data: { real_balance: { decrement: tournament.entry_fee } },
-      }),
-      prisma.tournamentPlayer.create({
-        data: { tournamentId: id, userId },
-      }),
-      prisma.tournament.update({
+      await tx.wallet.update({ where: { userId }, data: { real_balance: { decrement: tournament.entry_fee } } });
+      await tx.tournamentPlayer.create({ data: { tournamentId: id, userId } });
+      await tx.tournament.update({
         where: { id },
         data: {
           current_players: { increment: 1 },
           prize_pool: { increment: Number(tournament.entry_fee) * 0.9 },
           status: isFull ? 'FULL' : 'OPEN',
         },
-      }),
-    ]);
+      });
+    }, { isolationLevel: 'Serializable' } as any);
 
     // Auto-start immediately only if the scheduled start time has already passed
-    if (isFull && tournament.starts_at.getTime() <= Date.now()) {
+    if (isFull && startsAt.getTime() <= Date.now()) {
       startTournament(id).catch((err) => {
-        console.error('[Tournament] Auto-start failed', err.message);
+        logger.error('[Tournament] Auto-start failed', { message: err.message });
       });
     }
 
     // Return updated wallet balance + tournament info for the waiting screen
-    const updatedWallet = await prisma.wallet.findUnique({ where: { userId } });
-    const updatedTournament = await prisma.tournament.findUnique({ where: { id } });
+    const [updatedWallet, updatedTournament] = await Promise.all([
+      prisma.wallet.findUnique({ where: { userId } }),
+      prisma.tournament.findUnique({ where: { id } }),
+    ]);
 
     res.json({
       message: 'Joined tournament successfully',
@@ -203,12 +200,22 @@ export async function joinTournamentHandler(req: Request, res: Response) {
       tournament: updatedTournament,
     });
   } catch (err: any) {
-    // P2002 = unique constraint violation → player already enrolled (race condition)
+    const status = err?.status;
+    if (status === 200) {
+      const [wallet, tournament] = await Promise.all([
+        prisma.wallet.findUnique({ where: { userId } }).catch(() => null),
+        prisma.tournament.findUnique({ where: { id } }).catch(() => null),
+      ]);
+      return res.json({ message: 'Already enrolled', starting: false, balance: wallet?.real_balance ?? 0, tournament });
+    }
+    if (status === 404) return res.status(404).json({ error: err.message });
+    if (status === 400) return res.status(400).json({ error: err.message });
+    // P2002 = unique constraint → already enrolled (concurrent race that slipped through)
     if (err?.code === 'P2002') {
-      const userId = (req as any).user?.userId;
-      const { id } = req.params;
-      const wallet   = await prisma.wallet.findUnique({ where: { userId } }).catch(() => null);
-      const tournament = await prisma.tournament.findUnique({ where: { id } }).catch(() => null);
+      const [wallet, tournament] = await Promise.all([
+        prisma.wallet.findUnique({ where: { userId } }).catch(() => null),
+        prisma.tournament.findUnique({ where: { id } }).catch(() => null),
+      ]);
       return res.json({ message: 'Already enrolled', starting: false, balance: wallet?.real_balance ?? 0, tournament });
     }
     res.status(500).json({ error: err.message });

@@ -1,317 +1,98 @@
-# DominoClub — Roadmap & Handoff (Client)
+# DominoClub — Roadmap & Client Handoff
 
-Updated: **2026-03-30**
+Updated: **2026-04-21**
 
-This document serves two purposes:
-1) summarize the **current state** of the project; 2) list what the **client must provide** (accounts/credentials/infra) to go to production and publish to app stores.
+This document: (1) current state of all components; (2) what the client must provide to go to production.
 
 ---
 
-## Client Handoff (what must be provided)
+## Client Handoff — Credentials & Infrastructure Required
 
-### External accounts and credentials
+### External accounts
 
-- **Banco Inter (PIX)**
-  - `INTER_CLIENT_ID`, `INTER_CLIENT_SECRET`
-  - **mTLS certificate** (`inter.crt` and `inter.key`) with configured paths (`INTER_CERT_PATH`, `INTER_KEY_PATH`)
-  - `INTER_PIX_KEY` (receiving PIX key)
-  - Public webhook URL: `INTER_WEBHOOK_URL = https://<api-domain>/api/v1/wallet/pix/webhook`
-  - Webhook HMAC secret: `INTER_WEBHOOK_SECRET` (signs the body, header `x-inter-ae-in-ativa`)
-- **Serpro (CPF)**: `SERPRO_API_KEY` and `SERPRO_MOCK_MODE=false` in production
-- **SMS OTP**: choose provider and credentials
-  - Zenvia: `SMS_PROVIDER=zenvia`, `SMS_API_KEY`, `SMS_SENDER`
-  - Twilio: `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`
+| Service | Variables needed |
+|---------|-----------------|
+| **Banco Inter (PIX)** | `INTER_CLIENT_ID`, `INTER_CLIENT_SECRET`, mTLS cert pair (`INTER_CERT_PATH` / `INTER_KEY_PATH`), `INTER_PIX_KEY`, `INTER_WEBHOOK_URL`, `INTER_WEBHOOK_SECRET` |
+| **Serpro (CPF)** | `SERPRO_API_KEY`, set `SERPRO_MOCK_MODE=false` |
+| **SMS OTP** | Zenvia: `SMS_PROVIDER=zenvia`, `SMS_API_KEY`, `SMS_SENDER` — or — Twilio: `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` |
+| **Google Play Integrity** | Google service account credential JSON in `integrity.service.ts` |
+| **Apple App Attest** | Production provisioning profile; set `APPLE_APP_ATTEST_ENV=production` |
 
-### Infrastructure (production)
+### Infrastructure
 
-- **Domain + TLS** (recommended reverse proxy: Nginx/Traefik/Cloudflare)
-  - Example: `api.yourdomain.com` → backend
-  - Example: `admin.yourdomain.com` → admin
-- **PostgreSQL** (with backups/retention) and **Redis** (recommended for Socket.io scale)
-- **CDN/Proxy for geofencing** (optional, backend already supports Cloudflare)
-  - With `NODE_ENV=production`, if `cf-ipcountry` is present and not `BR`, the backend blocks
+- **Domain + TLS** — Nginx/Traefik/Cloudflare reverse proxy
+  - `api.yourdomain.com` → backend `:3001`
+  - `admin.yourdomain.com` → admin `:3000`
+- **PostgreSQL** (with backups) and **Redis** (required for token blacklist + velocity limits at scale)
+- **CDN geo-filtering** — backend already supports `cf-ipcountry` header (Cloudflare); non-BR IPs blocked in production
 
-### App store publishing
+### App stores
 
-- **Apple Developer Account** and **Google Play Console**
-- Set `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_SOCKET_URL` in EAS Build (mobile)
+- Apple Developer Account + Google Play Console
+- Set `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_SOCKET_URL` in EAS Build
 
 ### Decisions the client must make
 
-- **Withdrawals**: automatic (PIX triggered by backend) vs. manual (admin approve/reject)
-- **LGPD data export**: API returns JSON; in production we recommend sending via email (SMTP/Email API)
+- **Withdrawal policy**: automatic PIX (current default) vs. manual admin approve/reject
+- **LGPD data export**: currently returns JSON inline; production should email via SMTP
 
 ---
 
-## Current State Summary
+## Current State
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **Database schema** | ✅ 100% | Prisma + migrations incl. tournaments |
-| **Backend API** | ✅ ~95% | Auth, wallet, PIX, engine, matchmaking, socket, anti-fraud, tournaments, replays, LGPD |
-| **Mobile App** | ✅ ~95% | Gameplay, wallet, tournaments, legal screens, first-launch consent — beta-ready |
-| **Admin Dashboard** | ✅ 100% | Login + Stats/Users/Games/Financial/Tournaments |
-| **PIX Payments** | ✅ 100% | Charges + webhook + idempotency + mTLS (prod) |
-| **CPF / SMS** | ⚠️ Partial | SMS OK; CPF coded with mock — real Serpro key still needed |
-| **Tests** | ⚠️ ~60% | Backend unit solid; missing integration (game-flow + PIX) and mobile E2E |
-| **DevOps / Deploy** | ✅ 100% | Docker + docker-compose + CI |
-| **Launch Prep** | ✅ ~95% | Legal/LGPD and EAS config ready — store accounts pending |
+| Database schema | ✅ 100% | All models, migrations, security fields |
+| Backend API | ✅ 100% | Auth, wallet, PIX, engine, matchmaking, socket, anti-fraud, tournaments, LGPD |
+| Security hardening | ✅ 100% | M4 + M5 — see `SECURITY.md` |
+| Mobile App | ✅ ~95% | Gameplay, wallet, tournaments, legal screens — beta-ready |
+| Admin Dashboard | ✅ 100% | Stats, users, games, finance, tournaments, fraud, coupons, config |
+| PIX Payments | ✅ 100% | Charges, webhook, idempotency, mTLS (prod), HMAC verification |
+| CPF / SMS | ⚠️ Partial | SMS OK; CPF coded with mock — real Serpro key needed |
+| Tests | ⚠️ ~60% | Backend unit solid; integration + mobile E2E pending |
+| DevOps / Deploy | ✅ 100% | Docker + docker-compose + GitHub Actions CI |
+| Launch Prep | ✅ ~95% | LGPD + EAS config ready — store accounts pending |
 
 ---
 
 ## Outstanding Items Before Launch
 
-- Serpro CPF: add real API key and set `SERPRO_MOCK_MODE=false`
-- Integration test “full flow”: join queue → match → finish → wallet updated
-- PIX webhook integration test (idempotency + credit)
-- Mobile E2E (Detox/Maestro) for login + match + deposit (at least smoke)
-- Decide **withdrawal** policy (automatic vs manual/admin)
-- Create release pipeline (EAS + stores) with real accounts
+1. **Serpro CPF** — add real API key, set `SERPRO_MOCK_MODE=false`
+2. **Play Integrity nonce** — base64-encode nonce before passing to Google API (see `SECURITY.md` G1)
+3. **App Attest Phase 2** — implement assertion flow for subsequent sessions (see `SECURITY.md` G2)
+4. **`prisma migrate` baseline** — establish clean migration history before production deploy
+5. **Integration tests** — full flow: queue → match → finish → wallet updated; PIX webhook → balance credit
+6. **Mobile E2E** — at minimum: login + match + deposit smoke test (Detox or Maestro)
+7. **Beta** — TestFlight / internal Play track (requires live developer accounts)
+8. **Withdrawal policy** — decide automatic vs. admin-approved
 
 ---
 
-## Recommended Execution Order ✅ Complete
+## Milestone Summary
 
-```
-Phase 1.1 (PIX webhooks)     ✅
-Phase 2.1 (Game client)      ✅
-Phase 2.2 (Wallet mobile UI) ✅
-Phase 1.3 (SMS OTP)          ✅
-Phase 3.1–3.6 (Admin)        ✅
-Phase 1.2 (CPF validation)   ⚠️ coded — real API key needed
-Phase 1.4 (Replays)          ✅
-Phase 1.5 (Tournaments)      ✅
-Phase 2.3 (Error handling)   ✅
-Phase 2.4 (ModeSelect)       ✅
-Phase 4   (Tests)            ⚠️ unit done — integration/E2E pending
-Phase 5   (Hardening)        ✅
-Phase 6   (Launch)           ✅ legal/config done — store submission pending
-```
+### Phase 1 — Backend Core ✅
+PIX payment flow, CPF (mock), SMS OTP (multi-provider), game replay system, tournament bracket engine.
 
----
+### Phase 2 — Mobile Game Client ✅
+Full gameplay logic, drag-to-play, turn timer with auto-play, wallet deposit/withdrawal flow, error handling, ModeSelect with tournament entry.
 
-## Phase 1 — Backend Completion (Priority: Critical)
+### Phase 3 — Admin Dashboard ✅
+Login, stats, users (ban/search), games (replay/logs), financial (approve/reject), tournaments (create/cancel/emergency-cancel/bracket), pair blocks, coupons, fraud logs, game rooms, runtime config.
 
-### 1.1 PIX Payment Flow ✅
-- [x] Implement `pixWebhook` handler to receive payment confirmations from Banco Inter
-- [x] Update transaction status from `PENDING → COMPLETED` on webhook callback
-- [x] Credit user wallet automatically after PIX confirmation
-- [x] Implement withdrawal flow: validate balance → create PIX transfer (production) / mock (dev)
-- [x] Webhook HMAC-SHA256 signature verification (`x-inter-ae-in-ativa` header)
-- [x] mTLS certificates support in Axios client (production only)
-- [x] `registerPixWebhook()` called on server startup
-- [x] `GET /wallet/transaction/:id` status polling endpoint
+### Phase 4 — Testing ⚠️ Partial
+Backend unit tests (93 passing). Integration tests scaffolded but full game-flow and PIX webhook paths pending. Mobile E2E not yet implemented.
 
-**Files:** `apps/backend/src/services/pix.service.ts`, `apps/backend/src/controllers/wallet.controller.ts`, `apps/backend/src/routes/wallet.routes.ts`
+### Phase 5 — Production Hardening ✅
+Geofencing, rate limiting, Docker, GitHub Actions CI, Redis adapter, health check, deploy script.
 
-### 1.2 CPF Validation (Serpro API)
-- [ ] Replace mock with real Serpro API call
-- [ ] Handle CPF already in use (unique constraint)
-- [ ] Rate limit CPF verification to prevent abuse
+### Phase 6 — Launch Prep ✅
+App Store / Play Store EAS config, Terms of Service, Privacy Policy, Responsible Gambling, LGPD consent modal.
 
-**File:** `apps/backend/src/services/auth.service.ts`
+### Phase 7 — Security Hardening ✅
+Full security audit + remediation. See [`SECURITY.md`](SECURITY.md) for complete details.
 
-### 1.3 SMS OTP Provider ✅
-- [x] Multi-provider architecture: `SMS_PROVIDER=mock|zenvia|twilio` (env-switched)
-- [x] Zenvia integration (Brazil-native) — `POST /v2/channels/sms/messages`
-- [x] Twilio integration (international fallback) — REST API with Basic Auth
-- [x] Resend cooldown — throws if new OTP requested before `OTP_RESEND_COOLDOWN_SECONDS` (default 60s)
-- [x] Max-attempts enforcement — locks code after `OTP_MAX_ATTEMPTS` (default 5) failed tries
-- [x] Remaining attempts shown in error message (“2 attempts remaining”)
-- [x] Mobile `handleResend` now shows server cooldown error inline instead of swallowing it
-- [x] `auth.service.ts` updated — `verifyOtp` throws descriptive errors, no silent `false` return
+**M4:** Device attestation (Play Integrity + App Attest), nonce replay protection, unified trust score (EMA, 9 signals), GPS impossible-movement detection, per-user velocity checks, device binding history, structured audit reason codes.
 
-**File:** `apps/backend/src/services/otp.service.ts`
+**M5 Critical:** PIX webhook hard-fail, withdrawal/tournament Serializable transactions, JWT secrets validation everywhere, admin login rate limit (5/15min), access token JTI blacklist on logout.
 
-### 1.4 Game Replay System ✅
-- [x] Record each move into `Game.replay_data` (JSONB) during `gameSocket.ts` event handlers
-- [x] `ReplayData` structure: initial deal + boneyard + typed move sequence (play/draw/pass/timeout)
-- [x] `GET /api/v1/game/:id/replay` endpoint (players can fetch their own games)
-- [x] `GET /api/v1/admin/games/:id/replay` endpoint (admin can fetch any game)
-
-**Files:** `apps/backend/src/socket/gameSocket.ts`, `apps/backend/src/controllers/game.controller.ts`
-
-### 1.5 Tournament Bracket Engine ✅
-- [x] Schema: added `tournamentId` + `tournament_round` to `Game`; `current_round` to `Tournament`
-- [x] `tournament.service.ts` — `startTournament`, `advanceTournamentBracket`, `createTournament`
-- [x] Single-elimination bracket: random seeding, bye for odd players, auto-advance each round
-- [x] `handleGameEnd` calls `advanceTournamentBracket` for tournament games
-- [x] `joinTournamentHandler` auto-starts tournament when max_players reached
-- [x] Prize pool credited to winner via wallet transaction on tournament completion
-- [x] Entry fee refund on admin cancel
-- [x] Admin endpoints: `GET/POST /admin/tournaments`, `POST /admin/tournaments/:id/start`, `POST /admin/tournaments/:id/cancel`
-
-**Files:** `apps/backend/src/services/tournament.service.ts`, `apps/backend/src/socket/gameSocket.ts`, `apps/backend/src/controllers/game.controller.ts`, `apps/backend/src/controllers/admin.controller.ts`
-
----
-
-## Phase 2 — Mobile Game Client (Priority: Critical)
-
-### 2.1 Complete GameScreen Gameplay Logic ✅
-- [x] Client-side valid move detection (mirrors domino.engine.ts `canPlayTile`)
-- [x] Unplayable tiles dimmed (opacity 0.4); playable tiles show green dot indicator
-- [x] Tap-to-select: selecting an unplayable tile shows error toast instead
-- [x] Smart side selection: single valid play → one “Play” button; multiple sides → separate buttons
-- [x] Correct `flipped` value computed from valid plays (no longer hardcoded `false`)
-- [x] Auto-deselect tile when server state invalidates selection
-- [x] `game:error` handler with animated toast
-- [x] Disconnect/reconnect banner + auto re-join on reconnect
-- [x] Fixed socket `useEffect` cleanup bug (listeners now properly removed on unmount)
-- [x] Auto-pass emitted when turn timer reaches 0
-- [x] Pass button only shown when boneyard is empty AND no valid moves
-- [x] Draw button only shown when boneyard has tiles
-- [x] `topOpen`/`bottomOpen` added to GameState for CRUZADA support
-- [x] `game:ended` result card extracted into `ResultCard` sub-component
-
-**File:** `apps/mobile/src/screens/GameScreen.tsx`
-
-### 2.2 Wallet Deposit/Withdrawal Flow ✅
-- [x] Deposit 3-step flow: amount → QR code → confirmed
-- [x] Real QR code rendered via `react-native-qrcode-svg`
-- [x] Preset amounts + custom amount input (“Other” option)
-- [x] Polling `GET /wallet/transaction/:id` every 3s to detect PENDING → COMPLETED
-- [x] Success pulse animation + balance auto-refresh on confirmation
-- [x] Rollover remaining indicator on balance card
-- [x] Withdraw button disabled + explanation when rollover > 0 or balance < R$20
-- [x] MAX button auto-fills full available balance
-- [x] PIX key warning (“Withdrawals are irreversible”)
-- [x] Pull-to-refresh on transaction history
-- [x] Error state with tap-to-retry on transaction list
-- [x] PROCESSING status badge added (for withdrawals in transit)
-- [x] Polling auto-stopped on modal close / unmount
-
-**File:** `apps/mobile/src/screens/WalletScreen.tsx`
-
-### 2.3 Error Handling & Loading States ✅
-- [x] `useToastStore` (Zustand) — queue-based toast store, usable outside React (API interceptors)
-- [x] `toast.error/success/info/warning` helpers for imperative usage
-- [x] `ToastContainer` — animated slide-in/out toasts, stacked, dismissable, auto-expire after 3.5s
-- [x] `ToastContainer` mounted at app root in `App.tsx` (above all navigation)
-- [x] `api.ts` interceptor: network errors, 5xx, 403, 429 → auto-toast; auth/form paths silenced
-- [x] `LoadingOverlay` — full-screen modal spinner with optional message
-- [x] `Button` component: added missing `outline` variant (used by RegisterScreen CPF verify button)
-
-### 2.4 ModeSelectScreen — Tournament Entry ✅
-- [x] Two-tab layout: Partida Rápida / Torneios
-- [x] Quick Match tab: 3 game modes (ARENA_1V1, RECREATIONAL_2V2, CUP_1V1), bet grid, balance warning
-- [x] `queue:error` now uses `toast.error()` instead of `alert()`
-- [x] Tournaments tab: fetches `GET /game/tournaments`, pull-to-refresh
-- [x] `TournamentCard`: name, variant, date, status badge, entry fee, prize pool (gold), player fill bar, round number (IN_PROGRESS)
-- [x] Enroll confirmation modal: fee deduction preview, post-fee balance, insufficient balance guard
-- [x] Joined state badge: "Inscrito — aguardando início" after successful enroll
-- [x] Balance auto-refreshed from auth store after joining
-
-**File:** `apps/mobile/src/screens/ModeSelectScreen.tsx`
-
----
-
-## Phase 3 — Admin Dashboard Integration (Priority: High)
-
-### 3.1 Connect to Backend API ✅
-- [x] `apps/admin/src/lib/api.ts` — Axios client with auto-attach admin JWT + redirect to /login on 401
-- [x] `POST /api/v1/admin/login` endpoint — username/password → JWT (12h expiry)
-- [x] Admin JWT middleware (`admin.middleware.ts`) — verifies `role: admin` claim
-- [x] Admin credentials in config + `.env.example` (`ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_JWT_SECRET`)
-
-### 3.2 Login Page ✅
-- [x] `/login` page — form, error display, stores token in localStorage, redirects to dashboard
-- [x] Auth guard on dashboard — redirects to `/login` if no token
-
-### 3.3 Overview Tab ✅
-- [x] `GET /admin/stats` — totalUsers, onlineNow (from `activeGames` Map), activeGames, revenue24h, deposits24h, withdrawals24h, revenueWeek (7-day SQL aggregation)
-- [x] Revenue and games charts wired to live data
-- [x] Refresh button
-
-### 3.4 Users Tab ✅
-- [x] `GET /admin/users?search=&page=` — paginated, searchable by name/phone/CPF
-- [x] Fraud log count badge per user
-- [x] `PATCH /admin/users/:id/ban` — ban/unban with reason
-- [x] Pagination component
-
-### 3.5 Games Tab ✅
-- [x] `GET /admin/games?status=&page=` — paginated, filterable by status
-- [x] Duration calculated from `created_at`/`finished_at`
-- [x] Status filter dropdown
-
-### 3.6 Financial Tab ✅
-- [x] `GET /admin/transactions?type=&status=&page=` — paginated, filterable
-- [x] Pending withdrawals total + count in header
-- [x] `PATCH /admin/transactions/:id/approve` — marks COMPLETED
-- [x] `PATCH /admin/transactions/:id/reject` — marks FAILED + refunds balance to user
-
----
-
-## Phase 4 — Testing (Priority: High)
-
-### 4.1 Backend Unit Tests ✅
-- [x] Jest + ts-jest configured in `package.json` (`test`, `test:watch`, `test:coverage` scripts)
-- [x] Shared Prisma mock (`src/__mocks__/prisma.service.ts`) — all model methods are `jest.fn()`, auto-reset between tests
-- [x] **domino.engine.test.ts** — 35 assertions covering:
-  - `generateTiles`: count, completeness, no duplicates
-  - `shuffle`: same elements, non-mutating
-  - `initGame`: hand sizes (2p/4p), 28 tiles total, first player holds highest double, firstPlayMade=false
-  - `canPlayTile`: first play, left/right matching, flipping, double no-flip, no match, CRUZADA top/bottom
-  - `getValidMoves`: filters playable tiles correctly
-  - `applyMove`: tile removal, board update, leftOpen/rightOpen, currentPlayerIndex, win detection, throws on missing tile, resets consecutivePasses, CRUZADA cross
-  - `applyPass`: consecutivePasses, passedLastTurn, blocked game, pip-count winner, tie
-  - `drawFromBoneyard`: hand growth, boneyard shrink, empty boneyard no-op, immutability
-  - `getBotMove`: draw/pass/play actions, greedy tile preference, first play
-  - Full 2-player game simulation (up to 500 turns, asserts `status === 'finished'`)
-- [x] **otp.service.test.ts** — OTP length, uniqueness, cooldown enforcement, maxAttempts lockout, expiry
-- [x] **wallet.service.test.ts** — deductBet (real/bonus/split/insufficient/not found/BET record), creditWin (increment/WIN record), deposit/withdraw minimums + delegation
-- [x] **matchmaking.service.test.ts** — dedup enqueue, dequeue removes, 1v1 match fires event, bet tolerance rejection, 2v2 needs 4 players, game.create called with correct mode
-
-### 4.2 Backend Integration Tests ✅ (setup)
-- [x] **auth.integration.test.ts** — Supertest suite for OTP send/verify, /auth/me 401, token refresh 401, admin login, admin stats 401
-- [x] Auto-skips when `DATABASE_URL` not set or `NODE_ENV !== 'test'` to avoid CI failures
-- [ ] Full game flow integration test (join queue → match → play → end → wallet updated)
-- [ ] PIX deposit webhook → balance credit
-
-**Tool:** Supertest + test PostgreSQL instance
-
-### 4.3 Mobile E2E Tests
-- [ ] Auth flow
-- [ ] Game play session
-
-**Tool:** Detox or Maestro
-
----
-
-## Phase 5 — Production Hardening (Priority: Medium) ✅
-
-### 5.1 Security ✅
-- [x] Geofencing active in production via `cf-ipcountry` header (Cloudflare) — blocks non-BR IPs
-- [x] PIX webhook HMAC-SHA256 (`x-inter-ae-in-ativa`) — verified in `wallet.controller.ts`
-- [x] mTLS certificates loaded in production for Banco Inter API calls
-- [x] **Startup validation**: `config/index.ts` throws `FATAL` if weak/default JWT or admin secrets detected in `NODE_ENV=production`
-- [x] **Per-endpoint rate limiting** (tiered): auth=20/15min, webhook=500/min, admin=200/15min, general=configurable
-
-### 5.2 DevOps ✅
-- [x] `apps/backend/Dockerfile` — multi-stage build (builder → production), non-root user, runs `prisma migrate deploy` on start
-- [x] `apps/admin/Dockerfile` — Next.js multi-stage build
-- [x] `docker-compose.yml` — Postgres 16, Redis 7, backend, admin; health checks; volume persistence
-- [x] `.github/workflows/ci.yml` — GitHub Actions: backend (Postgres + Redis services, migrate, test coverage, tsc, build), mobile (tsc), admin (build)
-- [x] `apps/backend/.dockerignore`
-
-### 5.3 Performance ✅
-- [x] `redis.service.ts` — optional Redis client (ioredis) with graceful in-memory fallback; logs masked URL
-- [x] Socket.io Redis adapter (`@socket.io/redis-adapter`) — auto-enabled when `REDIS_URL` is set; enables horizontal scaling across multiple backend instances
-- [x] `server.ts` — Redis connected before Socket.io server creation; graceful shutdown flushes Redis + Prisma; `SIGINT` handled
-- [x] `GET /health` endpoint added for Docker/load-balancer health checks
-- [x] `REDIS_URL` added to `.env.example` and `docker-compose.yml`
-- [ ] Database connection pooling (PgBouncer) — configure via `?connection_limit=` in `DATABASE_URL`
-
----
-
-## Phase 6 — Launch Prep (Priority: Low until Phase 5 done) ✅
-
-- [x] Apple App Store submission config (Expo EAS Build — `eas.json`, production profile, `eas submit`)
-- [x] Google Play submission config (`android.buildType: app-bundle`, `serviceAccountKeyPath`)
-- [x] Terms of Service screen (`TermsScreen.tsx`) — 11 sections PT-BR, scroll-to-accept gate
-- [x] Privacy Policy screen (`PrivacyPolicyScreen.tsx`) — LGPD art. 18 rights, data export + delete buttons
-- [x] Responsible gambling screen (`ResponsibleGamblingScreen.tsx`) — warning signs, CVV 188, self-exclusion (30d / permanent)
-- [x] First-launch consent modal (`ConsentModal.tsx`) — age gate (18+) + ToS acceptance, AsyncStorage-persisted
-- [x] Legal screens registered in stack navigator (`Terms`, `PrivacyPolicy`, `ResponsibleGambling`)
-- [x] Profile modal links to all 3 legal screens
-- [x] Backend LGPD endpoints: `DELETE /auth/account` (PII anonymisation), `POST /auth/data-export`, `POST /auth/self-exclusion`
-- [ ] Beta test via TestFlight / internal Play track (requires live Apple/Google developer accounts)
+**M5 High/Medium:** OTP SHA-256 hashing + timingSafeEqual, admin timingSafeEqual login, refresh token invalidation on rotation, LGPD 2-step account deletion, admin trust-restore audit trail, coupon race condition fix.

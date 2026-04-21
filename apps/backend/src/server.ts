@@ -6,6 +6,7 @@ import { registerPixWebhook } from './services/pix.service';
 import { connectRedis, disconnectRedis } from './services/redis.service';
 import { cleanupExpiredNonces } from './services/nonce.service';
 import { cleanupVelocityStore } from './middleware/antifraud.middleware';
+import { cleanupBlacklist } from './services/token-blacklist.service';
 import { config } from './config';
 import { logger } from './utils/logger';
 
@@ -54,6 +55,7 @@ async function main() {
   setInterval(() => {
     cleanupExpiredNonces();
     cleanupVelocityStore();
+    cleanupBlacklist();
   }, 60_000);
 
   return io;

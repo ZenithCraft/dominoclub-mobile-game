@@ -112,7 +112,11 @@ export async function registerPixWebhook(): Promise<void> {
 // If INTER_WEBHOOK_SECRET is not configured, verification is skipped (dev mode).
 export function verifyPixWebhookSignature(rawBody: string, signatureHeader: string): boolean {
   if (!config.inter.webhookSecret) {
-    logger.warn('[PIX] Webhook signature verification skipped — INTER_WEBHOOK_SECRET not set');
+    if (config.env === 'production') {
+      // Never silently accept unsigned webhooks in production — an attacker could credit any account.
+      throw new Error('[PIX] INTER_WEBHOOK_SECRET is not configured. Refusing to process webhook.');
+    }
+    logger.warn('[PIX] Webhook signature verification skipped — INTER_WEBHOOK_SECRET not set (dev only)');
     return true;
   }
 
@@ -120,7 +124,12 @@ export function verifyPixWebhookSignature(rawBody: string, signatureHeader: stri
     .update(rawBody)
     .digest('hex');
 
-  return expected === signatureHeader;
+  // Use timingSafeEqual to prevent timing attacks on the HMAC comparison
+  const expectedBuf = Buffer.from(expected, 'hex');
+  const receivedBuf = Buffer.from(signatureHeader || '', 'hex');
+  if (expectedBuf.length !== receivedBuf.length) return false;
+
+  return require('crypto').timingSafeEqual(expectedBuf, receivedBuf);
 }
 
 export async function createPixCharge(userId: string, amountBRL: number, couponCode?: string): Promise<{
@@ -226,6 +235,9 @@ export async function confirmPixDeposit(txid: string): Promise<void> {
     if (Number(transaction.amount) < Number(coupon.min_deposit_amount)) return;
 
     if (coupon.max_players !== null) {
+      // Serializable isolation ensures the count is accurate under concurrent deposits.
+      // If two requests race, PostgreSQL will abort one — the P2002 catch below is the
+      // second safety net for the unique constraint on (couponId, userId).
       const used = await tx.couponRedemption.count({ where: { couponId: coupon.id } });
       if (used >= coupon.max_players) return;
     }
@@ -265,22 +277,22 @@ export async function confirmPixDeposit(txid: string): Promise<void> {
         metadata: { depositTransactionId: transaction.id } as any,
       },
     });
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
   logger.info('[PIX] Deposit confirmed', { txid, amount: transaction.amount, walletId: transaction.walletId });
 }
 
 export async function processWithdrawal(userId: string, amountBRL: number, pixKey: string): Promise<string> {
-  const wallet = await prisma.wallet.findUnique({ where: { userId } });
-  if (!wallet) throw new Error('Wallet not found');
-  if (Number(wallet.real_balance) < amountBRL) throw new Error('Insufficient balance');
-  if (Number(wallet.rollover_remaining) > 0) throw new Error('Rollover requirement not met yet');
-
   const txid = uuidv4().replace(/-/g, '').slice(0, 26);
 
-  // Reserve balance and create the transaction atomically before calling the PIX API.
-  // This prevents double-spend if the API call takes long or the server restarts.
+  // All checks and the debit happen inside a SERIALIZABLE transaction so that two
+  // concurrent withdrawals cannot both pass the balance check and double-spend.
   const transaction = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const wallet = await tx.wallet.findUnique({ where: { userId } });
+    if (!wallet) throw new Error('Wallet not found');
+    if (Number(wallet.real_balance) < amountBRL) throw new Error('Insufficient balance');
+    if (Number(wallet.rollover_remaining) > 0) throw new Error('Rollover requirement not met yet');
+
     await tx.wallet.update({
       where: { userId },
       data: { real_balance: { decrement: amountBRL } },
@@ -296,7 +308,7 @@ export async function processWithdrawal(userId: string, amountBRL: number, pixKe
         balance_after: Number(wallet.real_balance) - amountBRL,
       },
     });
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
   // Dispatch PIX transfer (production only); in dev/sandbox just log it.
   if (config.env === 'production') {

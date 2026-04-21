@@ -38,7 +38,6 @@ const authLimiter = rateLimit({
   message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path === '/me',
 });
 
 // PIX webhook: very loose — called by Banco Inter servers
@@ -48,7 +47,17 @@ const webhookLimiter = rateLimit({
   message: { error: 'Too many webhook calls' },
 });
 
-// Admin: tighter than API but looser than auth
+// Admin login: very strict — 5 attempts per 15 min per IP to prevent brute-force
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many login attempts. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+});
+
+// Admin API: tighter than general API but looser than login
 const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
@@ -68,6 +77,7 @@ const generalLimiter = rateLimit({
 
 app.use(`${config.apiPrefix}/auth`, authLimiter);
 app.use(`${config.apiPrefix}/wallet/pix/webhook`, webhookLimiter);
+app.use(`${config.apiPrefix}/admin/login`, adminLoginLimiter);
 app.use(`${config.apiPrefix}/admin`, adminLimiter);
 app.use(generalLimiter);
 

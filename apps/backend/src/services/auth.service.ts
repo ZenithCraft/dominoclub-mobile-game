@@ -1,5 +1,6 @@
 import { prisma } from './prisma.service';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
+import { blacklistToken } from './token-blacklist.service';
 import { sendOtp, verifyOtp } from './otp.service';
 import { logger } from '../utils/logger';
 import { getOrCreateDevUser, getDevRefreshToken, setDevRefreshToken } from './dev-user.store';
@@ -170,6 +171,15 @@ export async function refreshTokens(token: string) {
 
     await prisma.user.update({ where: { id: user.id }, data: { refresh_token: newRefreshToken } });
 
+    // Blacklist the incoming access token JTI so the old token cannot be reused
+    // after rotation (best-effort — failure should not block the refresh)
+    try {
+      const oldPayload = verifyRefreshToken(token) as any;
+      if (oldPayload?.jti && oldPayload?.exp) {
+        await blacklistToken(oldPayload.jti, oldPayload.exp);
+      }
+    } catch { /* ignore — old token may have already expired */ }
+
     return { accessToken, refreshToken: newRefreshToken };
   } catch {
     const stored = getDevRefreshToken(payload.userId);
@@ -182,7 +192,21 @@ export async function refreshTokens(token: string) {
   }
 }
 
-export async function logout(userId: string) {
+export async function logout(userId: string, accessToken?: string) {
+  // Blacklist the access token so it cannot be reused within its remaining TTL
+  if (accessToken) {
+    try {
+      const { verifyAccessToken } = await import('../utils/jwt');
+      const { blacklistToken } = await import('./token-blacklist.service');
+      const payload = verifyAccessToken(accessToken);
+      if (payload.jti && payload.exp) {
+        await blacklistToken(payload.jti, payload.exp);
+      }
+    } catch {
+      // Token already expired or malformed — nothing to blacklist
+    }
+  }
+
   try {
     await prisma.user.update({ where: { id: userId }, data: { refresh_token: null } });
   } catch {

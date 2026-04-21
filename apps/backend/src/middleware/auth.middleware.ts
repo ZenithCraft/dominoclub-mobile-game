@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt';
+import { isTokenBlacklisted } from '../services/token-blacklist.service';
 import { prisma } from '../services/prisma.service';
 import { config } from '../config';
 
@@ -16,6 +17,12 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
   const token = authHeader.slice(7);
   try {
     const payload = verifyAccessToken(token);
+
+    // Reject tokens that were explicitly invalidated on logout
+    if (payload.jti && await isTokenBlacklisted(payload.jti)) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
     try {
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },
