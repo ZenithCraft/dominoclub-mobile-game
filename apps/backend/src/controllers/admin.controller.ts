@@ -1,10 +1,12 @@
 import { Request, Response } from 'express';
+import { timingSafeEqual } from 'crypto';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
 import { config } from '../config';
 import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
+import { AdminRequest } from '../middleware/admin.middleware';
 import { activeGames } from '../socket/gameSocket';
 import { cancelAndRefundTournament, createTournament, emergencyCancelTournament, startTournament } from '../services/tournament.service';
 import { getRuntimeConfig, invalidateRuntimeConfigCache } from '../services/runtime-config.service';
@@ -14,11 +16,18 @@ import { getRuntimeConfig, invalidateRuntimeConfigCache } from '../services/runt
 export async function adminLoginHandler(req: Request, res: Response) {
   try {
     const { username, password } = req.body;
-    if (username !== config.admin.username || password !== config.admin.password) {
+
+    // timingSafeEqual prevents timing-based username/password enumeration
+    const usernameMatch = username?.length === config.admin.username.length &&
+      timingSafeEqual(Buffer.from(username), Buffer.from(config.admin.username));
+    const passwordMatch = password?.length === config.admin.password.length &&
+      timingSafeEqual(Buffer.from(password), Buffer.from(config.admin.password));
+
+    if (!usernameMatch || !passwordMatch) {
       logger.warn('[Admin] Failed login attempt', { username, ip: req.ip });
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
-    const token = jwt.sign({ role: 'admin' }, config.admin.secret, { expiresIn: '12h' });
+    const token = jwt.sign({ role: 'admin', username: config.admin.username }, config.admin.secret, { expiresIn: '12h' });
     logger.info('[Admin] Login successful', { ip: req.ip });
     res.json({ token });
   } catch (err: any) {
@@ -165,7 +174,7 @@ export async function getLowTrustUsersHandler(req: Request, res: Response) {
   }
 }
 
-export async function restoreTrustHandler(req: Request, res: Response) {
+export async function restoreTrustHandler(req: AdminRequest, res: Response) {
   try {
     const { id } = req.params;
     const { trust_score = 1.0, reason } = req.body as { trust_score?: number; reason?: string };
@@ -183,9 +192,13 @@ export async function restoreTrustHandler(req: Request, res: Response) {
     await prisma.fraudLog.create({
       data: {
         userId: id,
-        type: 'ADMIN_ACTION',
+        type: 'ADMIN_ACTION' as any,
         reason_code: 'ADMIN_TRUST_RESTORE',
-        details: { restoredTo: trust_score, reason: reason ?? 'Manual admin restore' },
+        details: {
+          restoredTo: trust_score,
+          reason: reason ?? 'Manual admin restore',
+          adminId: req.adminUser?.username ?? 'unknown',
+        },
       },
     }).catch(() => {});
 
