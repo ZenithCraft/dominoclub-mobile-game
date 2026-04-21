@@ -29,6 +29,8 @@ import {
   createCouponAdminHandler,
   updateCouponAdminHandler,
   getCouponRedemptionsAdminHandler,
+  getLowTrustUsersHandler,
+  restoreTrustHandler,
   getFraudLogsHandler,
   resolveFraudLogHandler,
   getGameRoomsAdminHandler,
@@ -49,7 +51,9 @@ router.use(adminMiddleware);
 router.get('/stats', getStatsHandler);
 
 router.get('/users', getUsersHandler);
+router.get('/users/low-trust', getLowTrustUsersHandler);
 router.patch('/users/:id/ban', banUserHandler);
+router.patch('/users/:id/restore-trust', restoreTrustHandler);
 
 router.get('/games', getGamesHandler);
 router.get('/games/:id/logs', getGameLogsHandler);

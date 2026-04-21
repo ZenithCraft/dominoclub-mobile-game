@@ -3,7 +3,57 @@ import { prisma } from '../services/prisma.service';
 import { createGameSchema } from '../utils/validators';
 import { activeGames } from '../socket/gameSocket';
 import { startTournament } from '../services/tournament.service';
+import { issueNonce } from '../services/nonce.service';
 import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * GET /api/v1/game/integrity-nonce
+ * Issues a single-use server nonce for Play Integrity / App Attest token requests.
+ * The client must use this nonce when requesting the integrity token from the platform SDK,
+ * then include it alongside the token in queue:join for replay-attack protection.
+ */
+/**
+ * GET /api/v1/game/eligibility?betAmount=10
+ * Dev/demo endpoint — returns trust level and whether the user can join a paid game.
+ */
+export async function getEligibilityHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const betAmount = Number(req.query.betAmount ?? 0);
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { trust_score: true, is_banned: true },
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const score = user.trust_score ?? 1;
+    const level = score >= 0.75 ? 'HIGH' : score >= 0.45 ? 'MEDIUM' : 'LOW';
+    const canJoinPaid = level !== 'LOW';
+
+    if (betAmount > 0 && !canJoinPaid) {
+      return res.status(403).json({
+        allowed: false,
+        trust_score: score,
+        trust_level: level,
+        code: 'ACCOUNT_UNDER_REVIEW',
+        message: 'Conta em análise de segurança. Jogos pagos temporariamente indisponíveis.',
+      });
+    }
+
+    res.json({ allowed: true, trust_score: score, trust_level: level });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function getIntegrityNonceHandler(req: Request, res: Response) {
+  try {
+    const { nonce, expiresAt } = await issueNonce();
+    res.json({ nonce, expiresAt });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Falha ao gerar nonce de integridade' });
+  }
+}
 
 export async function getGameHistoryHandler(req: Request, res: Response) {
   try {

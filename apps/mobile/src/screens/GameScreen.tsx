@@ -441,7 +441,7 @@ function buildSnakeLayout(
     const bi = r * rowCells;
     const tiles = Array.from({ length: hPerRow }, (_, i) => seq[bi + i] ?? null) as (Tile | null)[];
     const corner = (seq[bi + hPerRow] ?? null) as Tile | null;
-    const steps = tiles.map(t => (!t || t[0] !== t[1]) ? L + GH : S + GH);
+    const steps = tiles.map(() => L + GH);
     const cum: number[] = [0];
     for (const w of steps) cum.push(cum[cum.length - 1] + w);
     let pFirst = -1, pLast = -1;
@@ -454,13 +454,6 @@ function buildSnakeLayout(
     const rtl = r % 2 === 1;
     const rLast = perRow[r].last;
     let rLastCum = rLast >= 0 ? perRow[r].cum[rLast + 1] : perRow[r].w;
-    // Perpendicular double: corner sits directly below the double (same X column, no horizontal offset)
-    if (rLast >= 0 && perRow[r].corner) {
-      const lastT = perRow[r].tiles[rLast];
-      if (lastT && lastT[0] === lastT[1]) {
-        rLastCum = perRow[r].cum[rLast + 1] - Math.floor(GH / 2);
-      }
-    }
     if (!rtl) {
       rowBaseX.push(rowBaseX[r] + rLastCum - perRow[r + 1].w);
     } else {
@@ -480,10 +473,9 @@ function buildSnakeLayout(
     for (let i = 0; i < rowTiles.length; i++) {
       const t = rowTiles[i];
       if (!t) continue;
-      const isDouble = t[0] === t[1];
-      const horizontal = !isDouble;
-      const tileW = horizontal ? L : S;
-      const tileH = horizontal ? S : L;
+      const horizontal = true;
+      const tileW = L;
+      const tileH = S;
 
       // cell origin in row-local coords; GH/2 is the consistent leading margin
       const cellXLocal = rtl ? (totalRowWidth - cumSteps[i + 1]) : cumSteps[i];
@@ -501,34 +493,16 @@ function buildSnakeLayout(
       let cornerLeft: number;
       let cornerTop: number;
 
-      // When the last tile before the corner is a double it is perpendicular to the chain.
-      // Place the corner BELOW the double (same x) rather than to its side.
-      const lastIsDouble = last >= 0 && rowTiles[last] != null && rowTiles[last]![0] === rowTiles[last]![1];
-
-      if (lastIsDouble) {
-        // Perpendicular double: corner directly below the double, same left x
-        if (rtl) {
-          const leftCellStart = last >= 0 ? (totalRowWidth - cumSteps[last + 1]) : 0;
-          cornerLeft = baseX + leftCellStart + Math.floor(GH / 2);
-        } else {
-          cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + Math.floor(GH / 2);
-        }
-        // GH gap above and below the corner — same breathing room as horizontal piece margins
-        cornerTop = cursorY + L + GH;
-        cursorY = cursorY + L + Math.floor((L - S) / 2) + S + 2 * GH;
+      if (rtl) {
+        // Left-side corner: within the leftmost tile's column, left-aligned
+        const leftCellStart = last >= 0 ? (totalRowWidth - cumSteps[last + 1]) : 0;
+        cornerLeft = baseX + leftCellStart + Math.floor(GH / 2);
       } else {
-        if (rtl) {
-          // Left-side corner: within the leftmost tile's column, left-aligned
-          const leftCellStart = last >= 0 ? (totalRowWidth - cumSteps[last + 1]) : 0;
-          cornerLeft = baseX + leftCellStart + Math.floor(GH / 2);
-        } else {
-          // Right-side corner: within the last tile's column, right-aligned
-          cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + Math.floor(GH / 2) + L - S;
-        }
-        // GH gap above and below the corner — same breathing room as horizontal piece margins
-        cornerTop = cursorY + Math.floor((L + S) / 2) + GH;
-        cursorY = cursorY + L + S + 2 * GH;
+        // Right-side corner: within the last tile's column, right-aligned
+        cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + Math.floor(GH / 2) + L - S;
       }
+      cornerTop = cursorY + Math.floor((L + S) / 2) + GH;
+      cursorY = cursorY + L + S + 2 * GH;
 
       placed.push({ tile: cornerTile, x: cornerLeft, y: cornerTop, horizontal: false });
       minX = Math.min(minX, cornerLeft);
@@ -849,12 +823,12 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
       selectedStyle,
       style,
     ]}>
-      <Pips value={tile[0]} halfW={halfW} halfH={halfH} dot={pip} />
+      <Pips value={tile[0]} halfW={halfW} halfH={halfH} dot={pip} rotated={horizontal} />
       <View style={horizontal
         ? { width: divW, height: tileH, backgroundColor: TILE_LINE }
         : { width: tileW, height: divW, backgroundColor: TILE_LINE }
       } />
-      <Pips value={tile[1]} halfW={halfW} halfH={halfH} dot={pip} />
+      <Pips value={tile[1]} halfW={halfW} halfH={halfH} dot={pip} rotated={horizontal} />
     </View>
   );
 
@@ -864,27 +838,31 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
   return content;
 }
 
-function Pips({ value, halfW, halfH, dot }: { value: number; halfW: number; halfH: number; dot: number }) {
+function Pips({ value, halfW, halfH, dot, rotated }: { value: number; halfW: number; halfH: number; dot: number; rotated?: boolean }) {
   const spots = PIP_POSITIONS[value] ?? [];
   const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
   const edge = Math.max(1, Math.floor(Math.min(halfW, halfH) * 0.12));
   const minCenter = dot / 2 + edge;
   return (
     <View style={{ width: halfW, height: halfH }}>
-      {spots.map(([topFrac, leftFrac], idx) => (
-        <View
-          key={idx}
-          style={{
-            position: 'absolute',
-            width: dot,
-            height: dot,
-            borderRadius: dot / 2,
-            backgroundColor: TILE_PIP,
-            top:  clamp(topFrac * halfH, minCenter, halfH - minCenter) - dot / 2,
-            left: clamp(leftFrac * halfW, minCenter, halfW - minCenter) - dot / 2,
-          }}
-        />
-      ))}
+      {spots.map(([topFrac, leftFrac], idx) => {
+        const tF = rotated ? leftFrac : topFrac;
+        const lF = rotated ? topFrac  : leftFrac;
+        return (
+          <View
+            key={idx}
+            style={{
+              position: 'absolute',
+              width: dot,
+              height: dot,
+              borderRadius: dot / 2,
+              backgroundColor: TILE_PIP,
+              top:  clamp(tF * halfH, minCenter, halfH - minCenter) - dot / 2,
+              left: clamp(lF * halfW, minCenter, halfW - minCenter) - dot / 2,
+            }}
+          />
+        );
+      })}
     </View>
   );
 }
@@ -1460,7 +1438,7 @@ export function GameScreen({ navigation, route }: Props) {
       id: 'dev-mock-2v2',
       mode: 'TOURNAMENT_2V2',
       variant: 'CARROCA',
-      status: 'playing',
+      status: 'playing' as const,
       currentPlayerIndex: 0,
       turnCount: 20,
       firstPlayMade: true,

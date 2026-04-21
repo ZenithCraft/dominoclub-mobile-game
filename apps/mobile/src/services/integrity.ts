@@ -1,57 +1,102 @@
 /**
  * DominoClub — Device Integrity Service (Mobile)
  *
- * Abstracts Play Integrity (Android) and DeviceCheck (iOS) into a single call
- * that returns { platform, token } ready to include in queue:join.
+ * Abstracts Play Integrity (Android) and App Attest / DeviceCheck (iOS) into a
+ * single call that returns a payload ready to include in queue:join.
  *
- * Development / Expo Go:
- *   Set EXPO_PUBLIC_INTEGRITY_MOCK_TOKEN to the same value as the backend's
- *   INTEGRITY_MOCK_TOKEN env var. The mock token is accepted when the backend
- *   runs with INTEGRITY_MOCK_MODE=true (default in non-production).
+ * ── Flow ────────────────────────────────────────────────────────────────────
+ * 1. Call fetchServerNonce() → receives a server-issued single-use nonce.
+ * 2. Pass nonce to the platform SDK (Play Integrity or App Attest).
+ * 3. Include { token/attestationObject, platform, nonce, attestationType, keyId }
+ *    in the queue:join socket payload.
+ * 4. The backend validates nonce freshness (replay protection) and verifies the token.
  *
- * Production Android:
- *   Install @react-native-google-play-integrity/react-native-google-play-integrity
- *   and uncomment the Android block below.
- *   Requires EXPO_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER.
+ * ── Development / Expo Go ───────────────────────────────────────────────────
+ * Set EXPO_PUBLIC_INTEGRITY_MOCK_TOKEN to the same value as the backend's
+ * INTEGRITY_MOCK_TOKEN env var. Mock token is accepted when backend runs with
+ * INTEGRITY_MOCK_MODE=true (default in non-production). Nonce fetch is skipped.
  *
- * Production iOS:
- *   Install @invertase/react-native-apple-authentication or a DeviceCheck bridge.
- *   Uncomment the iOS block below.
- *   Requires Apple Developer entitlements and a provisioning profile with DeviceCheck.
+ * ── Production Android ──────────────────────────────────────────────────────
+ * Install: @react-native-google-play-integrity/react-native-google-play-integrity
+ * Set: EXPO_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER
+ * Uncomment the Android native block below.
+ *
+ * ── Production iOS — App Attest (primary, iOS 14+) ──────────────────────────
+ * Requires a custom Expo module or react-native-device-check with DCAppAttestService support.
+ * App Attest two-phase flow:
+ *   Phase 1 (Attestation, first launch):
+ *     - Generate a new key:  DCAppAttestService.shared.generateKey()
+ *     - Attest it:           DCAppAttestService.shared.attestKey(keyId, SHA-256(nonce))
+ *     - Send attestation object + keyId to server
+ *     - Server validates via Apple API, stores keyId in DeviceBind
+ *   Phase 2 (Assertion, subsequent sessions): TODO Milestone 5
+ *     - DCAppAttestService.shared.generateAssertion(keyId, SHA-256(payload))
+ * Uncomment the App Attest native block below.
+ *
+ * ── Production iOS — DeviceCheck (legacy fallback, iOS < 14) ────────────────
+ * Install: react-native-device-check or a custom Expo module.
+ * Uncomment the DeviceCheck native block below.
  */
 
 import { Platform, NativeModules } from 'react-native';
+import { api } from './api';
 
 export interface IntegrityPayload {
   platform: 'android' | 'ios';
-  token: string;
+  token?: string;               // Play Integrity token (Android) or DeviceCheck token (iOS legacy)
+  attestationObject?: string;   // base64, iOS App Attest only
+  keyId?: string;               // iOS App Attest key ID
+  nonce?: string;               // Server-issued nonce (included for backend verification)
+  attestationType?: 'app_attest' | 'device_check'; // iOS only
 }
 
 const MOCK_TOKEN = process.env.EXPO_PUBLIC_INTEGRITY_MOCK_TOKEN || 'dev-integrity-token';
-const IS_MOCK    = process.env.EXPO_PUBLIC_INTEGRITY_MOCK_MODE !== 'false' &&
-                   process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
+const IS_MOCK    = __DEV__ ||
+                   (process.env.EXPO_PUBLIC_INTEGRITY_MOCK_MODE !== 'false' &&
+                    process.env.EXPO_PUBLIC_MOCK_MODE === 'true');
 
-// Cloud project number registered in Google Play Console (Android only)
 const CLOUD_PROJECT_NUMBER = process.env.EXPO_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER || '';
 
 /**
- * Obtain an attestation token for the current device and app.
+ * Obtain an attestation payload for the current device and app.
  *
- * Returns null if the platform is unsupported or if the native module is
- * unavailable (e.g. running in Expo Go). The caller should treat null as
- * "integrity unavailable" and omit the token — the backend will enforce
- * the gate only for paid games in production.
+ * Returns null if the platform is unsupported or if native modules are
+ * unavailable (e.g. Expo Go). The caller treats null as "integrity unavailable"
+ * and omits the payload — the backend enforces the gate only for paid games in production.
  */
 export async function getIntegrityToken(): Promise<IntegrityPayload | null> {
   // ── Mock / development bypass ──────────────────────────────────────────────
-  if (IS_MOCK || __DEV__) {
-    return { platform: Platform.OS === 'ios' ? 'ios' : 'android', token: MOCK_TOKEN };
+  if (IS_MOCK) {
+    return {
+      platform: Platform.OS === 'ios' ? 'ios' : 'android',
+      token: MOCK_TOKEN,
+      attestationType: Platform.OS === 'ios' ? 'device_check' : undefined,
+    };
   }
 
   if (Platform.OS === 'android') return getAndroidToken();
   if (Platform.OS === 'ios')     return getIosToken();
 
-  return null; // web / other platforms — not supported
+  return null;
+}
+
+// ─── Server nonce fetch ───────────────────────────────────────────────────────
+
+/**
+ * Request a single-use nonce from the backend.
+ * Must be called before requesting the integrity token from the platform SDK.
+ * Returns null on failure — callers should bail out and omit the integrity payload.
+ */
+export async function fetchServerNonce(authToken: string): Promise<string | null> {
+  try {
+    const res = await api.get<{ nonce: string; expiresAt: number }>('/game/integrity-nonce', {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    return res.data.nonce;
+  } catch (err: any) {
+    console.warn('[Integrity] fetchServerNonce failed:', err?.message ?? err);
+    return null;
+  }
 }
 
 // ─── Android — Google Play Integrity ─────────────────────────────────────────
@@ -65,15 +110,16 @@ async function getAndroidToken(): Promise<IntegrityPayload | null> {
    *
    *   import PlayIntegrity from '@react-native-google-play-integrity/react-native-google-play-integrity';
    *
-   *   const nonce = generateNonce(); // base64-encoded, 16–500 bytes
+   *   const nonce = await fetchServerNonce(authToken); // authToken from auth store
+   *   if (!nonce) return null;
    *   const { token } = await PlayIntegrity.requestIntegrityToken({
    *     cloudProjectNumber: CLOUD_PROJECT_NUMBER,
-   *     nonce,
+   *     nonce, // nonce is embedded inside the token and verified server-side
    *   });
-   *   return { platform: 'android', token };
+   *   return { platform: 'android', token, nonce };
    */
 
-  // Check for a manually bridged native module (alternative integration path)
+  // Fallback: check for a manually bridged native module
   const PlayIntegrityModule = NativeModules.PlayIntegrity as
     | { requestIntegrityToken: (opts: { cloudProjectNumber: string; nonce: string }) => Promise<{ token: string }> }
     | undefined;
@@ -89,21 +135,100 @@ async function getAndroidToken(): Promise<IntegrityPayload | null> {
       cloudProjectNumber: CLOUD_PROJECT_NUMBER,
       nonce,
     });
-    return { platform: 'android', token };
+    return { platform: 'android', token, nonce };
   } catch (err: any) {
     console.error('[Integrity] Play Integrity failed:', err?.message ?? err);
     return null;
   }
 }
 
-// ─── iOS — Apple DeviceCheck ──────────────────────────────────────────────────
+// ─── iOS — App Attest (primary, iOS 14+) ─────────────────────────────────────
 
 async function getIosToken(): Promise<IntegrityPayload | null> {
+  // Try App Attest first (iOS 14+), fall back to DeviceCheck
+  const payload = await getIosAppAttestToken();
+  if (payload) return payload;
+  return getIosDeviceCheckToken();
+}
+
+async function getIosAppAttestToken(): Promise<IntegrityPayload | null> {
   /**
-   * Production implementation requires a DeviceCheck bridge.
-   * Options:
-   *   1. react-native-device-check (community package)
-   *   2. A custom Expo module using DCDevice.current.generateToken()
+   * Production App Attest implementation requires a custom Expo module or
+   * react-native-app-attest (community package) with DCAppAttestService support.
+   *
+   * Two-phase flow:
+   *
+   * Phase 1 — Attestation (first launch, or when cached keyId is missing):
+   *
+   *   import AppAttest from 'react-native-app-attest'; // or your custom module
+   *   import AsyncStorage from '@react-native-async-storage/async-storage';
+   *   import { createHash } from 'react-native-sha256';
+   *
+   *   const supported = await AppAttest.isSupported();
+   *   if (!supported) return null;
+   *
+   *   const nonce = await fetchServerNonce(authToken);
+   *   if (!nonce) return null;
+   *
+   *   let keyId = await AsyncStorage.getItem('app_attest_key_id');
+   *   if (!keyId) {
+   *     keyId = await AppAttest.generateKey();
+   *     await AsyncStorage.setItem('app_attest_key_id', keyId);
+   *   }
+   *
+   *   const challenge = await createHash('sha256', nonce); // clientDataHash = SHA-256(nonce)
+   *   const attestationObject = await AppAttest.attestKey(keyId, challenge);
+   *   return {
+   *     platform: 'ios',
+   *     attestationObject,
+   *     keyId,
+   *     nonce,
+   *     attestationType: 'app_attest',
+   *   };
+   *
+   * Phase 2 — Assertion (subsequent sessions): TODO Milestone 5
+   *   const assertion = await AppAttest.generateAssertion(keyId, SHA-256(payload));
+   */
+
+  const AppAttestModule = NativeModules.AppAttest as
+    | {
+        isSupported: () => Promise<boolean>;
+        generateKey: () => Promise<string>;
+        attestKey: (keyId: string, clientDataHash: string) => Promise<string>;
+      }
+    | undefined;
+
+  if (!AppAttestModule) {
+    console.warn('[Integrity] App Attest native module not available — falling back to DeviceCheck');
+    return null;
+  }
+
+  try {
+    const supported = await AppAttestModule.isSupported();
+    if (!supported) return null;
+
+    const nonce = generateNonce();
+    const keyId = await AppAttestModule.generateKey();
+    const attestationObject = await AppAttestModule.attestKey(keyId, nonce);
+    return {
+      platform: 'ios',
+      attestationObject,
+      keyId,
+      nonce,
+      attestationType: 'app_attest',
+    };
+  } catch (err: any) {
+    console.error('[Integrity] App Attest failed:', err?.message ?? err);
+    return null;
+  }
+}
+
+// ─── iOS — DeviceCheck (legacy fallback) ─────────────────────────────────────
+
+async function getIosDeviceCheckToken(): Promise<IntegrityPayload | null> {
+  /**
+   * Production DeviceCheck implementation:
+   *   npm install react-native-device-check
    *
    * Then uncomment:
    *
@@ -111,10 +236,9 @@ async function getIosToken(): Promise<IntegrityPayload | null> {
    *
    *   if (!await DCDevice.isSupported()) return null;
    *   const token = await DCDevice.generateToken();
-   *   return { platform: 'ios', token };
+   *   return { platform: 'ios', token, attestationType: 'device_check' };
    */
 
-  // Check for a manually bridged native module
   const DeviceCheckModule = NativeModules.DeviceCheck as
     | { generateToken: () => Promise<string>; isSupported: () => Promise<boolean> }
     | undefined;
@@ -128,7 +252,7 @@ async function getIosToken(): Promise<IntegrityPayload | null> {
     const supported = await DeviceCheckModule.isSupported();
     if (!supported) return null;
     const token = await DeviceCheckModule.generateToken();
-    return { platform: 'ios', token };
+    return { platform: 'ios', token, attestationType: 'device_check' };
   } catch (err: any) {
     console.error('[Integrity] DeviceCheck failed:', err?.message ?? err);
     return null;
@@ -137,7 +261,7 @@ async function getIosToken(): Promise<IntegrityPayload | null> {
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-/** Generate a random nonce (base64, 32 bytes). */
+/** Generate a random nonce (base64, 32 bytes). Used as fallback when no server nonce is available. */
 function generateNonce(): string {
   const bytes = new Uint8Array(32);
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {

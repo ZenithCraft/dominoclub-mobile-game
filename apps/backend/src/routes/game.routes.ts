@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import {
+  getEligibilityHandler,
+  getIntegrityNonceHandler,
   getGameHistoryHandler,
   getGameReplayHandler,
   getActiveGameHandler,
@@ -13,6 +15,8 @@ import {
 
 const router = Router();
 
+router.get('/eligibility', authMiddleware, getEligibilityHandler);
+router.get('/integrity-nonce', authMiddleware, getIntegrityNonceHandler);
 router.get('/history', authMiddleware, getGameHistoryHandler);
 router.get('/active', authMiddleware, getActiveGameHandler);
 router.get('/tournaments', authMiddleware, getTournamentsHandler);

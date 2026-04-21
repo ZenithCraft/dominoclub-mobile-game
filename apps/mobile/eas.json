@@ -15,8 +15,9 @@
     "preview": {
       "distribution": "internal",
       "channel": "preview",
+      "node": "20.10.0",
       "ios": { "simulator": false },
-      "android": { "buildType": "apk" },
+      "android": { "buildType": "apk", "image": "latest" },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://backend-production-5fdb.up.railway.app/api/v1"
       }

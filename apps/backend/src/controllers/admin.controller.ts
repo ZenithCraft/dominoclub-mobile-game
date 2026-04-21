@@ -131,6 +131,71 @@ export async function getUsersHandler(req: Request, res: Response) {
   }
 }
 
+// ─── Trust Score Management ───────────────────────────────────────────────────
+
+export async function getLowTrustUsersHandler(req: Request, res: Response) {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = 20;
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where: { trust_score: { lt: 0.75 } },
+        select: {
+          id: true, name: true, phone: true, is_banned: true,
+          trust_score: true, created_at: true,
+          wallet: { select: { real_balance: true } },
+          _count: { select: { fraudLogs: true } },
+        },
+        orderBy: { trust_score: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.user.count({ where: { trust_score: { lt: 0.75 } } }),
+    ]);
+
+    const withLevel = users.map((u) => ({
+      ...u,
+      trust_level: u.trust_score >= 0.75 ? 'HIGH' : u.trust_score >= 0.45 ? 'MEDIUM' : 'LOW',
+    }));
+
+    res.json({ users: withLevel, total, page, pages: Math.ceil(total / limit) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function restoreTrustHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { trust_score = 1.0, reason } = req.body as { trust_score?: number; reason?: string };
+
+    if (trust_score < 0 || trust_score > 1) {
+      return res.status(400).json({ error: 'trust_score must be between 0 and 1' });
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: { trust_score },
+      select: { id: true, name: true, phone: true, trust_score: true },
+    });
+
+    await prisma.fraudLog.create({
+      data: {
+        userId: id,
+        type: 'ADMIN_ACTION',
+        reason_code: 'ADMIN_TRUST_RESTORE',
+        details: { restoredTo: trust_score, reason: reason ?? 'Manual admin restore' },
+      },
+    }).catch(() => {});
+
+    logger.info('[Admin] Trust score restored', { userId: id, trust_score, reason });
+    res.json(user);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
 export async function banUserHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
