@@ -82,6 +82,7 @@ enum FraudType {
   INTEGRITY_FAIL
   VELOCITY_ABUSE
   DEVICE_LIMIT_EXCEEDED
+  ADMIN_ACTION
 }
 
 // ─── Models ──────────────────────────────────────────────────────
