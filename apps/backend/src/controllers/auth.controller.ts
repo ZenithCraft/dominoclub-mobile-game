@@ -84,13 +84,21 @@ export async function logoutHandler(req: Request, res: Response) {
 export async function updateProfileHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).user?.userId;
-    const { name, cpf, avatar, gps_lat, gps_lng } = req.body;
+    const { name, cpf, avatar, gps_lat, gps_lng, date_of_birth } = req.body;
 
     // If CPF is being submitted, verify it via Serpro before saving
     if (cpf) {
       const rawCpf = cpf.replace(/\D/g, '');
       cpfSchema.parse(rawCpf); // throws ZodError if format/checksum invalid
       await verifyAndSaveCpf(userId, rawCpf); // throws if irregular or duplicate
+    }
+
+    // Validate age if DOB is provided
+    if (date_of_birth) {
+      const dob = new Date(date_of_birth);
+      if (isNaN(dob.getTime())) throw new Error('Data de nascimento inválida');
+      const age = (Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000);
+      if (age < 18) throw new Error('Você precisa ter ao menos 18 anos para se cadastrar');
     }
 
     const user = await prisma.user.update({
@@ -100,11 +108,15 @@ export async function updateProfileHandler(req: Request, res: Response) {
         avatar: avatar || undefined,
         gps_lat: gps_lat || undefined,
         gps_lng: gps_lng || undefined,
+        date_of_birth: date_of_birth ? new Date(date_of_birth) : undefined,
         // CPF is persisted inside verifyAndSaveCpf — don't overwrite here
       },
       select: {
         id: true, phone: true, name: true, email: true, avatar: true,
         cpf_verified: true, phone_verified: true, created_at: true,
+        date_of_birth: true,
+        kyc_document_status: true,
+        league_points: true, previous_rank: true,
       },
     });
 

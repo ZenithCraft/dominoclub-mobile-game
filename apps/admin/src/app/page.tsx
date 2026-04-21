@@ -11,7 +11,8 @@ import {
   AlertTriangle, Circle, ArrowUpRight, ArrowDownRight,
   Activity, Ban, CheckCircle2, Clock, XCircle, PlayCircle,
   Loader2, PanelLeftClose, PanelLeftOpen, TrendingUp, Gift, Link2,
-  Users2, DoorOpen, Lock, Unlock, Trash2,
+  Users2, DoorOpen, Lock, Unlock, Trash2, Bell, FileCheck,
+  CalendarDays, MapPin, Medal,
 } from 'lucide-react';
 import { adminApi } from '../lib/api';
 const logo = { src: '/logo.png' };
@@ -25,7 +26,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '.
 import { DateTimePicker } from '../components/ui/date-time-picker';
 import { cn } from '../lib/utils';
 
-type Tab = 'overview' | 'users' | 'games' | 'financial' | 'tournaments' | 'fraud' | 'pairBlocks' | 'teamPairs' | 'bonus' | 'rooms' | 'config';
+type Tab = 'overview' | 'users' | 'games' | 'financial' | 'kyc' | 'tournaments' | 'fraud' | 'pairBlocks' | 'teamPairs' | 'bonus' | 'rooms' | 'announcements' | 'config';
 
 const formatInt  = (v: number) => new Intl.NumberFormat('pt-BR').format(v);
 const formatMoney = (v: number) =>
@@ -104,13 +105,15 @@ export default function AdminDashboard() {
     { id: 'users',       label: 'Usuários',     Icon: Users },
     { id: 'games',       label: 'Partidas',     Icon: Gamepad2 },
     { id: 'financial',   label: 'Financeiro',   Icon: Wallet },
+    { id: 'kyc',         label: 'KYC',          Icon: FileCheck },
     { id: 'tournaments', label: 'Torneios',     Icon: Trophy },
     { id: 'fraud',       label: 'Fraudes',      Icon: ShieldAlert },
     { id: 'pairBlocks',  label: 'Bloqueios',    Icon: Link2 },
     { id: 'teamPairs',   label: 'Duplas 2v2',   Icon: Users2 },
     { id: 'bonus',       label: 'Bônus',        Icon: Gift },
-    { id: 'rooms',       label: 'Salas',        Icon: DoorOpen },
-    { id: 'config',      label: 'Config.',      Icon: Settings2 },
+    { id: 'rooms',         label: 'Salas',         Icon: DoorOpen },
+    { id: 'announcements', label: 'Avisos',        Icon: Bell },
+    { id: 'config',        label: 'Config.',       Icon: Settings2 },
   ];
 
   return (
@@ -194,13 +197,15 @@ export default function AdminDashboard() {
           {tab === 'users'        && <UsersTab />}
           {tab === 'games'        && <GamesTab />}
           {tab === 'financial'    && <FinancialTab />}
+          {tab === 'kyc'          && <KycTab />}
           {tab === 'tournaments'  && <TournamentsTab />}
           {tab === 'fraud'        && <FraudTab />}
           {tab === 'pairBlocks'   && <PairBlocksTab />}
           {tab === 'teamPairs'    && <TeamPairsTab />}
           {tab === 'bonus'        && <BonusTab />}
-          {tab === 'rooms'        && <GameRoomsTab />}
-          {tab === 'config'       && <ConfigTab />}
+          {tab === 'rooms'          && <GameRoomsTab />}
+          {tab === 'announcements'  && <AnnouncementsTab />}
+          {tab === 'config'         && <ConfigTab />}
         </div>
       </main>
     </div>
@@ -323,10 +328,15 @@ function StatCard({
 
 function OverviewTab() {
   const { data, loading, error, reload } = useData<any>('/stats');
+  const { data: lbData } = useData<any>('/league/leaderboard?period=month');
   const s = data ?? {};
   const week = (data?.revenueWeek ?? []).map((r: any) => ({
     day: r.day, revenue: Number(r.revenue), games: Number(r.games),
   }));
+  const RANK_COLORS: Record<string, string> = {
+    DIAMOND: 'text-cyan-300', PLATINUM: 'text-slate-300',
+    GOLD: 'text-yellow-400', SILVER: 'text-slate-400', BRONZE: 'text-orange-400',
+  };
 
   return (
     <div>
@@ -355,6 +365,27 @@ function OverviewTab() {
             <StatCard label="Saques (R$)"      value={formatMoney(Number(s.withdrawalsAmount24h ?? 0))} icon={ArrowDownRight} accent="red" />
             <StatCard label="Transações 24h"   value={formatInt(Number(s.totalTransactions24h ?? 0))}  icon={Wallet}        accent="blue" />
           </div>
+
+          {/* Leaderboard top 3 */}
+          {(lbData?.leaderboard ?? []).length > 0 && (
+            <div className="mb-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2">
+                <Medal className="w-3.5 h-3.5" /> Top 3 Liga — Este Mês
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                {(lbData.leaderboard as any[]).slice(0, 3).map((e: any, i: number) => (
+                  <div key={e.userId} className="rounded-lg border border-border bg-card p-4 flex items-center gap-3">
+                    <span className="text-2xl font-black text-muted-foreground tabular-nums w-7">#{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm truncate">{e.name}</p>
+                      <p className={cn('text-xs font-bold', RANK_COLORS[e.rank] ?? 'text-muted-foreground')}>{e.rank}</p>
+                    </div>
+                    <span className="tabular-nums text-sm font-semibold text-yellow-400">{e.points}pts</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             {[
@@ -948,6 +979,7 @@ function TournamentsTab() {
     name: '', mode: 'ARENA_1V1', variant: 'CARROCA',
     entryFee: '2', maxPlayers: '16',
     startsAt: toLocalDT(new Date(Date.now() + 60 * 60 * 1000)),
+    isInPerson: false, address: '', checkinTime: '', bannerUrl: '',
   }));
 
   const { data, loading, error, reload } = useData<any>(
@@ -962,8 +994,12 @@ function TournamentsTab() {
         name: form.name, mode: form.mode, variant: form.variant,
         entryFee: Number(form.entryFee), maxPlayers: Number(form.maxPlayers),
         startsAt: new Date(form.startsAt).toISOString(),
+        isInPerson: form.isInPerson,
+        address: form.address || undefined,
+        checkinTime: form.checkinTime ? new Date(form.checkinTime).toISOString() : undefined,
+        bannerUrl: form.bannerUrl || undefined,
       });
-      setForm(p => ({ ...p, name: '' }));
+      setForm(p => ({ ...p, name: '', address: '', checkinTime: '', bannerUrl: '', isInPerson: false }));
       reload();
     } catch (err: any) { alert(err.response?.data?.error || 'Erro ao criar torneio'); }
     finally { setCreating(false); }
@@ -1096,6 +1132,34 @@ function TournamentsTab() {
               <Label>Data e hora de início</Label>
               <DateTimePicker value={form.startsAt} onChange={v => setForm(p => ({ ...p, startsAt: v }))} />
             </div>
+            {/* In-person toggle */}
+            <div className="flex items-center gap-2 col-span-2 md:col-span-1">
+              <input
+                type="checkbox"
+                id="is-in-person"
+                checked={form.isInPerson}
+                onChange={e => setForm(p => ({ ...p, isInPerson: e.target.checked }))}
+                className="w-4 h-4 rounded"
+              />
+              <Label htmlFor="is-in-person" className="cursor-pointer">Presencial</Label>
+            </div>
+            {/* In-person extra fields */}
+            {form.isInPerson && (
+              <>
+                <div className="md:col-span-2 space-y-1.5">
+                  <Label>Endereço</Label>
+                  <Input value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} placeholder="Rua, nº, cidade" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Check-in</Label>
+                  <DateTimePicker value={form.checkinTime} onChange={v => setForm(p => ({ ...p, checkinTime: v }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>URL do banner</Label>
+                  <Input value={form.bannerUrl} onChange={e => setForm(p => ({ ...p, bannerUrl: e.target.value }))} placeholder="https://..." />
+                </div>
+              </>
+            )}
             {/* Submit */}
             <div className="flex items-end">
               <Button type="submit" disabled={creating} className="w-full">
@@ -1120,6 +1184,7 @@ function TournamentsTab() {
                   <Td>
                     <p className="font-medium text-foreground text-xs">{t.name}</p>
                     <p className="font-mono text-xs text-muted-foreground">{t.id.slice(0, 8)}</p>
+                    {t.is_in_person && <Badge variant="destructive" className="mt-1 text-[10px]">Presencial</Badge>}
                   </Td>
                   <Td><span className="text-xs text-muted-foreground">{MODE_LABEL[t.mode] || t.mode}</span></Td>
                   <Td><span className="text-xs text-muted-foreground">{VARIANT_PT[t.variant] || t.variant}</span></Td>
@@ -1173,13 +1238,21 @@ function TournamentsTab() {
                         <CardContent className="p-0">
                           <TableWrapper>
                             <thead>
-                              <tr>{['Jogador', 'Telefone', 'Status', 'Entrada'].map(h => <Th key={h}>{h}</Th>)}</tr>
+                              <tr>{['Jogador', 'Telefone', 'Nome/CPF Participante', 'Status', 'Entrada'].map(h => <Th key={h}>{h}</Th>)}</tr>
                             </thead>
                             <tbody>
                               {(details?.players?.players ?? []).map((p: any) => (
                                 <tr key={p.userId} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
                                   <Td><span className="text-xs text-foreground font-medium">{p.user?.name || p.userId.slice(0, 8)}</span></Td>
                                   <Td><span className="font-mono text-xs text-muted-foreground">{p.user?.phone || '—'}</span></Td>
+                                  <Td>
+                                    {p.participant_name ? (
+                                      <div>
+                                        <p className="text-xs font-medium">{p.participant_name}</p>
+                                        <p className="font-mono text-xs text-muted-foreground">{p.participant_cpf || '—'}</p>
+                                      </div>
+                                    ) : <span className="text-muted-foreground text-xs">—</span>}
+                                  </Td>
                                   <Td>
                                     <Badge variant={p.eliminated_at ? 'muted' : 'default'}>
                                       {p.eliminated_at ? 'Eliminado' : 'Ativo'}
@@ -1188,7 +1261,7 @@ function TournamentsTab() {
                                   <Td><span className="tabular-nums text-xs text-muted-foreground">{formatMoney(Number(details?.players?.entry_fee ?? 0))}</span></Td>
                                 </tr>
                               ))}
-                              {(details?.players?.players ?? []).length === 0 && <EmptyRow cols={4} msg="Sem inscritos" />}
+                              {(details?.players?.players ?? []).length === 0 && <EmptyRow cols={5} msg="Sem inscritos" />}
                             </tbody>
                           </TableWrapper>
                         </CardContent>
@@ -1676,7 +1749,7 @@ function BonusTab() {
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [actioning, setActioning] = useState<string | null>(null);
-  const [form, setForm] = useState(() => ({ code: '', bonusAmount: '', minDepositAmount: '', rolloverTimes: '0', maxPlayers: '' }));
+  const [form, setForm] = useState(() => ({ code: '', bonusAmount: '', minDepositAmount: '', rolloverTimes: '0', maxPlayers: '', eligibleRank: '', expiresAt: '' }));
 
   const { data, loading, error, reload } = useData<any>(`/coupons?page=${page}`, [page]);
 
@@ -1690,8 +1763,10 @@ function BonusTab() {
         minDepositAmount: form.minDepositAmount === '' ? 0 : Number(form.minDepositAmount),
         rolloverTimes: parseInt(form.rolloverTimes || '0', 10),
         maxPlayers: form.maxPlayers ? parseInt(form.maxPlayers, 10) : null,
+        eligibleRank: form.eligibleRank || undefined,
+        expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined,
       });
-      setForm({ code: '', bonusAmount: '', minDepositAmount: '', rolloverTimes: '0', maxPlayers: '' });
+      setForm({ code: '', bonusAmount: '', minDepositAmount: '', rolloverTimes: '0', maxPlayers: '', eligibleRank: '', expiresAt: '' });
       reload();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Erro ao criar cupom');
@@ -1746,6 +1821,24 @@ function BonusTab() {
               <Label>Rollover (x)</Label>
               <Input value={form.rolloverTimes} onChange={e => setForm(p => ({ ...p, rolloverTimes: e.target.value }))} inputMode="numeric" required />
             </div>
+            <div className="space-y-1.5">
+              <Label>Liga mínima</Label>
+              <Select value={form.eligibleRank || 'ALL'} onValueChange={v => setForm(p => ({ ...p, eligibleRank: v === 'ALL' ? '' : v }))}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Qualquer liga" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Qualquer liga</SelectItem>
+                  <SelectItem value="BRONZE">Bronze</SelectItem>
+                  <SelectItem value="SILVER">Prata</SelectItem>
+                  <SelectItem value="GOLD">Ouro</SelectItem>
+                  <SelectItem value="PLATINUM">Platina</SelectItem>
+                  <SelectItem value="DIAMOND">Diamante</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Expira em</Label>
+              <DateTimePicker value={form.expiresAt} onChange={v => setForm(p => ({ ...p, expiresAt: v }))} />
+            </div>
             <div className="col-span-2 md:col-span-4">
               <Button type="submit" disabled={creating}>
                 {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Criar cupom'}
@@ -1761,7 +1854,7 @@ function BonusTab() {
         <>
           <TableWrapper>
             <thead>
-              <tr>{['Código', 'Min. dep.', 'Bônus', 'Rollover', 'Usos', 'Limite', 'Status', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
+              <tr>{['Código', 'Min. dep.', 'Bônus', 'Rollover', 'Usos', 'Limite', 'Liga Mín.', 'Expira', 'Status', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
             </thead>
             <tbody>
               {(data?.coupons ?? []).map((c: any) => (
@@ -1772,6 +1865,8 @@ function BonusTab() {
                   <Td><span className="tabular-nums text-xs text-muted-foreground">{c.rollover_times}x</span></Td>
                   <Td><span className="tabular-nums text-xs">{c._count?.redemptions ?? 0}</span></Td>
                   <Td><span className="tabular-nums text-xs text-muted-foreground">{c.max_players ?? '—'}</span></Td>
+                  <Td><span className="text-xs text-muted-foreground">{c.eligible_rank ?? '—'}</span></Td>
+                  <Td><span className="text-xs text-muted-foreground">{c.expires_at ? new Date(c.expires_at).toLocaleDateString('pt-BR') : '—'}</span></Td>
                   <Td><Badge variant={c.is_active ? 'default' : 'muted'}>{c.is_active ? 'Ativo' : 'Inativo'}</Badge></Td>
                   <Td>
                     <Button size="sm" variant="outline" disabled={actioning === c.id} onClick={() => toggle(c.id, c.is_active)}>
@@ -1780,11 +1875,275 @@ function BonusTab() {
                   </Td>
                 </tr>
               ))}
-              {(data?.coupons ?? []).length === 0 && <EmptyRow cols={8} msg="Nenhum cupom encontrado" />}
+              {(data?.coupons ?? []).length === 0 && <EmptyRow cols={10} msg="Nenhum cupom encontrado" />}
             </tbody>
           </TableWrapper>
           <Pagination page={page} pages={data?.pages ?? 1} onChange={setPage} />
         </>
+      )}
+    </div>
+  );
+}
+
+// ─── KYC ──────────────────────────────────────────────────────────────────────
+
+const KYC_STATUS_PT: Record<string, string> = {
+  PENDING:  'Pendente',
+  APPROVED: 'Aprovado',
+  REJECTED: 'Rejeitado',
+};
+
+function KycTab() {
+  const [actioning, setActioning] = useState<string | null>(null);
+  const [rejectNotes, setRejectNotes] = useState('');
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const { data, loading, error, reload } = useData<any>('/kyc');
+
+  const approve = async (userId: string) => {
+    setActioning(userId);
+    try { await adminApi.patch(`/kyc/${userId}/approve`); reload(); }
+    catch (err: any) { alert(err.response?.data?.error || 'Erro'); }
+    finally { setActioning(null); }
+  };
+
+  const reject = async (userId: string) => {
+    if (!rejectNotes.trim()) { alert('Informe o motivo da rejeição'); return; }
+    setActioning(userId);
+    try { await adminApi.patch(`/kyc/${userId}/reject`, { notes: rejectNotes }); setRejectingId(null); setRejectNotes(''); reload(); }
+    catch (err: any) { alert(err.response?.data?.error || 'Erro'); }
+    finally { setActioning(null); }
+  };
+
+  const users: any[] = data?.users ?? [];
+
+  return (
+    <div>
+      <PageHeader title="Verificação de Identidade (KYC)">
+        <Button variant="outline" size="icon" onClick={reload} disabled={loading}>
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </Button>
+      </PageHeader>
+
+      {error ? <ErrorState msg={error} onRetry={reload} /> : loading ? (
+        <Card><CardContent className="p-0"><TableSkeleton cols={7} /></CardContent></Card>
+      ) : (
+        <TableWrapper>
+          <thead>
+            <tr>{['Usuário', 'Tipo Doc.', 'Status', 'Enviado em', 'Frente', 'Verso', 'Selfie', 'Notas', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
+          </thead>
+          <tbody>
+            {users.map((u: any) => (
+              <React.Fragment key={u.id}>
+                <tr className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                  <Td>
+                    <p className="font-medium text-foreground text-xs">{u.name || '?'}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{u.phone}</p>
+                  </Td>
+                  <Td><span className="text-xs text-muted-foreground">{u.kyc_document_type || '—'}</span></Td>
+                  <Td>
+                    <Badge variant={u.kyc_document_status === 'APPROVED' ? 'default' : u.kyc_document_status === 'REJECTED' ? 'destructive' : 'warning'}>
+                      {KYC_STATUS_PT[u.kyc_document_status] || u.kyc_document_status}
+                    </Badge>
+                  </Td>
+                  <Td><span className="text-xs text-muted-foreground">{u.kyc_submitted_at ? new Date(u.kyc_submitted_at).toLocaleString('pt-BR') : '—'}</span></Td>
+                  <Td>
+                    {u.kyc_document_front_url
+                      ? <a href={u.kyc_document_front_url} target="_blank" rel="noreferrer" className="text-blue-400 text-xs underline">Ver frente</a>
+                      : <span className="text-muted-foreground text-xs">—</span>}
+                  </Td>
+                  <Td>
+                    {u.kyc_document_back_url
+                      ? <a href={u.kyc_document_back_url} target="_blank" rel="noreferrer" className="text-blue-400 text-xs underline">Ver verso</a>
+                      : <span className="text-muted-foreground text-xs">—</span>}
+                  </Td>
+                  <Td>
+                    {u.kyc_selfie_url
+                      ? <a href={u.kyc_selfie_url} target="_blank" rel="noreferrer" className="text-blue-400 text-xs underline">Ver selfie</a>
+                      : <span className="text-muted-foreground text-xs">—</span>}
+                  </Td>
+                  <Td><span className="text-xs text-muted-foreground max-w-[120px] truncate block">{u.kyc_review_notes || '—'}</span></Td>
+                  <Td>
+                    {u.kyc_document_status === 'PENDING' && (
+                      <div className="flex gap-1.5 justify-center">
+                        <Button size="sm" disabled={actioning === u.id} onClick={() => approve(u.id)}>
+                          {actioning === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                          Aprovar
+                        </Button>
+                        <Button size="sm" variant="destructive" disabled={actioning === u.id} onClick={() => setRejectingId(u.id)}>
+                          <XCircle className="w-3 h-3" /> Rejeitar
+                        </Button>
+                      </div>
+                    )}
+                  </Td>
+                </tr>
+                {rejectingId === u.id && (
+                  <tr className="bg-red-950/20">
+                    <td colSpan={9} className="px-4 py-3">
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          className="flex-1"
+                          placeholder="Motivo da rejeição (obrigatório)"
+                          value={rejectNotes}
+                          onChange={e => setRejectNotes(e.target.value)}
+                        />
+                        <Button size="sm" variant="destructive" onClick={() => reject(u.id)} disabled={actioning === u.id}>
+                          {actioning === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Confirmar rejeição'}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setRejectingId(null); setRejectNotes(''); }}>Cancelar</Button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+            {users.length === 0 && <EmptyRow cols={9} msg="Nenhum documento pendente" />}
+          </tbody>
+        </TableWrapper>
+      )}
+    </div>
+  );
+}
+
+// ─── Announcements ────────────────────────────────────────────────────────────
+
+function AnnouncementsTab() {
+  const [creating, setCreating] = useState(false);
+  const [actioning, setActioning] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    title: '', body: '', bannerUrl: '', countdownEnd: '', maxShows: '3', targetRank: '', isActive: true,
+  });
+
+  const { data, loading, error, reload } = useData<any>('/announcements');
+  const items: any[] = data?.announcements ?? [];
+
+  const create = async (e: FormEvent) => {
+    e.preventDefault(); setCreating(true);
+    try {
+      await adminApi.post('/announcements', {
+        title: form.title,
+        body: form.body,
+        bannerUrl: form.bannerUrl || undefined,
+        countdownEnd: form.countdownEnd ? new Date(form.countdownEnd).toISOString() : undefined,
+        maxShows: parseInt(form.maxShows || '3', 10),
+        targetRank: form.targetRank || undefined,
+        isActive: form.isActive,
+      });
+      setForm({ title: '', body: '', bannerUrl: '', countdownEnd: '', maxShows: '3', targetRank: '', isActive: true });
+      reload();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Erro ao criar aviso');
+    } finally { setCreating(false); }
+  };
+
+  const toggleActive = async (id: string, current: boolean) => {
+    setActioning(id);
+    try { await adminApi.patch(`/announcements/${id}`, { isActive: !current }); reload(); }
+    catch (err: any) { alert(err.response?.data?.error || 'Erro'); }
+    finally { setActioning(null); }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm('Excluir este aviso?')) return;
+    setActioning(id);
+    try { await adminApi.delete(`/announcements/${id}`); reload(); }
+    catch (err: any) { alert(err.response?.data?.error || 'Erro'); }
+    finally { setActioning(null); }
+  };
+
+  return (
+    <div>
+      <PageHeader title="Avisos & Anúncios">
+        <Button variant="outline" size="icon" onClick={reload} disabled={loading}>
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </Button>
+      </PageHeader>
+
+      <Card className="mb-6 card-gradient">
+        <CardHeader className="pb-0">
+          <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Criar aviso</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <form onSubmit={create} className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+            <div className="md:col-span-2 space-y-1.5">
+              <Label>Título</Label>
+              <Input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Torneio especial!" required />
+            </div>
+            <div className="md:col-span-2 space-y-1.5">
+              <Label>Corpo do texto</Label>
+              <Input value={form.body} onChange={e => setForm(p => ({ ...p, body: e.target.value }))} placeholder="Descrição do aviso..." required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>URL do banner (opcional)</Label>
+              <Input value={form.bannerUrl} onChange={e => setForm(p => ({ ...p, bannerUrl: e.target.value }))} placeholder="https://..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Contagem regressiva (opcional)</Label>
+              <DateTimePicker value={form.countdownEnd} onChange={v => setForm(p => ({ ...p, countdownEnd: v }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Máx. exibições por usuário</Label>
+              <Input value={form.maxShows} onChange={e => setForm(p => ({ ...p, maxShows: e.target.value }))} inputMode="numeric" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Liga alvo</Label>
+              <Select value={form.targetRank || 'ALL'} onValueChange={v => setForm(p => ({ ...p, targetRank: v === 'ALL' ? '' : v }))}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos os jogadores</SelectItem>
+                  <SelectItem value="BRONZE">Bronze+</SelectItem>
+                  <SelectItem value="SILVER">Prata+</SelectItem>
+                  <SelectItem value="GOLD">Ouro+</SelectItem>
+                  <SelectItem value="PLATINUM">Platina+</SelectItem>
+                  <SelectItem value="DIAMOND">Diamante</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2 md:col-span-4">
+              <Button type="submit" disabled={creating}>
+                {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Publicar aviso'}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {error ? <ErrorState msg={error} onRetry={reload} /> : loading ? (
+        <Card><CardContent className="p-0"><TableSkeleton cols={6} /></CardContent></Card>
+      ) : (
+        <TableWrapper>
+          <thead>
+            <tr>{['Título', 'Liga alvo', 'Máx. exib.', 'Contagem', 'Status', ''].map(h => <Th key={h}>{h}</Th>)}</tr>
+          </thead>
+          <tbody>
+            {items.map((a: any) => (
+              <tr key={a.id} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                <Td>
+                  <p className="font-medium text-xs text-foreground">{a.title}</p>
+                  <p className="text-xs text-muted-foreground truncate max-w-[200px]">{a.body}</p>
+                </Td>
+                <Td><span className="text-xs text-muted-foreground">{a.target_rank ?? 'Todos'}</span></Td>
+                <Td><span className="tabular-nums text-xs text-muted-foreground">{a.max_shows ?? '—'}</span></Td>
+                <Td>
+                  <span className="text-xs text-muted-foreground">
+                    {a.countdown_end ? new Date(a.countdown_end).toLocaleString('pt-BR') : '—'}
+                  </span>
+                </Td>
+                <Td><Badge variant={a.is_active ? 'default' : 'muted'}>{a.is_active ? 'Ativo' : 'Inativo'}</Badge></Td>
+                <Td>
+                  <div className="flex gap-1.5 justify-center">
+                    <Button size="sm" variant="outline" disabled={actioning === a.id} onClick={() => toggleActive(a.id, a.is_active)}>
+                      {actioning === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : a.is_active ? 'Desativar' : 'Ativar'}
+                    </Button>
+                    <Button size="sm" variant="destructive" disabled={actioning === a.id} onClick={() => remove(a.id)}>
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+            {items.length === 0 && <EmptyRow cols={6} msg="Nenhum aviso cadastrado" />}
+          </tbody>
+        </TableWrapper>
       )}
     </div>
   );

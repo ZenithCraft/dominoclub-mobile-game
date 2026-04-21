@@ -4,6 +4,7 @@ import {
   adminLoginHandler,
   getStatsHandler,
   getUsersHandler,
+  getUserDetailsAdminHandler,
   banUserHandler,
   getGamesHandler,
   getGameReplayAdminHandler,
@@ -38,6 +39,18 @@ import {
   updateGameRoomAdminHandler,
   deleteGameRoomAdminHandler,
   getGameLogsHandler,
+  // KYC
+  getPendingKycHandler,
+  approveKycHandler,
+  rejectKycHandler,
+  // Announcements
+  getAnnouncementsAdminHandler,
+  createAnnouncementAdminHandler,
+  updateAnnouncementAdminHandler,
+  deleteAnnouncementAdminHandler,
+  // League
+  getLeaderboardAdminHandler,
+  triggerMonthlyResetAdminHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -52,6 +65,7 @@ router.get('/stats', getStatsHandler);
 
 router.get('/users', getUsersHandler);
 router.get('/users/low-trust', getLowTrustUsersHandler);
+router.get('/users/:id/details', getUserDetailsAdminHandler);
 router.patch('/users/:id/ban', banUserHandler);
 router.patch('/users/:id/restore-trust', restoreTrustHandler);
 
@@ -93,5 +107,20 @@ router.get('/game-rooms', getGameRoomsAdminHandler);
 router.post('/game-rooms', createGameRoomAdminHandler);
 router.patch('/game-rooms/:id', updateGameRoomAdminHandler);
 router.delete('/game-rooms/:id', deleteGameRoomAdminHandler);
+
+// KYC
+router.get('/kyc', getPendingKycHandler);
+router.patch('/kyc/:id/approve', approveKycHandler);
+router.patch('/kyc/:id/reject', rejectKycHandler);
+
+// Announcements
+router.get('/announcements', getAnnouncementsAdminHandler);
+router.post('/announcements', createAnnouncementAdminHandler);
+router.patch('/announcements/:id', updateAnnouncementAdminHandler);
+router.delete('/announcements/:id', deleteAnnouncementAdminHandler);
+
+// League
+router.get('/league/leaderboard', getLeaderboardAdminHandler);
+router.post('/league/monthly-reset', triggerMonthlyResetAdminHandler);
 
 export default router;

@@ -10,6 +10,10 @@ import { AdminRequest } from '../middleware/admin.middleware';
 import { activeGames } from '../socket/gameSocket';
 import { cancelAndRefundTournament, createTournament, emergencyCancelTournament, startTournament } from '../services/tournament.service';
 import { getRuntimeConfig, invalidateRuntimeConfigCache } from '../services/runtime-config.service';
+import { approveKyc, rejectKyc } from '../services/kyc.service';
+import { monthlyLeagueReset, getLeaderboard, pointsToRank } from '../services/league.service';
+import { sendPushToAll } from '../services/push.service';
+import { emailService } from '../services/email.service';
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -472,22 +476,47 @@ export async function getTournamentsAdminHandler(req: Request, res: Response) {
 
 export async function createTournamentAdminHandler(req: Request, res: Response) {
   try {
-    const { name, mode, variant, entryFee, maxPlayers, startsAt } = req.body;
+    const { name, mode, variant, entryFee, maxPlayers, startsAt, isInPerson, address, checkinTime, bannerUrl } = req.body;
 
     if (!name || !mode || !entryFee || !maxPlayers || !startsAt) {
       return res.status(400).json({ error: 'name, mode, entryFee, maxPlayers, startsAt are required' });
     }
 
-    const tournament = await createTournament({
-      name,
-      mode,
-      variant,
-      entryFee: parseFloat(entryFee),
-      maxPlayers: parseInt(maxPlayers),
-      startsAt: new Date(startsAt),
-    });
+    let tournament;
+    if (isInPerson) {
+      tournament = await prisma.tournament.create({
+        data: {
+          name,
+          mode: mode || 'ARENA_1V1',
+          variant: variant || 'CARROCA',
+          entry_fee: parseFloat(entryFee),
+          max_players: parseInt(maxPlayers),
+          starts_at: new Date(startsAt),
+          is_in_person: true,
+          address: address || null,
+          checkin_time: checkinTime ? new Date(checkinTime) : null,
+          banner_url: bannerUrl || null,
+        },
+      });
+    } else {
+      tournament = await createTournament({
+        name,
+        mode,
+        variant,
+        entryFee: parseFloat(entryFee),
+        maxPlayers: parseInt(maxPlayers),
+        startsAt: new Date(startsAt),
+      });
+    }
 
-    logger.info('[Admin] Tournament created', { tournamentId: tournament.id, name });
+    // Notify all users about new tournament
+    sendPushToAll(
+      'Novo torneio disponível! 🏆',
+      `${name} — inscrições abertas. Taxa: R$${parseFloat(entryFee).toFixed(2)}`,
+      { type: 'new_tournament', tournamentId: tournament.id },
+    ).catch(() => {});
+
+    logger.info('[Admin] Tournament created', { tournamentId: tournament.id, name, isInPerson: !!isInPerson });
     res.status(201).json(tournament);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -608,6 +637,10 @@ export async function getTournamentPlayersAdminHandler(req: Request, res: Respon
         max_players: true,
         current_players: true,
         starts_at: true,
+        is_in_person: true,
+        address: true,
+        checkin_time: true,
+        banner_url: true,
         players: {
           select: {
             userId: true,
@@ -615,6 +648,8 @@ export async function getTournamentPlayersAdminHandler(req: Request, res: Respon
             eliminated_at: true,
             final_position: true,
             prize_won: true,
+            participant_name: true,
+            participant_cpf: true,
             user: { select: { id: true, name: true, phone: true } },
           },
           orderBy: { joined_at: 'asc' },
@@ -916,12 +951,15 @@ export async function getCouponsAdminHandler(req: Request, res: Response) {
 
 export async function createCouponAdminHandler(req: Request, res: Response) {
   try {
-    const { code, bonusAmount, minDepositAmount, rolloverTimes, maxPlayers } = req.body as any;
+    const { code, bonusAmount, minDepositAmount, rolloverTimes, maxPlayers, eligibleRank, expiresAt } = req.body as any;
     const parsedCode = String(code ?? '').trim().toUpperCase();
     const parsedBonus = Number(bonusAmount);
     const parsedMinDeposit = Number(minDepositAmount ?? 0);
     const parsedRolloverTimes = parseInt(String(rolloverTimes ?? 0), 10);
     const parsedMaxPlayers = maxPlayers === null || maxPlayers === undefined || maxPlayers === '' ? null : parseInt(String(maxPlayers), 10);
+    const validRanks = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'];
+    const parsedRank = eligibleRank && validRanks.includes(eligibleRank) ? eligibleRank : null;
+    const parsedExpiresAt = expiresAt ? new Date(expiresAt) : null;
 
     if (!parsedCode) return res.status(400).json({ error: 'code is required' });
     if (!Number.isFinite(parsedBonus) || parsedBonus <= 0) return res.status(400).json({ error: 'bonusAmount must be a positive number' });
@@ -938,6 +976,8 @@ export async function createCouponAdminHandler(req: Request, res: Response) {
         min_deposit_amount: parsedMinDeposit,
         rollover_times: parsedRolloverTimes,
         max_players: parsedMaxPlayers,
+        eligible_rank: parsedRank,
+        expires_at: parsedExpiresAt,
         is_active: true,
       },
     });
@@ -950,11 +990,13 @@ export async function createCouponAdminHandler(req: Request, res: Response) {
 export async function updateCouponAdminHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const { is_active } = req.body as any;
-    const updated = await prisma.coupon.update({
-      where: { id },
-      data: { is_active: !!is_active },
-    });
+    const { is_active, eligibleRank, expiresAt } = req.body as any;
+    const validRanks = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'];
+    const data: any = {};
+    if (is_active !== undefined) data.is_active = !!is_active;
+    if (eligibleRank !== undefined) data.eligible_rank = validRanks.includes(eligibleRank) ? eligibleRank : null;
+    if (expiresAt !== undefined) data.expires_at = expiresAt ? new Date(expiresAt) : null;
+    const updated = await prisma.coupon.update({ where: { id }, data });
     res.json(updated);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -1233,6 +1275,231 @@ export async function getTeamPairStatsAdminHandler(req: Request, res: Response) 
         };
       }),
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─── KYC Review ───────────────────────────────────────────────────────────────
+
+export async function getPendingKycHandler(_req: Request, res: Response) {
+  try {
+    const users = await prisma.user.findMany({
+      where: { kyc_document_status: { in: ['PENDING', 'REJECTED'] } },
+      select: {
+        id: true, name: true, phone: true, email: true,
+        kyc_document_type: true, kyc_document_status: true,
+        kyc_document_front_url: true, kyc_document_back_url: true,
+        kyc_selfie_url: true, kyc_submitted_at: true,
+        kyc_reviewed_at: true, kyc_review_notes: true,
+      },
+      orderBy: { kyc_submitted_at: 'asc' },
+    });
+    res.json(users);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function approveKycHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    await approveKyc(id);
+    logger.info('[Admin] KYC approved', { userId: id });
+    res.json({ message: 'KYC approved' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function rejectKycHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { notes } = req.body;
+    if (!notes) return res.status(400).json({ error: 'Review notes are required for rejection' });
+    await rejectKyc(id, notes);
+    logger.info('[Admin] KYC rejected', { userId: id });
+    res.json({ message: 'KYC rejected' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─── User Details (KYC + history + stats) ────────────────────────────────────
+
+export async function getUserDetailsAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true, name: true, phone: true, email: true, avatar: true,
+        cpf: true, cpf_verified: true, is_banned: true, ban_reason: true,
+        trust_score: true, bot_score: true, created_at: true,
+        date_of_birth: true,
+        kyc_document_type: true, kyc_document_status: true,
+        kyc_document_front_url: true, kyc_document_back_url: true,
+        kyc_selfie_url: true, kyc_submitted_at: true,
+        kyc_reviewed_at: true, kyc_review_notes: true,
+        league_points: true, previous_rank: true, previous_rank_month: true,
+        wallet: { select: { real_balance: true, bonus_balance: true } },
+      },
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Deposits and withdrawals totals
+    const wallet = await prisma.wallet.findUnique({ where: { userId: id } });
+    const [depositsAgg, withdrawalsAgg] = wallet
+      ? await Promise.all([
+          prisma.transaction.aggregate({
+            where: { walletId: wallet.id, type: 'DEPOSIT', status: 'COMPLETED' },
+            _sum: { amount: true },
+          }),
+          prisma.transaction.aggregate({
+            where: { walletId: wallet.id, type: 'WITHDRAWAL', status: 'COMPLETED' },
+            _sum: { amount: true },
+          }),
+        ])
+      : [{ _sum: { amount: null } }, { _sum: { amount: null } }];
+
+    // Win rate per lobby (bet amount)
+    const lobbyStats: { bet_amount: string; games: number; wins: number }[] = await prisma.$queryRaw`
+      SELECT
+        g.bet_amount::text,
+        COUNT(gp.id)::int           AS games,
+        SUM(CASE WHEN g.winner_id = ${id} THEN 1 ELSE 0 END)::int AS wins
+      FROM "GamePlayer" gp
+      JOIN "Game" g ON g.id = gp."gameId"
+      WHERE gp."userId" = ${id}
+        AND g.status = 'FINISHED'
+        AND gp.is_bot = false
+      GROUP BY g.bet_amount
+      ORDER BY g.bet_amount
+    `;
+
+    // Recent match history (last 20)
+    const recentGames = await prisma.game.findMany({
+      where: {
+        players: { some: { userId: id, is_bot: false } },
+        status: 'FINISHED',
+      },
+      orderBy: { finished_at: 'desc' },
+      take: 20,
+      select: {
+        id: true, mode: true, variant: true, bet_amount: true,
+        prize_pool: true, winner_id: true, finished_at: true,
+        tournamentId: true,
+      },
+    });
+
+    res.json({
+      ...user,
+      total_deposits: Number(depositsAgg._sum.amount ?? 0),
+      total_withdrawals: Number(withdrawalsAgg._sum.amount ?? 0),
+      current_rank: pointsToRank(user.league_points),
+      lobby_stats: lobbyStats.map((r) => ({
+        bet_amount: Number(r.bet_amount),
+        games: Number(r.games),
+        wins: Number(r.wins),
+        win_rate: Number(r.games) > 0 ? Number(r.wins) / Number(r.games) : 0,
+      })),
+      recent_games: recentGames.map((g) => ({
+        ...g,
+        bet_amount: Number(g.bet_amount),
+        prize_pool: Number(g.prize_pool),
+        won: g.winner_id === id,
+      })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─── Announcements ────────────────────────────────────────────────────────────
+
+export async function getAnnouncementsAdminHandler(_req: Request, res: Response) {
+  try {
+    const items = await prisma.announcement.findMany({
+      orderBy: { created_at: 'desc' },
+      include: { _count: { select: { views: true } } },
+    });
+    res.json(items);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function createAnnouncementAdminHandler(req: Request, res: Response) {
+  try {
+    const { title, body, html, banner_url, countdown_end, max_shows, target_rank, is_active } = req.body;
+    if (!title) return res.status(400).json({ error: 'title is required' });
+    const validRanks = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'];
+    const item = await prisma.announcement.create({
+      data: {
+        title,
+        body: body || null,
+        html: html || null,
+        banner_url: banner_url || null,
+        countdown_end: countdown_end ? new Date(countdown_end) : null,
+        max_shows: max_shows ? parseInt(String(max_shows), 10) : null,
+        target_rank: target_rank && validRanks.includes(target_rank) ? target_rank : null,
+        is_active: is_active !== false,
+      },
+    });
+    res.status(201).json(item);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function updateAnnouncementAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { title, body, html, banner_url, countdown_end, max_shows, target_rank, is_active } = req.body;
+    const validRanks = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'];
+    const data: any = {};
+    if (title !== undefined) data.title = title;
+    if (body !== undefined) data.body = body;
+    if (html !== undefined) data.html = html;
+    if (banner_url !== undefined) data.banner_url = banner_url;
+    if (countdown_end !== undefined) data.countdown_end = countdown_end ? new Date(countdown_end) : null;
+    if (max_shows !== undefined) data.max_shows = max_shows ? parseInt(String(max_shows), 10) : null;
+    if (target_rank !== undefined) data.target_rank = target_rank && validRanks.includes(target_rank) ? target_rank : null;
+    if (is_active !== undefined) data.is_active = !!is_active;
+    const item = await prisma.announcement.update({ where: { id }, data });
+    res.json(item);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function deleteAnnouncementAdminHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    await prisma.announcement.delete({ where: { id } });
+    res.json({ message: 'Announcement deleted' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─── League Admin ─────────────────────────────────────────────────────────────
+
+export async function getLeaderboardAdminHandler(req: Request, res: Response) {
+  try {
+    const period = (req.query.period as 'week' | 'month') ?? 'month';
+    const data = await getLeaderboard(period);
+    res.json({ period, leaderboard: data, top3: data.slice(0, 3) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function triggerMonthlyResetAdminHandler(_req: Request, res: Response) {
+  try {
+    const updated = await monthlyLeagueReset();
+    res.json({ message: `Monthly reset complete`, usersUpdated: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

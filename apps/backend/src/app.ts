@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
 import { config } from './config';
 import { antifraudMiddleware } from './middleware/antifraud.middleware';
 import routes from './routes';
@@ -83,6 +84,9 @@ app.use(generalLimiter);
 
 app.use(antifraudMiddleware);
 app.use(config.apiPrefix, routes);
+
+// Serve uploaded KYC documents (admin reviews via direct URL, behind auth in prod)
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
