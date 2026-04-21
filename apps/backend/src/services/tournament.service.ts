@@ -3,6 +3,7 @@ import { prisma } from './prisma.service';
 import { logger } from '../utils/logger';
 import { config } from '../config';
 import type { Server as SocketServer } from 'socket.io';
+import { awardTournamentPoints } from './league.service';
 
 // Global io reference set by the socket bootstrap
 let _io: SocketServer | null = null;
@@ -386,6 +387,15 @@ async function finishTournament(
     tournamentId: tournament.id,
     prize: tournament.prize_pool,
   });
+
+  // Award league points to all participants and extra to winner
+  const players = await prisma.tournamentPlayer.findMany({
+    where: { tournamentId: tournament.id },
+    select: { userId: true },
+  });
+  for (const p of players) {
+    awardTournamentPoints(p.userId, p.userId === winnerId).catch(() => {});
+  }
 
   logger.info('[Tournament] Finished', { tournamentId: tournament.id, winnerId, prize: tournament.prize_pool });
 }

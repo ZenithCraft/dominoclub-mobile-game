@@ -85,6 +85,31 @@ enum FraudType {
   ADMIN_ACTION
 }
 
+// ─── KYC ─────────────────────────────────────────────────────────
+
+enum DocumentType {
+  RG
+  CNH
+  PASSPORT
+}
+
+enum DocumentStatus {
+  PENDING    // uploaded, awaiting review
+  APPROVED
+  REJECTED
+}
+
+// ─── Leagues & Ranking ───────────────────────────────────────────
+
+// Thresholds: Silver 200, Gold 700, Platinum 1200, Diamond 1700
+enum LeagueRank {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+}
+
 // ─── Models ──────────────────────────────────────────────────────
 
 model User {
@@ -94,36 +119,63 @@ model User {
   email         String?  @unique
   name          String?
   avatar        String?
+  date_of_birth DateTime?
+
+  // Location / device
   gps_lat        Float?
   gps_lng        Float?
   gps_accuracy   Float?
   gps_updated_at DateTime?
   device_id      String?
   ip_address     String?
+  push_token     String?   // Expo push token for notifications
+
+  // Moderation
   is_banned      Boolean  @default(false)
   ban_reason     String?
   bot_score      Float    @default(0)    // 0–1 probability of being a bot
   trust_score    Float    @default(1.0)  // 1.0 = fully trusted; decrements on abuse signals
-  cpf_verified  Boolean  @default(false)
-  phone_verified Boolean @default(false)
-  otp_code      String?
+
+  // Verification
+  cpf_verified   Boolean  @default(false)
+  phone_verified Boolean  @default(false)
+  otp_code       String?
   otp_expires_at DateTime?
   refresh_token  String?
+
+  // KYC — required before first withdrawal
+  kyc_document_type      DocumentType?
+  kyc_document_status    DocumentStatus?
+  kyc_document_front_url String?
+  kyc_document_back_url  String?
+  kyc_selfie_url         String?
+  kyc_submitted_at       DateTime?
+  kyc_reviewed_at        DateTime?
+  kyc_review_notes       String?    @db.Text
+
+  // League / Ranking — resets monthly
+  league_points     Int         @default(0)
+  previous_rank     LeagueRank?             // rank earned in the previous month
+  previous_rank_month String?               // "YYYY-MM" of the month that rank was earned
+
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
-  wallet            Wallet?
-  gamePlayers       GamePlayer[]
-  tournamentPlayers TournamentPlayer[]
-  fraudLogs         FraudLog[]
-  couponRedemptions CouponRedemption[]
-  wonGames          Game[]             @relation("GameWinner")
-  deviceBinds       DeviceBind[]
+  wallet               Wallet?
+  gamePlayers          GamePlayer[]
+  tournamentPlayers    TournamentPlayer[]
+  fraudLogs            FraudLog[]
+  couponRedemptions    CouponRedemption[]
+  wonGames             Game[]             @relation("GameWinner")
+  deviceBinds          DeviceBind[]
+  announcementViews    UserAnnouncementView[]
 
   @@index([phone])
   @@index([cpf])
   @@index([device_id])
   @@index([ip_address])
+  @@index([kyc_document_status])
+  @@index([league_points])
 }
 
 model Wallet {
@@ -228,11 +280,18 @@ model Tournament {
   created_at      DateTime         @default(now())
   updated_at      DateTime         @updatedAt
 
+  // In-person event fields
+  is_in_person    Boolean          @default(false)
+  address         String?
+  checkin_time    DateTime?
+  banner_url      String?
+
   players TournamentPlayer[]
   games   Game[]
 
   @@index([status])
   @@index([starts_at])
+  @@index([is_in_person])
 }
 
 model TournamentPlayer {
@@ -243,6 +302,10 @@ model TournamentPlayer {
   final_position Int?
   prize_won      Decimal   @default(0) @db.Decimal(12, 2)
   joined_at      DateTime  @default(now())
+
+  // In-person ticket fields
+  participant_name String?
+  participant_cpf  String?
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -312,15 +375,17 @@ model PairBlock {
 }
 
 model Coupon {
-  id                 String   @id @default(uuid())
-  code               String   @unique
-  bonus_amount       Decimal  @db.Decimal(12, 2)
-  min_deposit_amount Decimal  @default(0) @db.Decimal(12, 2)
-  rollover_times     Int      @default(0)
+  id                 String      @id @default(uuid())
+  code               String      @unique
+  bonus_amount       Decimal     @db.Decimal(12, 2)
+  min_deposit_amount Decimal     @default(0) @db.Decimal(12, 2)
+  rollover_times     Int         @default(0)
   max_players        Int?
-  is_active          Boolean  @default(true)
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
+  eligible_rank      LeagueRank?  // null = all ranks eligible
+  expires_at         DateTime?    // null = no expiry
+  is_active          Boolean     @default(true)
+  created_at         DateTime    @default(now())
+  updated_at         DateTime    @updatedAt
 
   redemptions CouponRedemption[]
 }
@@ -348,8 +413,8 @@ model PartnerCooldown {
   id                    String   @id @default(uuid())
   userAId               String
   userBId               String
-  consecutive_same_team Int      @default(0)  // consecutive FINISHED games on same team
-  cooldown_remaining    Int      @default(0)  // games left where they must be on opposing teams
+  consecutive_same_team Int      @default(0)
+  cooldown_remaining    Int      @default(0)
   updated_at            DateTime @updatedAt
 
   @@unique([userAId, userBId])
@@ -358,13 +423,11 @@ model PartnerCooldown {
 }
 
 // ─── Game Rooms (admin-configurable bet slots) ────────────────────────────────
-// Admin creates rooms with a specific mode + bet amount.
-// Locking a room prevents matchmaking from pairing new games in that slot.
 model GameRoom {
   id         String   @id @default(uuid())
   mode       GameMode
   bet_amount Decimal  @db.Decimal(12, 2)
-  label      String?  // optional display name, e.g. "Sala VIP R$50"
+  label      String?
   locked     Boolean  @default(false)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -372,4 +435,40 @@ model GameRoom {
   @@unique([mode, bet_amount])
   @@index([locked])
   @@index([mode])
+}
+
+// ─── Announcements ───────────────────────────────────────────────
+// Admin-created global banners/messages sent to users.
+model Announcement {
+  id            String      @id @default(uuid())
+  title         String
+  body          String?     @db.Text
+  html          String?     @db.Text  // optional rich HTML body
+  banner_url    String?
+  countdown_end DateTime?
+  max_shows     Int?        // null = always; N = show up to N times per user
+  target_rank   LeagueRank? // null = all users
+  is_active     Boolean     @default(true)
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
+
+  views UserAnnouncementView[]
+
+  @@index([is_active])
+  @@index([target_rank])
+}
+
+model UserAnnouncementView {
+  id             String   @id @default(uuid())
+  userId         String
+  announcementId String
+  view_count     Int      @default(0)
+  last_seen_at   DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, announcementId])
+  @@index([userId])
+  @@index([announcementId])
 }

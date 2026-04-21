@@ -153,6 +153,11 @@ export function WalletScreen() {
   const [pixKey, setPixKey]               = useState('');
   const [withdrawLoading, setWithdrawLoading] = useState(false);
 
+  // KYC gate — required before first withdrawal
+  const [kycStatus, setKycStatus]       = useState<string | null>(null);
+  const [kycChecked, setKycChecked]     = useState(false);
+  const [firstWithdrawalDone, setFirstWithdrawalDone] = useState(false);
+
   // Polling
   const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const successAnim = useRef(new Animated.Value(0)).current;
@@ -231,6 +236,14 @@ export function WalletScreen() {
   }, [navigation, refreshUser]);
 
   useEffect(() => { loadWallet(); }, []);
+
+  useEffect(() => {
+    api.get('/kyc/status').then(({ data }) => {
+      setKycStatus(data.kyc_document_status ?? null);
+      setFirstWithdrawalDone(data.first_withdrawal_done ?? false);
+      setKycChecked(true);
+    }).catch(() => setKycChecked(true));
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -363,10 +376,37 @@ export function WalletScreen() {
           <BalanceRow label="Saldo disponível para saque" value={canWithdraw ? realBalance : 0} />
 
           <View style={styles.actionsCol}>
+            {/* KYC gate — shown before first withdrawal when not yet verified */}
+            {kycChecked && !firstWithdrawalDone && kycStatus !== 'APPROVED' && (
+              <View style={styles.kycBanner}>
+                <Text style={styles.kycBannerText}>
+                  Para liberar seu primeiro saque, precisamos confirmar sua identidade.
+                </Text>
+                {kycStatus === 'PENDING' ? (
+                  <Text style={styles.kycBannerSub}>Documentos em análise. Aguarde até 48 horas.</Text>
+                ) : kycStatus === 'REJECTED' ? (
+                  <>
+                    <Text style={styles.kycBannerSub}>Documentos rejeitados. Por favor, envie novamente.</Text>
+                    <TouchableOpacity style={styles.kycBtn} onPress={() => navigation.navigate('KYC')}>
+                      <Text style={styles.kycBtnText}>Verificar Conta</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity style={styles.kycBtn} onPress={() => navigation.navigate('KYC')}>
+                    <Text style={styles.kycBtnText}>Verificar Conta</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             <TouchableOpacity
               style={styles.withdrawBtn}
               activeOpacity={0.85}
               onPress={() => {
+                if (!firstWithdrawalDone && kycStatus !== 'APPROVED') {
+                  navigation.navigate('KYC');
+                  return;
+                }
                 if (!canWithdraw) {
                   Alert.alert('Saque bloqueado',
                     rolloverRemaining > 0
@@ -707,6 +747,24 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   actionsCol: { gap: spacing.sm, marginTop: spacing.lg },
+  kycBanner: {
+    backgroundColor: 'rgba(250, 204, 21, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(250, 204, 21, 0.4)',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  kycBannerText: { color: '#fde68a', fontSize: fonts.sizes.sm, fontWeight: '600' },
+  kycBannerSub: { color: '#a3c4a3', fontSize: fonts.sizes.xs, marginTop: 4 },
+  kycBtn: {
+    marginTop: spacing.sm,
+    backgroundColor: '#facc15',
+    borderRadius: radius.sm,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  kycBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
   withdrawBtn: {
     borderRadius: radius.md,
     overflow: 'hidden',

@@ -565,6 +565,11 @@ export function HomeScreen({ navigation }: Props) {
                   <Text style={styles.profileActionTextDark}>Conquistas</Text>
                 </TouchableOpacity>
               </LinearGradient>
+              <LinearGradient colors={['#ffd700', '#ca8a04']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
+                <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Leaderboard'); }}>
+                  <Text style={styles.profileActionTextDark}>Liga & Ranking</Text>
+                </TouchableOpacity>
+              </LinearGradient>
             </View>
           </Pressable>
         </Pressable>

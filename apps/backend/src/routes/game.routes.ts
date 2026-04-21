@@ -11,6 +11,10 @@ import {
   leaveTournamentHandler,
   getTournamentBracketHandler,
   getMyActiveTournamentHandler,
+  getLeaderboardHandler,
+  getMyLeagueHandler,
+  getAnnouncementsHandler,
+  markAnnouncementSeenHandler,
 } from '../controllers/game.controller';
 
 const router = Router();
@@ -25,5 +29,13 @@ router.post('/tournaments/:id/join', authMiddleware, joinTournamentHandler);
 router.post('/tournaments/:id/leave', authMiddleware, leaveTournamentHandler);
 router.get('/tournaments/:id/bracket', authMiddleware, getTournamentBracketHandler);
 router.get('/:id/replay', authMiddleware, getGameReplayHandler);
+
+// League
+router.get('/leaderboard', authMiddleware, getLeaderboardHandler);
+router.get('/me/league', authMiddleware, getMyLeagueHandler);
+
+// Announcements
+router.get('/announcements', authMiddleware, getAnnouncementsHandler);
+router.post('/announcements/:id/seen', authMiddleware, markAnnouncementSeenHandler);
 
 export default router;

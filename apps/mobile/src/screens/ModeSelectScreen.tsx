@@ -4,7 +4,7 @@ import { getIntegrityToken } from '../services/integrity';
 import {
   View, Text, StyleSheet, ImageBackground, ScrollView, useWindowDimensions,
   TouchableOpacity, Modal, ActivityIndicator, RefreshControl,
-  Platform, Animated,
+  Platform, Animated, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -71,6 +71,10 @@ interface Tournament {
   max_players: number;
   current_players: number;
   starts_at: string;
+  is_in_person?: boolean;
+  address?: string | null;
+  checkin_time?: string | null;
+  banner_url?: string | null;
 }
 
 const fmtBrl = (n: number | string | null | undefined) => {
@@ -221,6 +225,45 @@ function TournamentCard({ t, onJoin }: { t: Tournament; onJoin: () => void }) {
   );
 }
 
+// ── In-Person Tournament Card (red) ─────────────────────────────────────────
+
+function InPersonTournamentCard({ t, onPress }: { t: Tournament; onPress: () => void }) {
+  const dateStr = new Date(t.starts_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+
+  return (
+    <TouchableOpacity style={styles.tourCard} onPress={onPress} activeOpacity={0.85}>
+      <LinearGradient
+        colors={['#3d0000', '#7f0000', '#b91c1c']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.tourCardInner}
+      >
+        <Text style={[styles.tourTimerText, { color: '#fca5a5' }]}>{dateStr}</Text>
+        <Text style={[styles.tourMetaLabel, { color: '#fca5a5' }]}>Nome + Pres.</Text>
+        <Text style={styles.tourName} numberOfLines={1}>{t.name}</Text>
+
+        <View style={styles.tourPlayersRow}>
+          <IconUser size={16} color="#fca5a5" />
+          <View style={styles.tourPlayersMeta}>
+            <Text style={[styles.tourPlayersLabel, { color: '#fca5a5' }]}>Jogadores</Text>
+            <Text style={styles.tourPlayersValue}>{t.current_players}/{t.max_players}</Text>
+          </View>
+        </View>
+
+        <View style={[styles.tourBar, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
+          <Text style={styles.tourBarLabel}>Inscrição</Text>
+          <Text style={styles.tourBarValue}>R${t.entry_fee}</Text>
+        </View>
+
+        <View style={[styles.tourBar, { backgroundColor: '#991b1b' }]}>
+          <Text style={styles.tourBarLabel}>Presencial</Text>
+          <Text style={styles.tourBarValue}>{t.address ? '📍' : '🎯'}</Text>
+        </View>
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+}
+
 // ── Main screen ─────────────────────────────────────────────────────────────
 
 export function ModeSelectScreen({ navigation, route }: Props) {
@@ -237,6 +280,9 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const [tourLoading, setTourLoading]   = useState(false);
   const [tourRefreshing, setTourRefreshing] = useState(false);
   const [confirmTour, setConfirmTour]   = useState<Tournament | null>(null);
+  const [inPersonTour, setInPersonTour] = useState<Tournament | null>(null);
+  const [inPersonName, setInPersonName] = useState('');
+  const [inPersonCpf, setInPersonCpf]   = useState('');
   const [confirmRoom, setConfirmRoom]   = useState<{ room: RoomOption; section: '1v1' | '2v2' } | null>(null);
   const [joining, setJoining]           = useState(false);
   const [searching, setSearching]       = useState(false);
@@ -444,6 +490,29 @@ export function ModeSelectScreen({ navigation, route }: Props) {
     }
   };
 
+  const handleJoinInPersonTournament = async () => {
+    if (!inPersonTour) return;
+    const trimmedName = inPersonName.trim();
+    const trimmedCpf = inPersonCpf.replace(/\D/g, '');
+    if (!trimmedName) { toast.error('Informe seu nome completo'); return; }
+    if (trimmedCpf.length !== 11) { toast.error('CPF inválido (11 dígitos)'); return; }
+    const tour = inPersonTour;
+    setJoining(true);
+    try {
+      await api.post(`/game/tournaments/${tour.id}/join`, {
+        participantName: trimmedName,
+        participantCpf: trimmedCpf,
+      });
+      await refreshUser();
+      setInPersonTour(null);
+      toast.success('Inscrição confirmada! Verifique seu e-mail.');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Erro ao comprar ingresso');
+    } finally {
+      setJoining(false);
+    }
+  };
+
   const rowGap = spacing.lg;
   const contentPad = spacing.xl;
   const sectionPad = spacing.xl;
@@ -561,7 +630,9 @@ export function ModeSelectScreen({ navigation, route }: Props) {
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tourCardsRow}>
                   {tournaments.map((t) => (
-                    <TournamentCard key={t.id} t={t} onJoin={() => setConfirmTour(t)} />
+                    t.is_in_person
+                      ? <InPersonTournamentCard key={t.id} t={t} onPress={() => { setInPersonTour(t); setInPersonName(''); setInPersonCpf(''); }} />
+                      : <TournamentCard key={t.id} t={t} onJoin={() => setConfirmTour(t)} />
                   ))}
                 </ScrollView>
               )}
@@ -723,6 +794,90 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           </View>
         </TouchableOpacity>
       </Modal>
+      {/* In-person tournament modal */}
+      <Modal visible={!!inPersonTour} transparent animationType="fade">
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => !joining && setInPersonTour(null)}>
+          <View style={[styles.modalCard, inPersonStyles.card]} onStartShouldSetResponder={() => true}>
+            {inPersonTour && (
+              <>
+                <View style={inPersonStyles.badge}>
+                  <Text style={inPersonStyles.badgeText}>PRESENCIAL</Text>
+                </View>
+                <Text style={styles.modalTitle}>{inPersonTour.name}</Text>
+
+                {inPersonTour.address ? (
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Local</Text>
+                    <Text style={[styles.modalValue, { flex: 1, textAlign: 'right' }]} numberOfLines={2}>{inPersonTour.address}</Text>
+                  </View>
+                ) : null}
+
+                {inPersonTour.checkin_time ? (
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Check-in</Text>
+                    <Text style={styles.modalValue}>
+                      {new Date(inPersonTour.checkin_time).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Inscrição</Text>
+                  <Text style={styles.modalValue}>R$ {Number(inPersonTour.entry_fee).toFixed(2)}</Text>
+                </View>
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Prêmio</Text>
+                  <Text style={[styles.modalValue, { color: '#fbbf24' }]}>R$ {inPersonTour.prize_pool.toLocaleString('pt-BR')}</Text>
+                </View>
+
+                <View style={styles.modalDivider} />
+
+                <Text style={inPersonStyles.fieldLabel}>Nome completo</Text>
+                <TextInput
+                  style={inPersonStyles.input}
+                  value={inPersonName}
+                  onChangeText={setInPersonName}
+                  placeholder="Como no documento"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  autoCorrect={false}
+                  editable={!joining}
+                />
+
+                <Text style={inPersonStyles.fieldLabel}>CPF</Text>
+                <TextInput
+                  style={inPersonStyles.input}
+                  value={inPersonCpf}
+                  onChangeText={(v) => setInPersonCpf(v.replace(/\D/g, '').slice(0, 11))}
+                  placeholder="000.000.000-00"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  keyboardType="numeric"
+                  editable={!joining}
+                />
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.modalBtnCancel, joining && styles.modalBtnDisabled]}
+                    onPress={() => setInPersonTour(null)}
+                    disabled={joining}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[inPersonStyles.confirmBtn, joining && styles.modalBtnDisabled]}
+                    onPress={handleJoinInPersonTournament}
+                    disabled={joining}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={inPersonStyles.confirmBtnText}>{joining ? 'Enviando...' : 'Comprar Ingresso'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* ── Settings modal ── */}
       <Modal visible={settingsVisible} transparent animationType="fade">
         <Pressable style={settingsStyles.overlay} onPress={() => setSettingsVisible(false)}>
@@ -1086,4 +1241,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalBtnConfirmText: { color: '#000', fontWeight: '800', fontSize: fonts.sizes.sm },
+});
+
+const inPersonStyles = StyleSheet.create({
+  card: {
+    borderColor: 'rgba(185,28,28,0.55)',
+    width: 340,
+  },
+  badge: {
+    alignSelf: 'center',
+    backgroundColor: '#991b1b',
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 14,
+  },
+  badgeText: { color: '#fca5a5', fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
+  fieldLabel: { color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.xs, fontWeight: '700', marginBottom: 4 },
+  input: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: radius.sm,
+    color: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: fonts.sizes.sm,
+    marginBottom: spacing.sm,
+  },
+  confirmBtn: {
+    flex: 1,
+    backgroundColor: '#b91c1c',
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  confirmBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
 });

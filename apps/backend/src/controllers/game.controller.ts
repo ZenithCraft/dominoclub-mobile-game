@@ -6,6 +6,8 @@ import { startTournament } from '../services/tournament.service';
 import { issueNonce } from '../services/nonce.service';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { emailService } from '../services/email.service';
+import { getLeaderboard, pointsToRank } from '../services/league.service';
 
 /**
  * GET /api/v1/game/integrity-nonce
@@ -144,47 +146,101 @@ export async function getTournamentsHandler(req: Request, res: Response) {
 export async function joinTournamentHandler(req: Request, res: Response) {
   const userId = (req as any).user?.userId;
   const { id } = req.params;
+  // In-person ticket fields
+  const { participantName, participantCpf } = req.body ?? {};
+
   try {
+    let isFull = false;
+    let startsAt: Date = new Date();
+    let isInPerson = false;
+    let tournamentName = '';
 
     // All checks and mutations run inside a SERIALIZABLE transaction so concurrent
     // join requests cannot both pass the player-count or balance check (double-enroll / overdraft).
-    let isFull = false;
-    let startsAt: Date = new Date();
     await prisma.$transaction(async (tx) => {
       const tournament = await tx.tournament.findUnique({ where: { id } });
       if (!tournament) throw Object.assign(new Error('Tournament not found'), { status: 404 });
       if (tournament.status !== 'OPEN') throw Object.assign(new Error('Tournament not open'), { status: 400 });
       if (tournament.current_players >= tournament.max_players) throw Object.assign(new Error('Tournament is full'), { status: 400 });
       startsAt = tournament.starts_at;
+      isInPerson = tournament.is_in_person;
+      tournamentName = tournament.name;
+
+      if (isInPerson && (!participantName || !participantCpf)) {
+        throw Object.assign(new Error('Nome e CPF do participante são obrigatórios para eventos presenciais'), { status: 400 });
+      }
 
       const existing = await tx.tournamentPlayer.findFirst({ where: { tournamentId: id, userId } });
       if (existing) throw Object.assign(new Error('Already enrolled'), { status: 200 });
 
       const wallet = await tx.wallet.findUnique({ where: { userId } });
+      // Bonus balance CANNOT be used for tournament entries — only real_balance counts
       if (!wallet || Number(wallet.real_balance) < Number(tournament.entry_fee)) {
-        throw Object.assign(new Error('Insufficient balance'), { status: 400 });
+        throw Object.assign(new Error('Saldo insuficiente. O saldo bônus não pode ser usado para torneios.'), { status: 400 });
       }
 
       const newPlayerCount = tournament.current_players + 1;
       isFull = newPlayerCount >= tournament.max_players;
 
       await tx.wallet.update({ where: { userId }, data: { real_balance: { decrement: tournament.entry_fee } } });
-      await tx.tournamentPlayer.create({ data: { tournamentId: id, userId } });
+      await tx.tournamentPlayer.create({
+        data: {
+          tournamentId: id,
+          userId,
+          participant_name: isInPerson ? participantName : null,
+          participant_cpf: isInPerson ? participantCpf : null,
+        },
+      });
       await tx.tournament.update({
         where: { id },
         data: {
           current_players: { increment: 1 },
-          prize_pool: { increment: Number(tournament.entry_fee) * 0.9 },
+          prize_pool: { increment: isInPerson ? 0 : Number(tournament.entry_fee) * 0.9 },
           status: isFull ? 'FULL' : 'OPEN',
         },
       });
     }, { isolationLevel: 'Serializable' } as any);
 
-    // Auto-start immediately only if the scheduled start time has already passed
-    if (isFull && startsAt.getTime() <= Date.now()) {
+    // Auto-start immediately only if the scheduled start time has already passed (online only)
+    if (isFull && !isInPerson && startsAt.getTime() <= Date.now()) {
       startTournament(id).catch((err) => {
         logger.error('[Tournament] Auto-start failed', { message: err.message });
       });
+    }
+
+    // Send confirmation email for in-person tournament ticket
+    if (isInPerson) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, name: true },
+      });
+      if (user?.email) {
+        const tournament = await prisma.tournament.findUnique({
+          where: { id },
+          select: { name: true, starts_at: true, address: true, checkin_time: true, entry_fee: true },
+        });
+        if (tournament) {
+          emailService.send({
+            to: user.email,
+            subject: `Ingresso confirmado — ${tournament.name}`,
+            html: `
+              <h2>Ingresso Confirmado!</h2>
+              <p>Olá ${user.name ?? participantName},</p>
+              <p>Seu ingresso para o torneio presencial <strong>${tournament.name}</strong> foi confirmado.</p>
+              <table style="border-collapse:collapse;width:100%;max-width:500px">
+                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Participante</strong></td><td style="padding:8px;border:1px solid #ddd">${participantName}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #ddd"><strong>CPF</strong></td><td style="padding:8px;border:1px solid #ddd">${participantCpf}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Data</strong></td><td style="padding:8px;border:1px solid #ddd">${tournament.starts_at.toLocaleDateString('pt-BR')}</td></tr>
+                ${tournament.checkin_time ? `<tr><td style="padding:8px;border:1px solid #ddd"><strong>Check-in</strong></td><td style="padding:8px;border:1px solid #ddd">${tournament.checkin_time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td></tr>` : ''}
+                ${tournament.address ? `<tr><td style="padding:8px;border:1px solid #ddd"><strong>Local</strong></td><td style="padding:8px;border:1px solid #ddd">${tournament.address}</td></tr>` : ''}
+                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Taxa</strong></td><td style="padding:8px;border:1px solid #ddd">R$${Number(tournament.entry_fee).toFixed(2)}</td></tr>
+              </table>
+              <p style="margin-top:16px">Apresente este e-mail na entrada do evento.</p>
+              <p>Equipe DominoClub</p>
+            `,
+          }).catch(() => {});
+        }
+      }
     }
 
     // Return updated wallet balance + tournament info for the waiting screen
@@ -360,3 +416,89 @@ export async function getTournamentBracketHandler(req: Request, res: Response) {
     res.status(500).json({ error: err.message });
   }
 }
+
+// GET /api/v1/game/leaderboard?period=week|month
+export async function getLeaderboardHandler(req: Request, res: Response) {
+  try {
+    const period = (req.query.period as 'week' | 'month') || 'month';
+    const data = await getLeaderboard(period);
+    res.json({ period, leaderboard: data });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// GET /api/v1/game/me/league — current user's league info
+export async function getMyLeagueHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { league_points: true, previous_rank: true, previous_rank_month: true },
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({
+      points: user.league_points,
+      current_rank: pointsToRank(user.league_points),
+      previous_rank: user.previous_rank,
+      previous_rank_month: user.previous_rank_month,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// GET /api/v1/game/announcements — active announcements for the current user
+export async function getAnnouncementsHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { league_points: true },
+    });
+    const userRank = user ? pointsToRank(user.league_points) : 'BRONZE';
+
+    const announcements = await prisma.announcement.findMany({
+      where: {
+        is_active: true,
+        OR: [
+          { target_rank: null },
+          { target_rank: userRank as any },
+        ],
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    // Filter by per-user view count
+    const views = await prisma.userAnnouncementView.findMany({
+      where: { userId, announcementId: { in: announcements.map((a) => a.id) } },
+    });
+    const viewMap = new Map(views.map((v) => [v.announcementId, v.view_count]));
+
+    const visible = announcements.filter((a) => {
+      if (!a.max_shows) return true;
+      return (viewMap.get(a.id) ?? 0) < a.max_shows;
+    });
+
+    res.json({ announcements: visible });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// POST /api/v1/game/announcements/:id/seen
+export async function markAnnouncementSeenHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const { id } = req.params;
+    await prisma.userAnnouncementView.upsert({
+      where: { userId_announcementId: { userId, announcementId: id } },
+      update: { view_count: { increment: 1 }, last_seen_at: new Date() },
+      create: { userId, announcementId: id, view_count: 1 },
+    });
+    res.json({ message: 'ok' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+

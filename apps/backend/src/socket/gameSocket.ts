@@ -5,6 +5,7 @@ import { advanceTournamentBracket, setTournamentIo, cancelAndRefundTournament, s
 import { config } from '../config';
 import { logger, matchLogger } from '../utils/logger';
 import { checkGpsProximity, updateBotScore } from '../middleware/antifraud.middleware';
+import { awardMatchPoints } from '../services/league.service';
 import {
   GameState,
   initGame,
@@ -63,15 +64,19 @@ function flushMoveTimings(gameId: string): Map<string, number[]> {
 
 // ─── Tournament auto-cancel scheduler ────────────────────────────────────────
 
+// Track which tournaments have already had their 15-min notification sent
+const notifiedTournaments = new Set<string>();
+
 export function initTournamentScheduler(io: SocketServer) {
   setTournamentIo(io);
   const intervalMs = config.env === 'development' ? 2_000 : 60_000;
   setInterval(async () => {
     try {
+      const now = new Date();
       const overdue = await prisma.tournament.findMany({
         where: {
           status: { in: ['OPEN', 'FULL'] },
-          starts_at: { lte: new Date() },
+          starts_at: { lte: now },
         },
         select: { id: true, current_players: true },
       });
@@ -84,6 +89,29 @@ export function initTournamentScheduler(io: SocketServer) {
           startTournament(t.id).catch((e) =>
             logger.error('[Tournament] Auto-start failed', { id: t.id, err: e.message })
           );
+        }
+      }
+
+      // 15-minute ahead notification for registered players
+      const soon = new Date(now.getTime() + 15 * 60 * 1000);
+      const starting = await prisma.tournament.findMany({
+        where: {
+          status: { in: ['OPEN', 'FULL'] },
+          starts_at: { gte: now, lte: soon },
+        },
+        select: {
+          id: true, name: true,
+          players: { select: { userId: true } },
+        },
+      });
+      for (const t of starting) {
+        if (!notifiedTournaments.has(t.id)) {
+          notifiedTournaments.add(t.id);
+          const userIds = t.players.map((p) => p.userId);
+          if (userIds.length) {
+            const { sendPushToUsers } = await import('../services/push.service');
+            sendPushToUsers(userIds, 'Torneio começa em 15 min! 🎯', `${t.name} — prepare-se!`, { type: 'tournament_starting', tournamentId: t.id }).catch(() => {});
+          }
         }
       }
     } catch (e: any) {
@@ -739,6 +767,14 @@ async function finalizeMatch(
     updateBotScore(gameId, userId, intervals).catch((err) =>
       logger.error('[AntifrAud] Bot score update failed', { gameId, userId, err: err.message })
     );
+  }
+
+  // Award league points to human players (only for paid lobbies >= R$5)
+  if (status === 'FINISHED') {
+    for (const player of state.players.filter((p) => !p.isBot)) {
+      const isWinner = matchWinnerTeam !== undefined && matchWinnerTeam !== null && player.team === matchWinnerTeam;
+      awardMatchPoints(player.userId, Number(game.bet_amount), !!isWinner).catch(() => {});
+    }
   }
 
   matchLogger.info('match_end', {
