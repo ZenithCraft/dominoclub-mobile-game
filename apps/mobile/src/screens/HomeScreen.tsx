@@ -181,6 +181,60 @@ export function GameTopBar({
   );
 }
 
+// ─── Minimal TopBar without balance button (for KYC/Wallet screens) ─────────
+export function GameTopBarMinimal({
+  user,
+  onSettings,
+  onExit,
+  onProfile,
+  exitVariant = 'back',
+}: {
+  user: any;
+  onSettings?: () => void;
+  onExit?: () => void;
+  onProfile?: () => void;
+  exitVariant?: 'logout' | 'back';
+}) {
+  return (
+    <View style={topBar.bar}>
+      {/* Left: avatar + name + level (tappable → profile) */}
+      <TouchableOpacity style={topBar.left} onPress={onProfile} activeOpacity={0.75}>
+        <View style={topBar.avatar}>
+          {user?.avatar ? (
+            <Image source={{ uri: user.avatar }} style={topBar.avatarImg} />
+          ) : (
+            <Text style={topBar.avatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
+          )}
+        </View>
+        <View>
+          <Text style={topBar.name}>{user?.name || 'Jogador'}</Text>
+          <Text style={topBar.level}>Lev: {String(user?.level || 1).padStart(2, '0')}</Text>
+        </View>
+      </TouchableOpacity>
+
+      {/* Right: settings + exit (no balance) */}
+      <View style={topBar.right}>
+        <TouchableOpacity style={topBar.iconBtn} onPress={onSettings} testID="topbar-settings" accessibilityLabel="Abrir configurações">
+          <IconSettings size={20} color="#fff" accessibilityLabel="Configurações" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={topBar.iconBtn}
+          onPress={onExit}
+          testID={exitVariant === 'back' ? 'topbar-back' : 'topbar-logout'}
+          accessibilityLabel={exitVariant === 'back' ? 'Voltar' : 'Sair'}
+        >
+          {exitVariant === 'back' ? (
+            <IconChevronLeft size={20} color="#fff" accessibilityLabel="Voltar" />
+          ) : (
+            <IconLogOut size={20} color="#fff" accessibilityLabel="Sair" />
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 const topBar = StyleSheet.create({
   bar: {
     flexDirection: 'row',
