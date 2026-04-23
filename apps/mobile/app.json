@@ -49,7 +49,8 @@
     "web": {
       "favicon": "./assets/77e79dbf0c599ad464ce3be2691d2da40106953d.png",
       "output": "single",
-      "bundler": "metro"
+      "bundler": "metro",
+      "jsEngine": "jsc"
     },
     "plugins": [
       "expo-location",
