@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "backend": "npm run dev --workspace=apps/backend",
-    "mobile": "npm run start --workspace=apps/mobile",
+    "mobile": "node node_modules/expo/bin/cli start --project-root apps/mobile",
     "admin": "npm run dev --workspace=apps/admin",
     "dev": "concurrently \"npm run backend\" \"npm run admin\"",
     "install:all": "npm install --workspaces",
