@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ImageBackground, TouchableOpacity,
-  Platform, Animated,
+  Platform, Animated, Modal, Pressable, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
-import { IconTrophy } from '../components/Icons';
+import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
+import { IconTrophy, IconSettings, IconX } from '../components/Icons';
+import { GradientToggle } from './HomeScreen';
 import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
 import * as Notifications from 'expo-notifications';
@@ -105,6 +106,9 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const [cancelledMessage, setCancelledMessage] = useState<string | null>(null);
   const [notifEnabled, setNotifEnabled] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+  const [musicOn, setMusicOn] = useState(true);
 
   const setActiveTournament = useTournamentStore((st) => st.setActiveTournament);
   const setNotificationsEnabled = useTournamentStore((st) => st.setNotificationsEnabled);
@@ -215,6 +219,12 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
     >
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safe}>
+        <View style={styles.topBar}>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)} accessibilityLabel="Configurações">
+            <IconSettings size={22} color="#fff" accessibilityLabel="Configurações" />
+          </TouchableOpacity>
+        </View>
         <View style={styles.centered}>
 
           {/* Trophy */}
@@ -309,15 +319,112 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* ── Settings modal ── */}
+        <Modal visible={settingsVisible} transparent animationType="fade">
+          <Pressable style={settingsStyles.overlay} onPress={() => setSettingsVisible(false)} testID="settings-overlay">
+            <Pressable style={settingsStyles.card} onPress={() => {}} onStartShouldSetResponder={() => true} testID="settings-card">
+              <View style={[settingsStyles.textureWrap, (Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : null)]}>
+                <Image
+                  source={require('../../assets/e27c2e8e377e60057010a8431706b96b0152436f.png')}
+                  style={settingsStyles.texture}
+                  resizeMode="cover"
+                />
+              </View>
+              <View style={settingsStyles.header}>
+                <View style={{ width: 26 }} />
+                <Text style={settingsStyles.title}>Configurações</Text>
+                <TouchableOpacity onPress={() => setSettingsVisible(false)} accessibilityLabel="Fechar configurações">
+                  <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
+                </TouchableOpacity>
+              </View>
+              <View style={settingsStyles.row}>
+                <Text style={settingsStyles.label}>Som:</Text>
+                <GradientToggle value={soundOn} onValueChange={setSoundOn} pressableTestID="settings-sound-toggle" accessibilityLabel="Som" kind="sound" />
+              </View>
+              <View style={settingsStyles.row}>
+                <Text style={settingsStyles.label}>Música:</Text>
+                <GradientToggle value={musicOn} onValueChange={setMusicOn} pressableTestID="settings-music-toggle" accessibilityLabel="Música" kind="music" />
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
       </SafeAreaView>
     </ImageBackground>
   );
 }
 
+const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
+const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
+
+const settingsStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
+  card: {
+    width: Platform.OS === 'web' ? 640 : 520,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.xl,
+    padding: SETTINGS_CARD_PAD,
+    gap: SETTINGS_ITEM_GAP,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#BBFF00',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.45)' } as any) : shadows.card),
+  },
+  textureWrap: { ...StyleSheet.absoluteFillObject },
+  texture: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.12,
+    width: '140%',
+    height: '140%',
+    top: '-20%' as any,
+    left: '-20%' as any,
+    ...(Platform.OS === 'web' ? ({ objectFit: 'cover', objectPosition: 'center' } as any) : null),
+  } as any,
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  title: {
+    fontSize: fonts.sizes.xxxl,
+    fontWeight: '900',
+    color: '#fff',
+    textAlign: 'center',
+    flex: 1,
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SETTINGS_CARD_PAD,
+    paddingVertical: SETTINGS_ITEM_GAP,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
+  label: {
+    fontSize: fonts.sizes.xl,
+    color: '#fff',
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
+  },
+});
+
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: '#0a1f0a' },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
   safe: { flex: 1 },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  gearBtn: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(187,255,0,0.22)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl },
 
   trophyCircle: {

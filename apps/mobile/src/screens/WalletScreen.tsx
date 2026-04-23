@@ -9,11 +9,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
-import { IconSettings, IconLogOut, IconX, IconHourglass, IconClipboard, IconParty, IconChevronLeft, IconQrCode, IconCheck } from '../components/Icons';
+import { IconSettings, IconLogOut, IconX, IconHourglass, IconClipboard, IconParty, IconQrCode, IconCheck, IconChevronLeft } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { useMemo } from 'react';
 import { useNavigation } from '@react-navigation/native';
+import { GameTopBarMinimal } from './HomeScreen';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -345,21 +346,14 @@ export function WalletScreen() {
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safe}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Carteira</Text>
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => navigation.navigate('Main')}
-            accessibilityLabel="Voltar para início"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            activeOpacity={0.8}
-          >
-            <IconChevronLeft size={18} color="#fff" accessibilityLabel="Voltar" />
-          </TouchableOpacity>
-        </View>
-      </View>
+        {/* Header - Same as HomeScreen (no balance) */}
+        <GameTopBarMinimal
+          user={user}
+          onSettings={() => {}}
+          onExit={() => navigation.navigate('Main')}
+          onProfile={() => navigation.navigate('Main')}
+          exitVariant="back"
+        />
 
       {/* Two-column body */}
       <ScrollView
@@ -376,29 +370,6 @@ export function WalletScreen() {
           <BalanceRow label="Saldo disponível para saque" value={canWithdraw ? realBalance : 0} />
 
           <View style={styles.actionsCol}>
-            {/* KYC gate — shown before first withdrawal when not yet verified */}
-            {kycChecked && !firstWithdrawalDone && kycStatus !== 'APPROVED' && (
-              <View style={styles.kycBanner}>
-                <Text style={styles.kycBannerText}>
-                  Para liberar seu primeiro saque, precisamos confirmar sua identidade.
-                </Text>
-                {kycStatus === 'PENDING' ? (
-                  <Text style={styles.kycBannerSub}>Documentos em análise. Aguarde até 48 horas.</Text>
-                ) : kycStatus === 'REJECTED' ? (
-                  <>
-                    <Text style={styles.kycBannerSub}>Documentos rejeitados. Por favor, envie novamente.</Text>
-                    <TouchableOpacity style={styles.kycBtn} onPress={() => navigation.navigate('KYC')}>
-                      <Text style={styles.kycBtnText}>Verificar Conta</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <TouchableOpacity style={styles.kycBtn} onPress={() => navigation.navigate('KYC')}>
-                    <Text style={styles.kycBtnText}>Verificar Conta</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
             <TouchableOpacity
               style={styles.withdrawBtn}
               activeOpacity={0.85}
@@ -463,6 +434,26 @@ export function WalletScreen() {
             <TouchableOpacity style={styles.errorRow} onPress={() => loadWallet()}>
               <Text style={styles.errorText}>Erro ao carregar. Toque para tentar novamente.</Text>
             </TouchableOpacity>
+          ) : kycChecked && !firstWithdrawalDone && kycStatus !== 'APPROVED' ? (
+            <View style={styles.kycTableBanner}>
+              <Text style={styles.kycTableBannerText}>
+                Para liberar seu primeiro saque, precisamos confirmar sua identidade.
+              </Text>
+              {kycStatus === 'PENDING' ? (
+                <Text style={styles.kycTableBannerSub}>Documentos em análise. Aguarde até 48 horas.</Text>
+              ) : kycStatus === 'REJECTED' ? (
+                <>
+                  <Text style={styles.kycTableBannerSub}>Documentos rejeitados. Por favor, envie novamente.</Text>
+                  <TouchableOpacity style={styles.kycTableBtn} onPress={() => navigation.navigate('KYC')}>
+                    <Text style={styles.kycTableBtnText}>Verificar Conta</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity style={styles.kycTableBtn} onPress={() => navigation.navigate('KYC')}>
+                  <Text style={styles.kycTableBtnText}>Verificar Conta</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           ) : filteredTransactions.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Nenhuma transação ainda</Text>
@@ -706,27 +697,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
   safe: { flex: 1 },
 
-  // Header
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: 'rgba(24, 73, 18, 0.92)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(187, 255, 0, 0.18)',
-  },
-  headerTitle: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: '#fff' },
-  headerRight: { flexDirection: 'row', gap: spacing.sm },
-  iconBtn: {
-    width: 34, height: 34, borderRadius: radius.sm,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1, borderColor: 'rgba(187, 255, 0, 0.22)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  iconText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 18 },
-
   // Body
   body: {
     flexDirection: 'row',
@@ -747,24 +717,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   actionsCol: { gap: spacing.sm, marginTop: spacing.lg },
-  kycBanner: {
-    backgroundColor: 'rgba(250, 204, 21, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(250, 204, 21, 0.4)',
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  kycBannerText: { color: '#fde68a', fontSize: fonts.sizes.sm, fontWeight: '600' },
-  kycBannerSub: { color: '#a3c4a3', fontSize: fonts.sizes.xs, marginTop: 4 },
-  kycBtn: {
-    marginTop: spacing.sm,
-    backgroundColor: '#facc15',
-    borderRadius: radius.sm,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  kycBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
   withdrawBtn: {
     borderRadius: radius.md,
     overflow: 'hidden',
@@ -784,6 +736,24 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.lg,
   },
+  kycTableBanner: {
+    backgroundColor: 'rgba(250, 204, 21, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(250, 204, 21, 0.4)',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  kycTableBannerText: { color: '#fde68a', fontSize: fonts.sizes.sm, fontWeight: '600' },
+  kycTableBannerSub: { color: '#a3c4a3', fontSize: fonts.sizes.xs, marginTop: 4 },
+  kycTableBtn: {
+    marginTop: spacing.sm,
+    backgroundColor: '#facc15',
+    borderRadius: radius.sm,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  kycTableBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
   tableTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

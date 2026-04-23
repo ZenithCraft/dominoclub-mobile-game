@@ -50,7 +50,7 @@ export function Input({
         <TextInput
           style={[styles.input, styles.inputWeb]}
           placeholder={placeholder}
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor={'rgba(74,222,128,0.4)'}
           value={value}
           onChangeText={onChangeText}
           secureTextEntry={secureTextEntry && !showPassword}
@@ -70,9 +70,9 @@ export function Input({
             onHoverOut={() => setHovered(false)}
           >
             {showPassword ? (
-              <IconEyeOff size={20} color={colors.textSecondary} />
+              <IconEyeOff size={20} color={'rgba(74,222,128,0.5)'} />
             ) : (
-              <IconEye size={20} color={colors.textSecondary} />
+              <IconEye size={20} color={'rgba(74,222,128,0.5)'} />
             )}
           </Pressable>
         )}
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     paddingVertical: 14,
-    color: '#FFFFFF',
+    color: '#e5ffe5',
     fontSize: fonts.sizes.md,
     fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
   },
