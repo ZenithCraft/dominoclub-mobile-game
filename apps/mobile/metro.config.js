@@ -9,10 +9,10 @@ const workspaceExists = fs.existsSync(workspaceRoot);
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch the root node_modules (monorepo hoisted deps) — only locally
-if (workspaceExists) {
-  config.watchFolders = [workspaceRoot];
-}
+// Do NOT set watchFolders to workspaceRoot or its node_modules — doing so causes
+// Expo CLI to compute the bundle entry path relative to the workspace root, producing
+// /apps/mobile/index.bundle in the HTML instead of /index.bundle.
+// nodeModulesPaths below is sufficient for resolving hoisted monorepo deps.
 
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
