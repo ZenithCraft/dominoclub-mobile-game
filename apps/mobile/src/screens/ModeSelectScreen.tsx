@@ -9,7 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
 import { IconUser, IconUsers, IconTrophy } from '../components/Icons';
 import { useGameStore } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
@@ -880,27 +880,29 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
       {/* ── Settings modal ── */}
       <Modal visible={settingsVisible} transparent animationType="fade">
-        <Pressable style={settingsStyles.overlay} onPress={() => setSettingsVisible(false)}>
-          <Pressable style={settingsStyles.card} onPress={() => {}} onStartShouldSetResponder={() => true}>
-            <Image
-              source={require('../../assets/e27c2e8e377e60057010a8431706b96b0152436f.png')}
-              style={settingsStyles.texture}
-              resizeMode="cover"
-            />
+        <Pressable style={settingsStyles.overlay} onPress={() => setSettingsVisible(false)} testID="settings-overlay">
+          <Pressable style={settingsStyles.card} onPress={() => {}} onStartShouldSetResponder={() => true} testID="settings-card">
+            <View style={[settingsStyles.textureWrap, (Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : null)]}>
+              <Image
+                source={require('../../assets/e27c2e8e377e60057010a8431706b96b0152436f.png')}
+                style={settingsStyles.texture}
+                resizeMode="cover"
+              />
+            </View>
             <View style={settingsStyles.header}>
               <View style={{ width: 26 }} />
               <Text style={settingsStyles.title}>Configurações</Text>
-              <TouchableOpacity onPress={() => setSettingsVisible(false)}>
+              <TouchableOpacity onPress={() => setSettingsVisible(false)} accessibilityLabel="Fechar configurações">
                 <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
             <View style={settingsStyles.row}>
               <Text style={settingsStyles.label}>Som:</Text>
-              <GradientToggle value={soundOn} onValueChange={setSoundOn} kind="sound" />
+              <GradientToggle value={soundOn} onValueChange={setSoundOn} pressableTestID="settings-sound-toggle" accessibilityLabel="Som" kind="sound" />
             </View>
             <View style={settingsStyles.row}>
               <Text style={settingsStyles.label}>Música:</Text>
-              <GradientToggle value={musicOn} onValueChange={setMusicOn} kind="music" />
+              <GradientToggle value={musicOn} onValueChange={setMusicOn} pressableTestID="settings-music-toggle" accessibilityLabel="Música" kind="music" />
             </View>
           </Pressable>
         </Pressable>
@@ -911,18 +913,56 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   );
 }
 
+const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
+const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
+
 const settingsStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
   card: {
-    width: Platform.OS === 'web' ? 640 : 520, backgroundColor: '#1a2e1a',
-    borderRadius: 20, padding: 28, gap: 20, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)',
+    width: Platform.OS === 'web' ? 640 : 520,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.xl,
+    padding: SETTINGS_CARD_PAD,
+    gap: SETTINGS_ITEM_GAP,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#BBFF00',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.45)' } as any) : shadows.card),
   },
-  texture: { ...StyleSheet.absoluteFillObject, opacity: 0.12 } as any,
+  textureWrap: { ...StyleSheet.absoluteFillObject },
+  texture: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.12,
+    width: '140%',
+    height: '140%',
+    top: '-20%' as any,
+    left: '-20%' as any,
+    ...(Platform.OS === 'web' ? ({ objectFit: 'cover', objectPosition: 'center' } as any) : null),
+  } as any,
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { color: '#fff', fontSize: 22, fontWeight: '900' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { color: '#d1fae5', fontSize: 16, fontWeight: '600' },
+  title: {
+    fontSize: fonts.sizes.xxxl,
+    fontWeight: '900',
+    color: '#fff',
+    textAlign: 'center',
+    flex: 1,
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SETTINGS_CARD_PAD,
+    paddingVertical: SETTINGS_ITEM_GAP,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
+  label: {
+    fontSize: fonts.sizes.xl,
+    color: '#fff',
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
+  },
 });
 
 const LIME = '#4ade80';
