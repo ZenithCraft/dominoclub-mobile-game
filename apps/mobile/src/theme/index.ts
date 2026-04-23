@@ -20,7 +20,7 @@ export const colors = {
 
   // Text
   textPrimary: '#ffffff',
-  textSecondary: '#a7f3d0', // Mint green
+  textSecondary: '#9ca3af', // Soft gray-green
   textMuted: '#6b7280',
   textOnPrimary: '#000000',
 

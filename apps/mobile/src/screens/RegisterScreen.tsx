@@ -265,9 +265,7 @@ export function RegisterScreen({ navigation, route }: Props) {
                     </TouchableOpacity>
                   </View>
 
-                <Text style={[styles.orText, styles.whiteText]}>Ou entre com</Text>
-
-                  <View style={styles.socialRow}>
+                  <View style={[styles.socialRow, { marginTop: spacing.md }]}>
                   <Pressable
                     onHoverIn={() => setHoverApple(true)}
                     onHoverOut={() => setHoverApple(false)}
@@ -411,22 +409,32 @@ const styles = StyleSheet.create({
   loginRow: { flexDirection: 'row', alignItems: 'center' },
   whiteText: { color: '#fff' },
   orText: {
-    color: colors.textMuted,
+    color: colors.textSecondary,
     fontSize: fonts.sizes.sm,
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
+    fontWeight: '500',
   },
 
-  socialRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.xs },
+  socialRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
   socialBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    width: 48, height: 48, borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(74,222,128,0.3)',
     alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 3,
   },
   socialBtnHover: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: 'rgba(74,222,128,0.15)',
+    borderColor: 'rgba(74,222,128,0.6)',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 5,
   },
   socialIcon: { fontSize: 18, color: '#fff', fontWeight: '700' },
 });

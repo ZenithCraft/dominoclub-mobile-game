@@ -127,19 +127,17 @@ export function LoginScreen({ navigation }: Props) {
                     secureTextEntry
                   />
 
-                  <View style={styles.forgotRow}>
+                  <View style={styles.actionRow}>
                     <TouchableOpacity style={styles.forgotBtn} onPress={() => navigation.navigate('ForgotPassword')}>
                       <Text style={styles.forgotText}>Esqueceu a senha?</Text>
                     </TouchableOpacity>
+                    <Button title="Entrar" onPress={handleSendOtp} loading={loading} size="sm" style={styles.btn} />
                   </View>
-
-                  <Button title="Entrar" onPress={handleSendOtp} loading={loading} size="sm" style={styles.btn} />
 
                   <TouchableOpacity onPress={() => navigation.navigate('Register')}>
                     <Text style={styles.linkMuted}>Criar uma conta</Text>
                   </TouchableOpacity>
 
-                  <Text style={styles.orText}>Ou entre com</Text>
                   <View style={styles.socialRow}>
                     <Pressable
                       onHoverIn={() => setHoverApple(true)}
@@ -243,34 +241,48 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#ffffff', marginBottom: spacing.xs },
 
-  forgotRow: { width: '100%', alignItems: 'flex-end', marginTop: -spacing.xs },
+  actionRow: {
+    flexDirection: 'row',
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.xs,
+  },
   forgotBtn: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 10,
-    backgroundColor: 'rgba(239,68,68,0.16)',
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(250, 204, 21, 0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.45)',
+    borderColor: 'rgba(250, 204, 21, 0.5)',
   },
   forgotText: {
-    color: '#EF4444',
+    color: '#facc15',
     fontSize: fonts.sizes.sm,
-    fontWeight: '800',
-    textDecorationLine: 'underline',
+    fontWeight: '700',
   },
-  btn: { width: 150, alignSelf: 'center' },
+  btn: { width: 120, alignSelf: 'center' },
   linkMuted: { color: '#ffffff', fontSize: fonts.sizes.sm, marginTop: spacing.xs },
-  orText: { color: '#ffffff', fontSize: fonts.sizes.sm, marginTop: spacing.sm },
-  socialRow: { flexDirection: 'row', gap: spacing.xl, marginTop: spacing.sm },
+  orText: { color: colors.textSecondary, fontSize: fonts.sizes.sm, marginTop: spacing.md, fontWeight: '500' },
+  socialRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
   socialBtn: {
-    width: 40, height: 40, borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    width: 48, height: 48, borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(74,222,128,0.3)',
     alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 3,
   },
   socialBtnHover: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: 'rgba(74,222,128,0.15)',
+    borderColor: 'rgba(74,222,128,0.6)',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });
