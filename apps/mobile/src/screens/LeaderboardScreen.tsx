@@ -98,9 +98,10 @@ const cardStyles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
+    borderColor: 'rgba(255,255,255,0.10)',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
   },
   label: { color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.xs, fontWeight: '700', marginBottom: 4 },
   prev: { color: 'rgba(255,255,255,0.45)', fontSize: 10, marginTop: 6 },
@@ -169,7 +170,7 @@ const rowStyles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
   },
-  wrapMe: { backgroundColor: 'rgba(74,222,128,0.07)' },
+  wrapMe: { backgroundColor: 'rgba(34,197,94,0.12)' },
   pos: { color: 'rgba(255,255,255,0.45)', fontSize: fonts.sizes.sm, fontWeight: '700', width: 32 },
   avatar: {
     width: 36, height: 36, borderRadius: 18,
@@ -177,7 +178,7 @@ const rowStyles = StyleSheet.create({
   },
   avatarText: { fontWeight: '900', fontSize: fonts.sizes.md },
   name: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
-  nameMe: { color: '#4ade80' },
+  nameMe: { color: '#22c55e' },
   pts: { fontWeight: '900', fontSize: fonts.sizes.sm },
 });
 
@@ -251,12 +252,12 @@ export function LeaderboardScreen({ navigation }: Props) {
         </View>
 
         {loading ? (
-          <ActivityIndicator color="#4ade80" style={{ marginTop: spacing.xl }} />
+          <ActivityIndicator color="#22c55e" style={{ marginTop: spacing.xl }} />
         ) : (
           <FlatList
             data={rest}
             keyExtractor={(e) => e.userId}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchData(true)} tintColor="#4ade80" />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchData(true)} tintColor="#22c55e" />}
             ListHeaderComponent={
               <View style={styles.listHeader}>
                 {myLeague && <MyLeagueCard data={myLeague} />}
@@ -329,7 +330,7 @@ const styles = StyleSheet.create({
     flex: 1, paddingVertical: 9, borderRadius: radius.full,
     alignItems: 'center',
   },
-  toggleBtnActive: { backgroundColor: '#4ade80' },
+  toggleBtnActive: { backgroundColor: '#22c55e' },
   toggleText: { color: 'rgba(255,255,255,0.55)', fontWeight: '700', fontSize: fonts.sizes.sm },
   toggleTextActive: { color: '#000', fontWeight: '900' },
 

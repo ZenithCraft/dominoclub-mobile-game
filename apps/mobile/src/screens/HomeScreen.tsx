@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ImageBackground,
-  TouchableOpacity, Modal, Image, Platform, Pressable, Animated,
+  TouchableOpacity, Modal, Image, Platform, Pressable, Animated, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -514,63 +514,64 @@ export function HomeScreen({ navigation }: Props) {
                 <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
-
-            <View style={styles.profileBody}>
-              {/* Left: avatar + info */}
-              <View style={styles.profileLeft}>
-                <TouchableOpacity style={styles.profileAvatar} activeOpacity={0.85} onPress={onPickProfileAvatar}>
-                  {profileAvatarUri ? (
-                    <Image source={{ uri: profileAvatarUri }} style={styles.profileAvatarImg} />
-                  ) : (
-                    <Text style={styles.profileAvatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
-                  )}
-                </TouchableOpacity>
-                <Text style={styles.profileName}>{user?.name || 'Jogador'}</Text>
-                <Text style={styles.profileBadge}>Bronze</Text>
-                <View style={styles.profileStarContainer}>
-                  <LevelStarBadge level={profileStatsLoading ? '--' : levelText} size={44} />
+            <ScrollView style={styles.profileScroll} contentContainerStyle={styles.profileScrollContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.profileBody}>
+                {/* Left: avatar + info */}
+                <View style={styles.profileLeft}>
+                  <TouchableOpacity style={styles.profileAvatar} activeOpacity={0.85} onPress={onPickProfileAvatar}>
+                    {profileAvatarUri ? (
+                      <Image source={{ uri: profileAvatarUri }} style={styles.profileAvatarImg} />
+                    ) : (
+                      <Text style={styles.profileAvatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
+                    )}
+                  </TouchableOpacity>
+                  <Text style={styles.profileName}>{user?.name || 'Jogador'}</Text>
+                  <Text style={styles.profileBadge}>Bronze</Text>
+                  <View style={styles.profileStarContainer}>
+                    <LevelStarBadge level={profileStatsLoading ? '--' : levelText} size={44} />
+                  </View>
+                  <View style={styles.xpBarBg}>
+                    <View style={[styles.xpBarFill, { width: '40%' }]} />
+                  </View>
                 </View>
-                <View style={styles.xpBarBg}>
-                  <View style={[styles.xpBarFill, { width: '40%' }]} />
+
+                {/* Right: stats */}
+                <View style={styles.profileRight}>
+                  <Text style={styles.statLabel}>Total de vitórias</Text>
+                  <View style={styles.statPill}>
+                    <Text style={styles.statValue}>{profileStatsLoading ? '...' : String(profileStats.totalWins)}</Text>
+                  </View>
+
+                  <Text style={styles.statLabel}>Taxa de vitória</Text>
+                  <View style={styles.statPill}>
+                    <Text style={styles.statValue}>{profileStatsLoading ? '...' : `${profileStats.winRate}%`}</Text>
+                  </View>
+
+                  <Text style={styles.statLabel}>Torneios ganhos</Text>
+                  <View style={styles.statPill}>
+                    <Text style={styles.statValue}>{profileStatsLoading ? '...' : String(profileStats.tournamentsWon)}</Text>
+                  </View>
                 </View>
               </View>
 
-              {/* Right: stats */}
-              <View style={styles.profileRight}>
-                <Text style={styles.statLabel}>Total de vitórias</Text>
-                <View style={styles.statPill}>
-                  <Text style={styles.statValue}>{profileStatsLoading ? '...' : String(profileStats.totalWins)}</Text>
-                </View>
-
-                <Text style={styles.statLabel}>Taxa de vitória</Text>
-                <View style={styles.statPill}>
-                  <Text style={styles.statValue}>{profileStatsLoading ? '...' : `${profileStats.winRate}%`}</Text>
-                </View>
-
-                <Text style={styles.statLabel}>Torneios ganhos</Text>
-                <View style={styles.statPill}>
-                  <Text style={styles.statValue}>{profileStatsLoading ? '...' : String(profileStats.tournamentsWon)}</Text>
-                </View>
+              <View style={styles.profileActions}>
+                <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
+                  <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('History'); }}>
+                    <Text style={styles.profileActionTextDark}>Histórico De Partidas</Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+                <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
+                  <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Achievements'); }}>
+                    <Text style={styles.profileActionTextDark}>Conquistas</Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+                <LinearGradient colors={['#ffd700', '#ca8a04']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
+                  <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Leaderboard'); }}>
+                    <Text style={styles.profileActionTextDark}>Liga & Ranking</Text>
+                  </TouchableOpacity>
+                </LinearGradient>
               </View>
-            </View>
-
-            <View style={styles.profileActions}>
-              <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
-                <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('History'); }}>
-                  <Text style={styles.profileActionTextDark}>Histórico De Partidas</Text>
-                </TouchableOpacity>
-              </LinearGradient>
-              <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
-                <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Achievements'); }}>
-                  <Text style={styles.profileActionTextDark}>Conquistas</Text>
-                </TouchableOpacity>
-              </LinearGradient>
-              <LinearGradient colors={['#ffd700', '#ca8a04']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
-                <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Leaderboard'); }}>
-                  <Text style={styles.profileActionTextDark}>Liga & Ranking</Text>
-                </TouchableOpacity>
-              </LinearGradient>
-            </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -738,15 +739,22 @@ const styles = StyleSheet.create({
   // Profile modal
   profileCard: {
     width: Platform.OS === 'web' ? 640 : 520,
+    maxHeight: '85%',
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
     paddingHorizontal: SETTINGS_CARD_PAD,
-    paddingVertical: Math.max(10, SETTINGS_CARD_PAD - 6),
+    paddingTop: Math.max(10, SETTINGS_CARD_PAD - 6),
+    paddingBottom: Math.max(6, SETTINGS_CARD_PAD - 10),
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#BBFF00',
-    gap: Math.max(10, SETTINGS_ITEM_GAP - 6),
     ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.45)' } as any) : shadows.card),
+  },
+  profileScroll: {
+    flex: 1,
+  },
+  profileScrollContent: {
+    gap: Math.max(10, SETTINGS_ITEM_GAP - 6),
   },
   profileBody: {
     flexDirection: 'row',
