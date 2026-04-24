@@ -25,6 +25,7 @@ import axios from 'axios';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { prisma } from './prisma.service';
 
 export interface IntegrityResult {
   valid: boolean;
@@ -311,4 +312,93 @@ function buildAppleJwt(): string {
 
 function generateTransactionId(): string {
   return `dc_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// ─── App Attest Phase 2 — Device Session Tokens ───────────────────────────────
+//
+// After a successful Phase 1 attestation Apple rate-limits re-attestation, so
+// subsequent sessions present a server-signed "device session token" instead of
+// going back to Apple. The token binds userId + keyId, is revocable (via the
+// DeviceBind.is_active flag), and expires after DEVICE_SESSION_TTL_MS (default 48 h).
+
+const DEVICE_SESSION_SIGNING_SUFFIX = ':device-session-v1';
+
+export interface DeviceSessionPayload {
+  sub: string; // userId
+  kid: string; // App Attest keyId stored in DeviceBind
+  plt: string; // platform
+}
+
+/**
+ * Issue a short-lived signed device session token after a successful attestation.
+ * Call this once per successful app_attest verification and emit it to the client
+ * so it can persist it in secure storage for future sessions.
+ */
+export function issueDeviceSessionToken(userId: string, keyId: string, platform: string): string {
+  const secret = config.jwt.accessSecret + DEVICE_SESSION_SIGNING_SUFFIX;
+  const ttlSec = Math.floor(config.integrity.deviceSessionTtlMs / 1000);
+  return jwt.sign({ sub: userId, kid: keyId, plt: platform }, secret, { expiresIn: ttlSec });
+}
+
+/**
+ * Validate a device session token for App Attest Phase 2.
+ * Checks signature, expiry, userId binding, and that the keyId is still
+ * active in DeviceBind (revocation check).
+ */
+export async function verifyDeviceSessionToken(
+  token: string,
+  userId: string,
+): Promise<IntegrityResult> {
+  const platform = 'ios' as const;
+  const attestationType = 'app_attest_session';
+
+  if (config.integrity.mockMode) {
+    const valid = token === config.integrity.mockToken;
+    return {
+      valid,
+      platform: 'mock',
+      attestationType,
+      verdict: valid ? 'mock_pass' : 'mock_fail',
+      reason: valid ? undefined : 'Mock token inválido',
+    };
+  }
+
+  const secret = config.jwt.accessSecret + DEVICE_SESSION_SIGNING_SUFFIX;
+
+  let payload: DeviceSessionPayload;
+  try {
+    payload = jwt.verify(token, secret) as DeviceSessionPayload;
+  } catch (err: any) {
+    const expired = err.name === 'TokenExpiredError';
+    logger.warn('[Integrity] Device session token rejected', { userId, reason: err.name });
+    return {
+      valid: false,
+      platform,
+      attestationType,
+      verdict: expired ? 'session_expired' : 'session_invalid',
+      reason: expired ? 'Sessão expirada — faça a verificação novamente' : 'Token de sessão inválido',
+    };
+  }
+
+  if (payload.sub !== userId) {
+    logger.warn('[Integrity] Device session userId mismatch', { expected: userId, got: payload.sub });
+    return { valid: false, platform, attestationType, verdict: 'session_user_mismatch', reason: 'Token não pertence a este usuário' };
+  }
+
+  // Revocation check — device must still be active in DeviceBind
+  try {
+    const bind = await prisma.deviceBind.findFirst({
+      where: { userId, attest_key_id: payload.kid, is_active: true },
+      select: { id: true },
+    });
+    if (!bind) {
+      logger.warn('[Integrity] Device session revoked or missing DeviceBind', { userId, keyId: payload.kid });
+      return { valid: false, platform, attestationType, verdict: 'session_revoked', reason: 'Dispositivo revogado — faça a verificação novamente' };
+    }
+  } catch (err: any) {
+    logger.error('[Integrity] DeviceBind lookup failed during session verify', { userId, message: err.message });
+    return { valid: false, platform, attestationType, verdict: 'session_db_error', reason: 'Erro interno de verificação' };
+  }
+
+  return { valid: true, platform, attestationType, verdict: 'app_attest_session_pass' };
 }

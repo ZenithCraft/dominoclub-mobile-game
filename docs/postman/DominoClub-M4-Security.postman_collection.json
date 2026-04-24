@@ -1,18 +1,18 @@
 {
   "info": {
-    "name": "DominoClub — Milestone 4 Security Demo",
+    "name": "DominoClub — Security Demo (M4 · M5 · M6)",
     "_postman_id": "dc-m4-security-collection",
-    "description": "Demonstração completa das features de segurança do Milestone 4:\n- Replay protection (nonce)\n- Trust score\n- GPS impossible movement\n- GPS accuracy / mock location\n- Velocity checks (fila e saque)\n- Device binding\n\n**COMO USAR:**\n1. Importe o arquivo de Environment junto com esta coleção\n2. Selecione o environment 'DominoClub M4 — Local Dev' no canto superior direito\n3. Rode '0 — DEV LOGIN' primeiro — ele salva o token automaticamente\n4. Execute os requests na ordem dentro de cada pasta",
+    "description": "Full demonstration of security features across Milestones 4, 5, and 6.\n\n**M4:** Replay protection (nonce), Trust score, GPS impossible movement, GPS accuracy / mock location, Velocity checks (queue & withdrawal), Device binding\n**M5:** PIX webhook hardening, Double-spend fix, JWT blacklist, Admin rate limit\n**M6 (new):** App Attest Phase 2 (session token), IP-level velocity limit, Real-time bot detection\n\n**HOW TO USE:**\n1. Import the Environment file alongside this collection\n2. Select 'DominoClub — Local Dev' environment in the top-right corner\n3. Run '0 — AUTHENTICATION → Dev Login' first — it saves tokens automatically\n4. Execute requests in order within each folder\n5. For WebSocket: New → Socket.IO → ws://localhost:3001 → Auth header: Bearer {{access_token}}",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [],
   "item": [
     {
-      "name": "🔐 0 — AUTENTICAÇÃO",
-      "description": "Rode este request primeiro. O token é salvo automaticamente nas variáveis de ambiente.",
+      "name": "🔐 0 — AUTHENTICATION",
+      "description": "Run these requests first. Tokens are saved automatically to environment variables.",
       "item": [
         {
-          "name": "Dev Login (salva token automaticamente)",
+          "name": "Dev Login (saves access_token automatically)",
           "event": [
             {
               "listen": "test",
@@ -24,10 +24,10 @@
                   "    pm.environment.set('access_token', json.accessToken);",
                   "    pm.environment.set('refresh_token', json.refreshToken || '');",
                   "    pm.environment.set('user_id', json.user?.id || '');",
-                  "    console.log('✅ Token salvo! User ID:', json.user?.id);",
-                  "    pm.test('Login bem-sucedido', () => pm.response.to.have.status(200));",
+                  "    console.log('✅ Token saved! User ID:', json.user?.id);",
+                  "    pm.test('Login successful', () => pm.response.to.have.status(200));",
                   "} else {",
-                  "    pm.test('Login falhou — verifique se o backend está rodando', () => false);",
+                  "    pm.test('Login failed — check if backend is running', () => false);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -42,18 +42,54 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"+5511999990001\",\n  \"name\": \"Demo User M4\"\n}"
+              "raw": "{\n  \"phone\": \"+5511999990001\",\n  \"name\": \"Demo User\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/auth/dev/login",
               "host": ["{{base_url}}"],
               "path": ["auth", "dev", "login"]
             },
-            "description": "Login de dev — só funciona em NODE_ENV=development.\n\nO script de teste salva automaticamente:\n- access_token\n- refresh_token\n- user_id\n\nVocê vai ver esses valores preenchidos nas variáveis de ambiente após rodar."
+            "description": "Dev login — only works in NODE_ENV=development.\n\nThe test script automatically saves:\n- access_token\n- refresh_token\n- user_id\n\nThese values will be filled in your environment variables after running."
           }
         },
         {
-          "name": "Dev Login — 2º usuário (device diferente)",
+          "name": "Admin Login (saves admin_token automatically)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.token) {",
+                  "    pm.environment.set('admin_token', json.token);",
+                  "    console.log('✅ Admin token saved!');",
+                  "    pm.test('Admin login successful', () => pm.response.to.have.status(200));",
+                  "} else {",
+                  "    console.log('⚠️ Response:', JSON.stringify(json));",
+                  "    pm.test('Admin login failed', () => false);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"changeme_in_production\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/login",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "login"]
+            },
+            "description": "Admin login — required to access fraud-logs, low-trust users, trust restoration, etc.\n\nDefault dev credentials:\n- username: admin\n- password: changeme_in_production\n\nThe test script automatically saves the admin_token variable."
+          }
+        },
+        {
+          "name": "Dev Login — 2nd user (different device)",
           "event": [
             {
               "listen": "test",
@@ -63,7 +99,7 @@
                   "if (json.accessToken) {",
                   "    pm.environment.set('access_token_user2', json.accessToken);",
                   "    pm.environment.set('user_id_2', json.user?.id || '');",
-                  "    console.log('✅ User 2 token salvo! ID:', json.user?.id);",
+                  "    console.log('✅ User 2 token saved! ID:', json.user?.id);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -85,17 +121,17 @@
               "host": ["{{base_url}}"],
               "path": ["auth", "dev", "login"]
             },
-            "description": "Segundo usuário para demonstrar device binding com dispositivos diferentes."
+            "description": "Second user to demonstrate device binding with different devices."
           }
         }
       ]
     },
     {
-      "name": "🎯 CENA 1 — Nonce e Replay Protection",
-      "description": "Demonstra que o servidor emite nonces de uso único.\nUm nonce já usado é rejeitado imediatamente.",
+      "name": "🎯 SCENE 1 — Nonce & Replay Protection",
+      "description": "Demonstrates that the server issues single-use nonces.\nA nonce that has already been used is immediately rejected.",
       "item": [
         {
-          "name": "1a. Obter Nonce (salva automaticamente)",
+          "name": "1a. Get Nonce (saves automatically)",
           "event": [
             {
               "listen": "test",
@@ -103,7 +139,7 @@
                 "exec": [
                   "const json = pm.response.json();",
                   "",
-                  "pm.test('Nonce recebido com sucesso', () => {",
+                  "pm.test('Nonce received successfully', () => {",
                   "    pm.response.to.have.status(200);",
                   "    pm.expect(json).to.have.property('nonce');",
                   "    pm.expect(json).to.have.property('expiresAt');",
@@ -114,8 +150,8 @@
                   "    pm.environment.set('nonce_expires_at', json.expiresAt);",
                   "",
                   "    const expDate = new Date(json.expiresAt);",
-                  "    console.log('✅ Nonce salvo:', json.nonce);",
-                  "    console.log('⏱ Expira em:', expDate.toLocaleTimeString(), '(2 minutos)');",
+                  "    console.log('✅ Nonce saved:', json.nonce);",
+                  "    console.log('⏱ Expires at:', expDate.toLocaleTimeString(), '(2 minutes)');",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -134,19 +170,19 @@
               "host": ["{{base_url}}"],
               "path": ["game", "integrity-nonce"]
             },
-            "description": "Emite um UUID de uso único com TTL de 2 minutos.\n\nO nonce é armazenado em Redis (ou Map em memória) e deletado atomicamente no primeiro uso.\n\n✅ ESPERADO: Status 200 com { nonce, expiresAt }"
+            "description": "Issues a single-use UUID with a 2-minute TTL.\n\nThe nonce is stored in Redis (or in-memory Map) and atomically deleted on first use.\n\n✅ EXPECTED: Status 200 with { nonce, expiresAt }"
           }
         },
         {
-          "name": "1b. Verificar Nonce Salvo (variáveis)",
+          "name": "1b. Verify Saved Nonce (variables)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "const nonce = pm.environment.get('nonce');",
-                  "console.log('📋 Nonce atual nas variáveis:', nonce);",
-                  "pm.test('Nonce está salvo na variável de ambiente', () => {",
+                  "console.log('📋 Current nonce in variables:', nonce);",
+                  "pm.test('Nonce is saved in environment variable', () => {",
                   "    pm.expect(nonce).to.not.be.empty;",
                   "});"
                 ],
@@ -166,11 +202,11 @@
               "host": ["{{base_url}}"],
               "path": ["game", "integrity-nonce"]
             },
-            "description": "Obter um segundo nonce apenas para verificar que múltiplos nonces podem coexistir."
+            "description": "Get a second nonce to verify that multiple nonces can coexist independently."
           }
         },
         {
-          "name": "1c. ℹ️ INSTRUÇÕES — Replay via WebSocket",
+          "name": "1c. ℹ️ INSTRUCTIONS — Replay via WebSocket",
           "event": [
             {
               "listen": "prerequest",
@@ -181,16 +217,16 @@
                   "",
                   "console.log('');",
                   "console.log('═══════════════════════════════════════════════');",
-                  "console.log('INSTRUÇÕES PARA TESTE DE REPLAY VIA WEBSOCKET');",
+                  "console.log('INSTRUCTIONS — REPLAY ATTACK TEST VIA WEBSOCKET');",
                   "console.log('═══════════════════════════════════════════════');",
                   "console.log('');",
-                  "console.log('1. Abra uma nova aba no Postman');",
-                  "console.log('2. Clique em New → WebSocket Request');",
+                  "console.log('1. Open a new tab in Postman');",
+                  "console.log('2. Click New → Socket.IO');",
                   "console.log('3. URL: ws://localhost:3001');",
-                  "console.log('4. Aba Headers, adicione:');",
+                  "console.log('4. Under Headers, add:');",
                   "console.log('   Authorization: Bearer ' + token.substring(0, 20) + '...');",
                   "console.log('');",
-                  "console.log('5. Conecte. Depois emita este evento queue:join:');",
+                  "console.log('5. Connect. Then emit this queue:join event:');",
                   "console.log(JSON.stringify({",
                   "    mode: 'ARENA_1V1',",
                   "    betAmount: 0,",
@@ -199,7 +235,7 @@
                   "    platform: 'android'",
                   "}, null, 2));",
                   "console.log('');",
-                  "console.log('6. Emita de novo COM O MESMO NONCE → deve receber NONCE_INVALID');",
+                  "console.log('6. Emit AGAIN WITH THE SAME NONCE → should receive NONCE_INVALID');",
                   "console.log('═══════════════════════════════════════════════');"
                 ],
                 "type": "text/javascript"
@@ -209,8 +245,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "// Esse request é apenas para exibir as instruções no console",
-                  "pm.test('Instruções exibidas no Console (View → Console)', () => true);"
+                  "pm.test('Instructions displayed in Console (View → Console)', () => true);"
                 ],
                 "type": "text/javascript"
               }
@@ -224,17 +259,17 @@
               "host": ["{{base_url}}"],
               "path": ["..","health"]
             },
-            "description": "Este request apenas exibe as instruções do WebSocket no Console do Postman.\n\nAbra View → Console para ver as instruções formatadas com o nonce atual já preenchido."
+            "description": "This request only displays WebSocket instructions in the Postman Console.\n\nOpen View → Console to see the instructions with the current nonce pre-filled."
           }
         }
       ]
     },
     {
-      "name": "🚀 CENA 2 — Velocity Check (Fila)",
-      "description": "Demonstra o bloqueio por excesso de tentativas de entrar na fila.\nMáximo: 10 tentativas em 5 minutos por usuário.",
+      "name": "🚀 SCENE 2 — Velocity Check (Queue)",
+      "description": "Demonstrates blocking for too many queue join attempts.\nMaximum: 10 attempts per user in 5 minutes.",
       "item": [
         {
-          "name": "2a. Status atual do servidor",
+          "name": "2a. Backend health check",
           "request": {
             "method": "GET",
             "header": [],
@@ -245,11 +280,11 @@
               "port": "3001",
               "path": ["health"]
             },
-            "description": "Verifica se o backend está rodando antes de começar os testes."
+            "description": "Verifies the backend is running before starting the tests."
           }
         },
         {
-          "name": "2b. ℹ️ INSTRUÇÕES — Velocity via WebSocket",
+          "name": "2b. ℹ️ INSTRUCTIONS — Velocity via WebSocket",
           "event": [
             {
               "listen": "prerequest",
@@ -259,10 +294,10 @@
                   "",
                   "console.log('');",
                   "console.log('═══════════════════════════════════════════════');",
-                  "console.log('TESTE DE VELOCITY CHECK — FILA');",
+                  "console.log('VELOCITY CHECK TEST — QUEUE');",
                   "console.log('═══════════════════════════════════════════════');",
                   "console.log('');",
-                  "console.log('No WebSocket conectado, emita queue:join 11 vezes:');",
+                  "console.log('In the connected WebSocket, emit queue:join 11 times:');",
                   "console.log('');",
                   "const msg = JSON.stringify({",
                   "    mode: 'RECREATIONAL_2V2',",
@@ -271,13 +306,13 @@
                   "}, null, 2);",
                   "console.log(msg);",
                   "console.log('');",
-                  "console.log('Na 11ª tentativa você deve receber:');",
+                  "console.log('On the 11th attempt you should receive:');",
                   "console.log(JSON.stringify({",
-                  "    message: 'Muitas tentativas de entrar na fila. Aguarde alguns minutos.',",
+                  "    message: 'Too many queue attempts. Please wait a few minutes.',",
                   "    code: 'VELOCITY_EXCEEDED'",
                   "}, null, 2));",
                   "console.log('');",
-                  "console.log('Dica: use o botão de histórico do Postman WS para reenviar rapidamente.');"
+                  "console.log('Tip: use the WebSocket message history button to resend quickly.');"
                 ],
                 "type": "text/javascript"
               }
@@ -285,7 +320,7 @@
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('Instruções exibidas no Console', () => true);"],
+                "exec": ["pm.test('Instructions displayed in Console', () => true);"],
                 "type": "text/javascript"
               }
             }
@@ -300,24 +335,24 @@
               "port": "3001",
               "path": ["health"]
             },
-            "description": "Abra View → Console para ver as instruções do teste de velocity."
+            "description": "Open View → Console to see velocity test instructions."
           }
         }
       ]
     },
     {
-      "name": "📍 CENA 3 — GPS Impossible Movement",
-      "description": "Demonstra detecção de movimento impossível.\nEnvia São Paulo → aguarda 15s → envia Manaus.\nO servidor calcula ~4000 km em poucos segundos = velocidade impossível.",
+      "name": "📍 SCENE 3 — GPS Impossible Movement",
+      "description": "Demonstrates impossible movement detection.\nSend Sao Paulo → wait 15s → send Manaus.\nThe server calculates ~4000 km in a few seconds = impossible speed.",
       "item": [
         {
-          "name": "3a. Atualizar GPS — São Paulo",
+          "name": "3a. Verify token (before WebSocket GPS test)",
           "event": [
             {
               "listen": "prerequest",
               "script": {
                 "exec": [
                   "pm.environment.set('gps_timestamp', Date.now().toString());",
-                  "console.log('📍 Enviando GPS de São Paulo: -23.5505, -46.6333');"
+                  "console.log('📍 Ready. Send GPS from Sao Paulo: -23.5505, -46.6333');"
                 ],
                 "type": "text/javascript"
               }
@@ -326,11 +361,11 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('GPS de São Paulo aceito', () => {",
+                  "pm.test('Token is valid', () => {",
                   "    pm.response.to.have.status(200);",
                   "});",
-                  "console.log('✅ Localização de São Paulo registrada.');",
-                  "console.log('⏳ Aguarde 15 segundos antes de rodar o próximo request!');"
+                  "console.log('✅ Token confirmed. Proceed with WebSocket GPS test.');",
+                  "console.log('⏳ After sending Sao Paulo GPS, wait 15 seconds before sending Manaus!');"
                 ],
                 "type": "text/javascript"
               }
@@ -350,11 +385,11 @@
               "host": ["{{base_url}}"],
               "path": ["auth", "me"]
             },
-            "description": "⚠️ O GPS é enviado via WebSocket no queue:join, não via HTTP.\n\nPara esta cena:\n1. No WebSocket, emita queue:join com GPS de São Paulo:\n```json\n{\n  \"mode\": \"RECREATIONAL_2V2\",\n  \"betAmount\": 0,\n  \"gps\": { \"lat\": -23.5505, \"lng\": -46.6333, \"accuracy\": 15 }\n}\n```\n2. Aguarde 15 segundos\n3. Emita novamente com GPS de Manaus:\n```json\n{\n  \"mode\": \"RECREATIONAL_2V2\",\n  \"betAmount\": 0,\n  \"gps\": { \"lat\": -3.1190, \"lng\": -60.0217, \"accuracy\": 15 }\n}\n```\n\nEste request de /auth/me aqui é só para verificar o token está funcionando."
+            "description": "⚠️ GPS is sent via WebSocket in queue:join, not via HTTP.\n\nFor this scene:\n1. In the WebSocket, emit queue:join with Sao Paulo GPS:\n```json\n{\n  \"mode\": \"RECREATIONAL_2V2\",\n  \"betAmount\": 0,\n  \"gps\": { \"lat\": -23.5505, \"lng\": -46.6333, \"accuracy\": 15 }\n}\n```\n2. Wait 15 seconds\n3. Emit again with Manaus GPS:\n```json\n{\n  \"mode\": \"RECREATIONAL_2V2\",\n  \"betAmount\": 0,\n  \"gps\": { \"lat\": -3.1190, \"lng\": -60.0217, \"accuracy\": 15 }\n}\n```\n\nThis /auth/me request just confirms the token is working."
           }
         },
         {
-          "name": "3b. ℹ️ INSTRUÇÕES GPS Completo",
+          "name": "3b. ℹ️ FULL GPS INSTRUCTIONS",
           "event": [
             {
               "listen": "prerequest",
@@ -362,32 +397,32 @@
                 "exec": [
                   "console.log('');",
                   "console.log('═══════════════════════════════════════════════');",
-                  "console.log('CENA 3 — GPS MOVIMENTO IMPOSSÍVEL');",
+                  "console.log('SCENE 3 — GPS IMPOSSIBLE MOVEMENT');",
                   "console.log('═══════════════════════════════════════════════');",
                   "console.log('');",
-                  "console.log('PASSO 1 — Emita no WebSocket (São Paulo):');",
+                  "console.log('STEP 1 — Emit in WebSocket (Sao Paulo):');",
                   "console.log(JSON.stringify({",
                   "    mode: 'RECREATIONAL_2V2',",
                   "    betAmount: 0,",
                   "    gps: { lat: -23.5505, lng: -46.6333, accuracy: 15 }",
                   "}, null, 2));",
                   "console.log('');",
-                  "console.log('PASSO 2 — Aguarde 15 segundos (veja o relógio)');",
+                  "console.log('STEP 2 — Wait 15 seconds (watch the clock)');",
                   "console.log('');",
-                  "console.log('PASSO 3 — Emita de novo (Manaus, 4000 km de distância):');",
+                  "console.log('STEP 3 — Emit again (Manaus, 4000 km away):');",
                   "console.log(JSON.stringify({",
                   "    mode: 'RECREATIONAL_2V2',",
                   "    betAmount: 0,",
                   "    gps: { lat: -3.1190, lng: -60.0217, accuracy: 15 }",
                   "}, null, 2));",
                   "console.log('');",
-                  "console.log('RESPOSTA ESPERADA:');",
+                  "console.log('EXPECTED RESPONSE:');",
                   "console.log(JSON.stringify({",
-                  "    message: 'Movimento GPS impossível detectado',",
+                  "    message: 'Impossible GPS movement detected',",
                   "    code: 'GPS_SUSPICIOUS'",
                   "}, null, 2));",
                   "console.log('');",
-                  "console.log('DEPOIS: Abra pgAdmin → tabela FraudLog → veja o registro IMPOSSIBLE_MOVEMENT');"
+                  "console.log('AFTER: Open pgAdmin → FraudLog table → see IMPOSSIBLE_MOVEMENT record.');"
                 ],
                 "type": "text/javascript"
               }
@@ -395,7 +430,7 @@
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('Instruções exibidas', () => true);"],
+                "exec": ["pm.test('Instructions displayed', () => true);"],
                 "type": "text/javascript"
               }
             }
@@ -415,11 +450,11 @@
       ]
     },
     {
-      "name": "📡 CENA 4 — GPS Accuracy (Mock Location)",
-      "description": "Accuracy = 0 é indicador de localização simulada no Android.\nO servidor aceita mas decrementa o trust_score e registra no log.",
+      "name": "📡 SCENE 4 — GPS Accuracy (Mock Location)",
+      "description": "Accuracy = 0 is a mock location indicator on Android.\nThe server accepts it but decrements trust_score and logs the event.",
       "item": [
         {
-          "name": "4a. ℹ️ INSTRUÇÕES — GPS Accuracy Zero",
+          "name": "4a. ℹ️ INSTRUCTIONS — GPS Accuracy Zero",
           "event": [
             {
               "listen": "prerequest",
@@ -427,28 +462,28 @@
                 "exec": [
                   "console.log('');",
                   "console.log('═══════════════════════════════════════════════');",
-                  "console.log('CENA 4 — MOCK LOCATION DETECTION (accuracy = 0)');",
+                  "console.log('SCENE 4 — MOCK LOCATION DETECTION (accuracy = 0)');",
                   "console.log('═══════════════════════════════════════════════');",
                   "console.log('');",
-                  "console.log('Emita no WebSocket com accuracy ZERO:');",
+                  "console.log('Emit in WebSocket with accuracy ZERO:');",
                   "console.log(JSON.stringify({",
                   "    mode: 'RECREATIONAL_2V2',",
                   "    betAmount: 0,",
                   "    gps: { lat: -23.5505, lng: -46.6333, accuracy: 0 }",
                   "}, null, 2));",
                   "console.log('');",
-                  "console.log('RESULTADO ESPERADO:');",
-                  "console.log('- NÃO bloqueia (jogo gratuito é permitido)');",
-                  "console.log('- Log no terminal: [Socket] Low-confidence GPS accepted');",
-                  "console.log('- trust_score decrementado em -0.03 no banco');",
+                  "console.log('EXPECTED RESULT:');",
+                  "console.log('- Does NOT block (free game is allowed)');",
+                  "console.log('- Server log: [Socket] Low-confidence GPS accepted');",
+                  "console.log('- trust_score decremented by -0.03 in the database');",
                   "console.log('');",
-                  "console.log('Compare com accuracy ALTA (300m):');",
+                  "console.log('Compare with HIGH accuracy (300m):');",
                   "console.log(JSON.stringify({",
                   "    mode: 'RECREATIONAL_2V2',",
                   "    betAmount: 0,",
                   "    gps: { lat: -23.5505, lng: -46.6333, accuracy: 300 }",
                   "}, null, 2));",
-                  "console.log('Resultado: aceito sem flags (300m < 500m threshold)');"
+                  "console.log('Result: accepted with no flags (300m < 500m threshold)');"
                 ],
                 "type": "text/javascript"
               }
@@ -456,7 +491,7 @@
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('Instruções exibidas', () => true);"],
+                "exec": ["pm.test('Instructions displayed', () => true);"],
                 "type": "text/javascript"
               }
             }
@@ -474,22 +509,22 @@
           }
         },
         {
-          "name": "4b. Ver trust_score atual do usuário",
+          "name": "4b. View current user profile",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "const json = pm.response.json();",
-                  "pm.test('Perfil retornado', () => pm.response.to.have.status(200));",
+                  "pm.test('Profile returned', () => pm.response.to.have.status(200));",
                   "console.log('');",
-                  "console.log('👤 DADOS DO USUÁRIO ATUAL:');",
+                  "console.log('👤 CURRENT USER DATA:');",
                   "console.log('ID:', json.id);",
-                  "console.log('Nome:', json.name);",
-                  "console.log('trust_score:', json.trust_score ?? '(não retornado neste endpoint — veja no pgAdmin)');",
+                  "console.log('Name:', json.name);",
+                  "console.log('trust_score:', json.trust_score ?? '(not in this endpoint — check pgAdmin)');",
                   "console.log('bot_score:', json.bot_score ?? 'N/A');",
                   "console.log('');",
-                  "console.log('💡 Para ver trust_score: abra pgAdmin → SELECT id, name, trust_score, bot_score FROM \"User\";');"
+                  "console.log('💡 To see trust_score: pgAdmin → SELECT id, name, trust_score, bot_score FROM \"User\";');"
                 ],
                 "type": "text/javascript"
               }
@@ -507,17 +542,17 @@
               "host": ["{{base_url}}"],
               "path": ["auth", "me"]
             },
-            "description": "Exibe os dados do usuário logado. O trust_score fica visível no pgAdmin após ações suspeitas."
+            "description": "Shows the logged-in user's data. The trust_score is visible in pgAdmin after suspicious actions."
           }
         }
       ]
     },
     {
-      "name": "🛡️ CENA 5 — Trust Score e Bloqueio de Jogo Pago",
-      "description": "Usuário com trust_score < 0.45 é bloqueado em jogos pagos.\n\nPASSO MANUAL NECESSÁRIO:\nNo pgAdmin, edite o trust_score do seu usuário para 0.30 antes de rodar a Cena 5b.",
+      "name": "🛡️ SCENE 5 — Trust Score & Paid Game Block",
+      "description": "A user with trust_score < 0.45 is blocked from paid games.\n\nMANUAL STEP REQUIRED:\nIn pgAdmin, set the user's trust_score to 0.30 before running Scene 5b.",
       "item": [
         {
-          "name": "5a. SQL — Abaixar trust_score (rodar no pgAdmin)",
+          "name": "5a. SQL — Lower trust_score (run in pgAdmin)",
           "event": [
             {
               "listen": "prerequest",
@@ -526,21 +561,21 @@
                   "const userId = pm.environment.get('user_id');",
                   "console.log('');",
                   "console.log('═══════════════════════════════════════════════');",
-                  "console.log('CENA 5 — TRUST SCORE BLOCK');",
+                  "console.log('SCENE 5 — TRUST SCORE BLOCK');",
                   "console.log('═══════════════════════════════════════════════');",
                   "console.log('');",
-                  "console.log('PASSO MANUAL: Abra pgAdmin e execute este SQL:');",
+                  "console.log('MANUAL STEP: Open pgAdmin and run this SQL:');",
                   "console.log('');",
-                  "console.log('-- Abaixar trust_score para LOW (< 0.45):');",
+                  "console.log('-- Lower trust_score to LOW (< 0.45):');",
                   "console.log('UPDATE \"User\" SET trust_score = 0.30 WHERE id = \\'' + userId + '\\';');",
                   "console.log('');",
-                  "console.log('-- Depois de demonstrar, restaurar:');",
+                  "console.log('-- After the demo, restore it:');",
                   "console.log('UPDATE \"User\" SET trust_score = 1.0 WHERE id = \\'' + userId + '\\';');",
                   "console.log('');",
-                  "console.log('NÍVEIS DE TRUST:');",
-                  "console.log('  HIGH   (≥ 0.75): jogo pago permitido');",
-                  "console.log('  MEDIUM (0.45–0.74): permitido, mas flagado nos logs');",
-                  "console.log('  LOW    (< 0.45): BLOQUEADO em jogos pagos');"
+                  "console.log('TRUST LEVELS:');",
+                  "console.log('  HIGH   (>= 0.75): paid games allowed');",
+                  "console.log('  MEDIUM (0.45-0.74): allowed, but flagged in logs');",
+                  "console.log('  LOW    (< 0.45): BLOCKED from paid games');"
                 ],
                 "type": "text/javascript"
               }
@@ -548,7 +583,7 @@
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('SQL exibido no console', () => true);"],
+                "exec": ["pm.test('SQL displayed in console', () => true);"],
                 "type": "text/javascript"
               }
             }
@@ -563,11 +598,11 @@
               "port": "3001",
               "path": ["health"]
             },
-            "description": "Execute este request para ver o SQL no Console do Postman (View → Console).\n\nDepois vá ao pgAdmin e execute o UPDATE para baixar o trust_score."
+            "description": "Run this request to see the SQL in the Postman Console (View → Console).\n\nThen go to pgAdmin and execute the UPDATE to lower the trust_score."
           }
         },
         {
-          "name": "5b. ℹ️ INSTRUÇÕES — Tentar jogo pago com trust LOW",
+          "name": "5b. ℹ️ INSTRUCTIONS — Try paid game with LOW trust",
           "event": [
             {
               "listen": "prerequest",
@@ -575,24 +610,24 @@
                 "exec": [
                   "const nonce = pm.environment.get('nonce');",
                   "console.log('');",
-                  "console.log('Após executar o SQL do passo 5a, emita no WebSocket:');",
+                  "console.log('After running the SQL from step 5a, emit in WebSocket:');",
                   "console.log('');",
                   "console.log(JSON.stringify({",
                   "    mode: 'ARENA_1V1',",
                   "    betAmount: 10,",
                   "    platform: 'android',",
                   "    integrityToken: 'dev-integrity-token',",
-                  "    integrityNonce: nonce || '(obtenha um nonce novo primeiro)',",
+                  "    integrityNonce: nonce || '(get a new nonce first)',",
                   "    gps: { lat: -23.5505, lng: -46.6333, accuracy: 50 }",
                   "}, null, 2));",
                   "console.log('');",
-                  "console.log('RESPOSTA ESPERADA (trust LOW):');",
+                  "console.log('EXPECTED RESPONSE (trust LOW):');",
                   "console.log(JSON.stringify({",
-                  "    message: 'Conta em análise de segurança. Jogos pagos temporariamente indisponíveis.',",
+                  "    message: 'Account under security review. Paid games temporarily unavailable.',",
                   "    code: 'ACCOUNT_UNDER_REVIEW'",
                   "}, null, 2));",
                   "console.log('');",
-                  "console.log('Depois restaure: UPDATE \"User\" SET trust_score = 1.0 WHERE id = ...');"
+                  "console.log('Afterwards restore: UPDATE \"User\" SET trust_score = 1.0 WHERE id = ...');"
                 ],
                 "type": "text/javascript"
               }
@@ -600,7 +635,7 @@
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('Instruções exibidas', () => true);"],
+                "exec": ["pm.test('Instructions displayed', () => true);"],
                 "type": "text/javascript"
               }
             }
@@ -616,22 +651,65 @@
               "path": ["health"]
             }
           }
+        },
+        {
+          "name": "5c. Eligibility check — live trust_score",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Eligibility returned', () => pm.response.to.have.status(200));",
+                  "console.log('');",
+                  "console.log('📊 USER ELIGIBILITY:');",
+                  "console.log('  trust_score:', json.trust_score);",
+                  "console.log('  trust_level:', json.trust_level);",
+                  "console.log('  bot_score:  ', json.bot_score);",
+                  "console.log('  can_join_paid:', json.can_join_paid);",
+                  "if (!json.can_join_paid) {",
+                  "    console.log('  ⛔ BLOCKED — trust is LOW (< 0.45)');",
+                  "} else if (json.trust_level === 'MEDIUM') {",
+                  "    console.log('  ⚠️ Access allowed, but account is monitored');",
+                  "} else {",
+                  "    console.log('  ✅ Account is in good standing');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/game/eligibility?betAmount=10",
+              "host": ["{{base_url}}"],
+              "path": ["game", "eligibility"],
+              "query": [{ "key": "betAmount", "value": "10" }]
+            },
+            "description": "Shows the current user's security state in real time:\n- trust_score (0–1)\n- trust_level (HIGH / MEDIUM / LOW)\n- bot_score (0–1)\n- can_join_paid (false when trust < 0.45)"
+          }
         }
       ]
     },
     {
-      "name": "💸 CENA 6 — Velocity Check (Saque)",
-      "description": "Máximo 3 saques por hora por usuário.\nNa 4ª tentativa recebe HTTP 429.",
+      "name": "💸 SCENE 6 — Velocity Check (Withdrawal)",
+      "description": "Maximum 3 withdrawals per hour per user.\nOn the 4th attempt the server returns HTTP 429.",
       "item": [
         {
-          "name": "6a. Saque #1",
+          "name": "6a. Withdrawal #1",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "console.log('Saque #1 — Status:', pm.response.code);",
-                  "pm.test('Saque 1: resposta recebida', () => true);"
+                  "console.log('Withdrawal #1 — Status:', pm.response.code);",
+                  "pm.test('Withdrawal 1: response received', () => true);"
                 ],
                 "type": "text/javascript"
               }
@@ -646,25 +724,25 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"amount\": 1,\n  \"pixKey\": \"teste@email.com\"\n}"
+              "raw": "{\n  \"amount\": 1,\n  \"pixKey\": \"test@email.com\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/wallet/withdraw",
               "host": ["{{base_url}}"],
               "path": ["wallet", "withdraw"]
             },
-            "description": "Tentativa de saque #1. Pode retornar erro de saldo insuficiente (normal) — o que importa é que NÃO retorna 429."
+            "description": "Withdrawal attempt #1. May return insufficient balance error (normal) — what matters is it does NOT return 429."
           }
         },
         {
-          "name": "6b. Saque #2",
+          "name": "6b. Withdrawal #2",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "console.log('Saque #2 — Status:', pm.response.code);",
-                  "pm.test('Saque 2: resposta recebida', () => true);"
+                  "console.log('Withdrawal #2 — Status:', pm.response.code);",
+                  "pm.test('Withdrawal 2: response received', () => true);"
                 ],
                 "type": "text/javascript"
               }
@@ -679,7 +757,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"amount\": 1,\n  \"pixKey\": \"teste@email.com\"\n}"
+              "raw": "{\n  \"amount\": 1,\n  \"pixKey\": \"test@email.com\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/wallet/withdraw",
@@ -689,14 +767,14 @@
           }
         },
         {
-          "name": "6c. Saque #3",
+          "name": "6c. Withdrawal #3",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "console.log('Saque #3 — Status:', pm.response.code);",
-                  "pm.test('Saque 3: resposta recebida', () => true);"
+                  "console.log('Withdrawal #3 — Status:', pm.response.code);",
+                  "pm.test('Withdrawal 3: response received', () => true);"
                 ],
                 "type": "text/javascript"
               }
@@ -711,7 +789,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"amount\": 1,\n  \"pixKey\": \"teste@email.com\"\n}"
+              "raw": "{\n  \"amount\": 1,\n  \"pixKey\": \"test@email.com\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/wallet/withdraw",
@@ -721,24 +799,24 @@
           }
         },
         {
-          "name": "6d. Saque #4 — DEVE SER BLOQUEADO ⛔",
+          "name": "6d. Withdrawal #4 — SHOULD BE BLOCKED ⛔",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "console.log('Saque #4 — Status:', pm.response.code);",
+                  "console.log('Withdrawal #4 — Status:', pm.response.code);",
                   "const json = pm.response.json();",
                   "",
                   "if (pm.response.code === 429) {",
-                  "    pm.test('✅ VELOCITY CHECK FUNCIONANDO — 429 recebido', () => {",
+                  "    pm.test('✅ VELOCITY CHECK WORKING — 429 received', () => {",
                   "        pm.expect(json.code).to.equal('VELOCITY_EXCEEDED');",
                   "    });",
-                  "    console.log('✅ Bloqueado com sucesso!');",
-                  "    console.log('Mensagem:', json.error);",
+                  "    console.log('✅ Successfully blocked!');",
+                  "    console.log('Message:', json.error);",
                   "} else {",
-                  "    pm.test('⚠️ Esperado 429, recebido ' + pm.response.code, () => false);",
-                  "    console.log('Resposta:', JSON.stringify(json, null, 2));",
+                  "    pm.test('⚠️ Expected 429, received ' + pm.response.code, () => false);",
+                  "    console.log('Response:', JSON.stringify(json, null, 2));",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -754,24 +832,24 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"amount\": 1,\n  \"pixKey\": \"teste@email.com\"\n}"
+              "raw": "{\n  \"amount\": 1,\n  \"pixKey\": \"test@email.com\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/wallet/withdraw",
               "host": ["{{base_url}}"],
               "path": ["wallet", "withdraw"]
             },
-            "description": "Esta tentativa DEVE retornar HTTP 429 com body:\n```json\n{\n  \"error\": \"Limite de saques atingido. Tente novamente mais tarde.\",\n  \"code\": \"VELOCITY_EXCEEDED\"\n}\n```\n\nO test script confirma automaticamente."
+            "description": "This attempt MUST return HTTP 429 with body:\n```json\n{\n  \"error\": \"Withdrawal limit reached. Try again later.\",\n  \"code\": \"VELOCITY_EXCEEDED\"\n}\n```\n\nThe test script confirms this automatically."
           }
         }
       ]
     },
     {
-      "name": "📱 CENA 7 — Device Binding",
-      "description": "Demonstra que o servidor registra histórico de dispositivos.\nCada par (userId, device_id) é registrado na tabela DeviceBind.",
+      "name": "📱 SCENE 7 — Device Binding",
+      "description": "Demonstrates that the server records full device history.\nEach (userId, device_id) pair is stored in the DeviceBind table.",
       "item": [
         {
-          "name": "7a. Login com Device A",
+          "name": "7a. Login with Device A",
           "event": [
             {
               "listen": "test",
@@ -780,8 +858,8 @@
                   "const json = pm.response.json();",
                   "if (json.accessToken) {",
                   "    pm.environment.set('access_token', json.accessToken);",
-                  "    console.log('✅ Logado com device-A-001');",
-                  "    console.log('💡 Verifique agora no pgAdmin: SELECT * FROM \"DeviceBind\";');",
+                  "    console.log('✅ Logged in with device-A-001');",
+                  "    console.log('💡 Check pgAdmin now: SELECT * FROM \"DeviceBind\";');",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -796,7 +874,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"+5511999990001\",\n  \"name\": \"Demo User M4\"\n}"
+              "raw": "{\n  \"phone\": \"+5511999990001\",\n  \"name\": \"Demo User\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/auth/dev/login",
@@ -806,7 +884,7 @@
           }
         },
         {
-          "name": "7b. Login com Device B (mesmo usuário)",
+          "name": "7b. Login with Device B (same user)",
           "event": [
             {
               "listen": "test",
@@ -814,8 +892,8 @@
                 "exec": [
                   "const json = pm.response.json();",
                   "if (json.accessToken) {",
-                  "    console.log('✅ Logado com device-B-002');",
-                  "    console.log('💡 Agora você deve ver 2 registros no DeviceBind para o mesmo userId.');",
+                  "    console.log('✅ Logged in with device-B-002');",
+                  "    console.log('💡 You should now see 2 records in DeviceBind for the same userId.');",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -830,7 +908,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"+5511999990001\",\n  \"name\": \"Demo User M4\"\n}"
+              "raw": "{\n  \"phone\": \"+5511999990001\",\n  \"name\": \"Demo User\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/auth/dev/login",
@@ -840,7 +918,7 @@
           }
         },
         {
-          "name": "7c. Login com Device C (mesmo usuário)",
+          "name": "7c. Login with Device C (same user)",
           "event": [
             {
               "listen": "test",
@@ -848,7 +926,7 @@
                 "exec": [
                   "const json = pm.response.json();",
                   "if (json.accessToken) {",
-                  "    console.log('✅ Logado com device-C-003');",
+                  "    console.log('✅ Logged in with device-C-003');",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -863,7 +941,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"+5511999990001\",\n  \"name\": \"Demo User M4\"\n}"
+              "raw": "{\n  \"phone\": \"+5511999990001\",\n  \"name\": \"Demo User\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/auth/dev/login",
@@ -873,21 +951,21 @@
           }
         },
         {
-          "name": "7d. Login com Device D — DEVE GERAR ALERTA ⚠️",
+          "name": "7d. Login with Device D — SHOULD TRIGGER ALERT ⚠️",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "const json = pm.response.json();",
-                  "pm.test('Login retornou token', () => {",
+                  "pm.test('Login returned token', () => {",
                   "    pm.expect(json).to.have.property('accessToken');",
                   "});",
-                  "console.log('✅ Logado com device-D-004 (4º dispositivo)');",
-                  "console.log('⚠️ Limite de 3 dispositivos excedido!');",
-                  "console.log('💡 Verifique no pgAdmin:');",
+                  "console.log('✅ Logged in with device-D-004 (4th device)');",
+                  "console.log('⚠️ Device limit of 3 exceeded!');",
+                  "console.log('💡 Check in pgAdmin:');",
                   "console.log('   SELECT * FROM \"FraudLog\" WHERE type = \\'DEVICE_LIMIT_EXCEEDED\\' ORDER BY created_at DESC LIMIT 1;');",
-                  "console.log('   Também veja que trust_score foi decrementado em -0.08');"
+                  "console.log('   Also verify that trust_score was decremented by -0.08');"
                 ],
                 "type": "text/javascript"
               }
@@ -901,24 +979,552 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"+5511999990001\",\n  \"name\": \"Demo User M4\"\n}"
+              "raw": "{\n  \"phone\": \"+5511999990001\",\n  \"name\": \"Demo User\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/auth/dev/login",
               "host": ["{{base_url}}"],
               "path": ["auth", "dev", "login"]
             },
-            "description": "4º dispositivo para o mesmo usuário.\n\nO login é PERMITIDO (não bloqueia ainda — fase de flagging apenas),\nmas gera um FraudLog DEVICE_LIMIT_EXCEEDED e decrementa o trust_score.\n\nVerifique no pgAdmin após rodar."
+            "description": "4th device for the same user.\n\nLogin is PERMITTED (no hard block yet — flagging phase only),\nbut generates a DEVICE_LIMIT_EXCEEDED FraudLog and decrements trust_score.\n\nVerify in pgAdmin after running."
           }
         }
       ]
     },
     {
-      "name": "🔍 UTILITÁRIOS — Consultas pgAdmin",
-      "description": "Estes requests exibem os SQLs úteis no Console do Postman para você copiar e rodar no pgAdmin.",
+      "name": "🔑 SCENE 8 — App Attest Phase 2 (Session Token) [M6]",
+      "description": "Demonstrates the full App Attest Phase 2 flow.\n\nPhase 1: server issues a session token after successful attestation.\nPhase 2: subsequent sessions use the session token instead of re-attesting (Apple rate-limits re-attestation).\n\nThe token expires in 48h and is revocable via DeviceBind.is_active.",
       "item": [
         {
-          "name": "Ver FraudLogs recentes",
+          "name": "8a. Get Nonce for Phase 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Nonce received', () => pm.response.to.have.status(200));",
+                  "if (json.nonce) {",
+                  "    pm.environment.set('nonce', json.nonce);",
+                  "    console.log('✅ Nonce for App Attest Phase 1:', json.nonce);",
+                  "    console.log('⏱ Expires at:', new Date(json.expiresAt).toLocaleTimeString());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/game/integrity-nonce",
+              "host": ["{{base_url}}"],
+              "path": ["game", "integrity-nonce"]
+            },
+            "description": "First step of App Attest: the server issues a single-use nonce (UUID, 2-min TTL).\nThe iOS app uses this nonce as clientData to generate the attestation token."
+          }
+        },
+        {
+          "name": "8b. ℹ️ INSTRUCTIONS — Phase 1 via WebSocket (emits session token)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const nonce = pm.environment.get('nonce');",
+                  "console.log('');",
+                  "console.log('═══════════════════════════════════════════════');",
+                  "console.log('SCENE 8 — APP ATTEST PHASE 1 + SESSION TOKEN');",
+                  "console.log('═══════════════════════════════════════════════');",
+                  "console.log('');",
+                  "console.log('In the WebSocket (ws://localhost:3001), emit queue:join:');",
+                  "console.log('');",
+                  "console.log(JSON.stringify({",
+                  "    mode: 'RECREATIONAL_2V2',",
+                  "    betAmount: 0,",
+                  "    platform: 'ios',",
+                  "    attestationType: 'app_attest',",
+                  "    keyId: 'demo-key-id-abc123',",
+                  "    integrityToken: 'dev-integrity-token',",
+                  "    integrityNonce: nonce || '(get a nonce in step 8a first)'",
+                  "}, null, 2));",
+                  "console.log('');",
+                  "console.log('EXPECTED RESPONSE (event: integrity:session_token):');",
+                  "console.log(JSON.stringify({",
+                  "    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',",
+                  "    expiresIn: 172800000",
+                  "}, null, 2));",
+                  "console.log('');",
+                  "console.log('Copy the token and set it as the session_token environment variable.');",
+                  "console.log('Then run step 8c to demonstrate Phase 2.');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Instructions displayed in Console', () => true);"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "http://localhost:3001/health", "protocol": "http", "host": ["localhost"], "port": "3001", "path": ["health"] }
+          }
+        },
+        {
+          "name": "8c. ℹ️ INSTRUCTIONS — Phase 2 via WebSocket (uses session token)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const sessionToken = pm.environment.get('session_token') || '(paste token from step 8b here)';",
+                  "console.log('');",
+                  "console.log('═══════════════════════════════════════════════');",
+                  "console.log('SCENE 8c — APP ATTEST PHASE 2 (subsequent session)');",
+                  "console.log('═══════════════════════════════════════════════');",
+                  "console.log('');",
+                  "console.log('NO NONCE NEEDED — the session token is self-contained.');",
+                  "console.log('Emit in WebSocket:');",
+                  "console.log('');",
+                  "console.log(JSON.stringify({",
+                  "    mode: 'RECREATIONAL_2V2',",
+                  "    betAmount: 0,",
+                  "    platform: 'ios',",
+                  "    attestationType: 'app_attest_session',",
+                  "    integrityToken: sessionToken",
+                  "}, null, 2));",
+                  "console.log('');",
+                  "console.log('EXPECTED RESULT: queue:joined (without calling Apple API)');",
+                  "console.log('');",
+                  "console.log('To demonstrate revocation:');",
+                  "console.log('pgAdmin: UPDATE \"DeviceBind\" SET is_active = false WHERE attest_key_id = \\'demo-key-id-abc123\\';');",
+                  "console.log('Emit again → receives INTEGRITY_FAIL (session_revoked)');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Instructions displayed', () => true);"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "http://localhost:3001/health", "protocol": "http", "host": ["localhost"], "port": "3001", "path": ["health"] }
+          }
+        },
+        {
+          "name": "8d. View INTEGRITY_FAIL fraud-logs (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Fraud logs returned', () => pm.response.to.have.status(200));",
+                  "const integrityFails = (json.fraudLogs || json || []).filter(l => l.type === 'INTEGRITY_FAIL');",
+                  "console.log('');",
+                  "console.log('🛡️ INTEGRITY_FAIL records:', integrityFails.length);",
+                  "integrityFails.slice(0, 3).forEach(l => {",
+                  "    console.log('  -', l.reason_code, '|', JSON.stringify(l.details));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{admin_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/fraud-logs",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "fraud-logs"]
+            },
+            "description": "Returns all fraud-logs. Filter visually by type: INTEGRITY_FAIL to see Phase 1 and Phase 2 failures.\n\nRequires admin_token (run Admin Login in folder 0 — AUTHENTICATION)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🌐 SCENE 9 — IP Velocity Limit [M6 New]",
+      "description": "Demonstrates blocking for too many attempts from the same IP address.\nLimit: 20 queue:join per IP in 5 minutes.\n\nUnlike per-user velocity (Scene 2), this block protects against account-farms:\nan attacker with 50 accounts behind the same IP is still blocked.",
+      "item": [
+        {
+          "name": "9a. ℹ️ INSTRUCTIONS — IP Velocity via WebSocket",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "console.log('');",
+                  "console.log('═══════════════════════════════════════════════');",
+                  "console.log('SCENE 9 — IP VELOCITY LIMIT (new in M6)');",
+                  "console.log('═══════════════════════════════════════════════');",
+                  "console.log('');",
+                  "console.log('The limit is 20 queue:join per IP in 5 minutes.');",
+                  "console.log('');",
+                  "console.log('To demonstrate quickly:');",
+                  "console.log('1. In the WebSocket, emit queue:join 21 times (can use different accounts):');",
+                  "console.log('');",
+                  "console.log(JSON.stringify({",
+                  "    mode: 'RECREATIONAL_2V2',",
+                  "    betAmount: 0,",
+                  "    variant: 'CARROCA'",
+                  "}, null, 2));",
+                  "console.log('');",
+                  "console.log('On the 21st attempt (from any account on the same IP):');",
+                  "console.log(JSON.stringify({",
+                  "    message: 'Too many attempts from this address. Please wait a few minutes.',",
+                  "    code: 'IP_VELOCITY_EXCEEDED'",
+                  "}, null, 2));",
+                  "console.log('');",
+                  "console.log('DIFFERENCE vs Scene 2 (per-user):');",
+                  "console.log('  Scene 2: blocks the USER after 10 attempts + applies trust signal');",
+                  "console.log('  Scene 9: blocks the IP after 20 attempts, NO trust penalty');",
+                  "console.log('           (the IP may be a shared router — penalising trust would be unfair)');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Instructions displayed in Console', () => true);"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "http://localhost:3001/health", "protocol": "http", "host": ["localhost"], "port": "3001", "path": ["health"] }
+          }
+        },
+        {
+          "name": "9b. View low-trust users (consequence of per-user velocity abuse)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Users returned', () => pm.response.to.have.status(200));",
+                  "const users = json.users || json || [];",
+                  "console.log('');",
+                  "console.log('⚠️ Users with LOW trust (score < 0.45):', users.length);",
+                  "users.slice(0, 5).forEach(u => {",
+                  "    console.log('  -', u.name || u.phone, '| trust:', u.trust_score, '| bot:', u.bot_score);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{admin_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users/low-trust",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users", "low-trust"]
+            },
+            "description": "Lists users with trust_score < 0.45 — blocked from paid games.\nShows the cumulative effect of velocity_abuse, bot_pattern, integrity_fail, etc.\n\nRequires admin_token."
+          }
+        },
+        {
+          "name": "9c. Restore user trust (admin action)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const userId = pm.environment.get('user_id');",
+                  "if (!userId) {",
+                  "    console.log('⚠️ Replace :id in the URL with the real user ID (see user_id environment variable).');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Trust restored or endpoint responded', () => pm.response.code < 500);",
+                  "console.log('Response:', JSON.stringify(pm.response.json(), null, 2));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{admin_token}}", "type": "string" }]
+            },
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users/{{user_id}}/restore-trust",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users", "{{user_id}}", "restore-trust"]
+            },
+            "description": "Manually restores a user's trust_score (false positive or rehabilitation).\n\nCreates a FraudLog with type ADMIN_ACTION recording who restored and when.\n\nRequires admin_token. Uses {{user_id}} environment variable."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🤖 SCENE 10 — Real-Time Bot Detection [M6 New]",
+      "description": "Demonstrates bot detection DURING a match (not just at the end).\n\nBefore (M4): bot_score was only calculated when the match finished — the bot may have already won the prize.\nNow (M6): after 10 moves with 60%+ under 800ms, the server emits game:bot_suspicion to the suspected player.",
+      "item": [
+        {
+          "name": "10a. ℹ️ INSTRUCTIONS — Observe bot_suspicion via WebSocket",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "console.log('');",
+                  "console.log('═══════════════════════════════════════════════');",
+                  "console.log('SCENE 10 — REAL-TIME BOT DETECTION (M6 new)');",
+                  "console.log('═══════════════════════════════════════════════');",
+                  "console.log('');",
+                  "console.log('HOW TO DEMONSTRATE:');",
+                  "console.log('');",
+                  "console.log('1. Start a match normally (queue:join + game:join)');",
+                  "console.log('2. Emit game:move or game:draw rapidly 10+ times');",
+                  "console.log('   (interval < 800ms between each move)');",
+                  "console.log('');",
+                  "console.log('3. The server will emit to your private user:{id} room:');",
+                  "console.log(JSON.stringify({",
+                  "    gameId: '...',",
+                  "    fastRatio: 78,",
+                  "    message: 'Suspicious play pattern detected.'",
+                  "}, null, 2));",
+                  "console.log('');",
+                  "console.log('4. In the server terminal, look for:');",
+                  "console.log('   [AntifrAud] Real-time bot pattern detected');",
+                  "console.log('   { gameId, userId, fastRatio: \"0.78\", sampleSize: 12 }');",
+                  "console.log('');",
+                  "console.log('THRESHOLDS (configurable via .env):');",
+                  "console.log('  BOT_REALTIME_MIN_SAMPLE_SIZE = 10 moves');",
+                  "console.log('  BOT_REALTIME_SUSPICIOUS_RATIO = 0.6 (60% fast)');",
+                  "console.log('  BOT_MIN_MOVE_MS = 800ms (below this = suspicious)');",
+                  "console.log('');",
+                  "console.log('NOTE: the signal does not immediately block — it is an');",
+                  "console.log('alert. trust_score is adjusted at match end by updateBotScore');",
+                  "console.log('(same behaviour as M4, unchanged).');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Instructions displayed in Console', () => true);"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "http://localhost:3001/health", "protocol": "http", "host": ["localhost"], "port": "3001", "path": ["health"] }
+          }
+        },
+        {
+          "name": "10b. View BOT_PATTERN fraud-logs (post-match result)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Fraud logs returned', () => pm.response.to.have.status(200));",
+                  "const botLogs = (json.fraudLogs || json || []).filter(l => l.type === 'BOT_PATTERN');",
+                  "console.log('');",
+                  "console.log('🤖 BOT_PATTERN records:', botLogs.length);",
+                  "botLogs.slice(0, 3).forEach(l => {",
+                  "    const d = l.details || {};",
+                  "    console.log('');",
+                  "    console.log('  Game:', d.gameId);",
+                  "    console.log('  Fast ratio:', (d.fastRatio * 100).toFixed(0) + '%');",
+                  "    console.log('  Avg move time:', d.avgMoveMs + 'ms');",
+                  "    console.log('  Bot score:', d.botScore);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{admin_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/fraud-logs",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "fraud-logs"]
+            },
+            "description": "Returns BOT_PATTERN fraud-logs — generated at the end of each suspicious match.\n\nEach record shows:\n- fastRatio: % of moves below 800ms\n- avgMoveMs: average time per move\n- botScore: user's accumulated EMA score (0–1)\n\nRequires admin_token."
+          }
+        },
+        {
+          "name": "10c. Eligibility — live bot_score and can_join_paid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('Eligibility returned', () => pm.response.to.have.status(200));",
+                  "console.log('');",
+                  "console.log('📊 USER ELIGIBILITY:');",
+                  "console.log('  trust_score: ', json.trust_score);",
+                  "console.log('  trust_level: ', json.trust_level);",
+                  "console.log('  bot_score:   ', json.bot_score);",
+                  "console.log('  can_join_paid:', json.can_join_paid);",
+                  "if (!json.can_join_paid) {",
+                  "    console.log('  ⛔ BLOCKED — trust is LOW (< 0.45)');",
+                  "} else if (json.trust_level === 'MEDIUM') {",
+                  "    console.log('  ⚠️ Access allowed, account is monitored');",
+                  "} else {",
+                  "    console.log('  ✅ Account is in good standing');",
+                  "}",
+                  "pm.test('can_join_paid is present', () => pm.expect(json).to.have.property('can_join_paid'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/game/eligibility?betAmount=10",
+              "host": ["{{base_url}}"],
+              "path": ["game", "eligibility"],
+              "query": [{ "key": "betAmount", "value": "10" }]
+            },
+            "description": "Shows the current user's security state in real time:\n- trust_score (0–1)\n- trust_level (HIGH / MEDIUM / LOW)\n- bot_score (0–1, calculated post-match)\n- can_join_paid (false when trust < 0.45)\n\nGreat for showing the live effect of fraud signals on a user's profile."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔍 UTILITIES — pgAdmin Queries",
+      "description": "These requests display useful SQL in the Postman Console for you to copy and run in pgAdmin.\nAlso includes direct admin API endpoints for fraud data.",
+      "item": [
+        {
+          "name": "Admin — All Fraud Logs (grouped by type)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Fraud logs returned', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "const logs = json.fraudLogs || json || [];",
+                  "const counts = {};",
+                  "logs.forEach(l => { counts[l.type] = (counts[l.type] || 0) + 1; });",
+                  "console.log('');",
+                  "console.log('📋 FRAUD LOGS — COUNT BY TYPE:');",
+                  "Object.entries(counts).sort((a,b) => b[1]-a[1]).forEach(([type, count]) => {",
+                  "    console.log('  ' + type + ':', count);",
+                  "});",
+                  "console.log('  TOTAL:', logs.length);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{admin_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/fraud-logs",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "fraud-logs"]
+            },
+            "description": "Returns all fraud-logs. The test script groups and counts by type in the Console.\n\nPossible types:\nBOT_PATTERN, INTEGRITY_FAIL, IMPOSSIBLE_MOVEMENT, COLLUSION_SUSPECTED,\nMULTI_ACCOUNT_DEVICE, MULTI_ACCOUNT_IP, VELOCITY_ABUSE, DEVICE_LIMIT_EXCEEDED"
+          }
+        },
+        {
+          "name": "Admin — Low-Trust Users (blocked from paid games)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Users returned', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "const users = json.users || json || [];",
+                  "console.log('');",
+                  "console.log('⚠️ BLOCKED USERS (trust LOW):');",
+                  "if (users.length === 0) {",
+                  "    console.log('  No blocked users at this time.');",
+                  "} else {",
+                  "    users.forEach(u => {",
+                  "        console.log('  ' + (u.name || u.phone) + ' | trust:', u.trust_score.toFixed(2), '| bot:', u.bot_score.toFixed(2));",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{admin_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users/low-trust",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users", "low-trust"]
+            },
+            "description": "Lists users with trust_score < 0.45 — blocked from paid games.\nGood screen to show the client how the system identifies and isolates suspicious accounts."
+          }
+        },
+        {
+          "name": "SQL — View recent FraudLogs",
           "event": [
             {
               "listen": "prerequest",
@@ -926,15 +1532,15 @@
                 "exec": [
                   "const userId = pm.environment.get('user_id');",
                   "console.log('');",
-                  "console.log('═ SQL PARA COPIAR NO pgAdmin ═══════════════════');",
+                  "console.log('═ SQL TO COPY INTO pgAdmin ══════════════════════');",
                   "console.log('');",
-                  "console.log('-- Todos os FraudLogs recentes:');",
+                  "console.log('-- All recent FraudLogs:');",
                   "console.log('SELECT id, \"userId\", type, reason_code, details, created_at');",
                   "console.log('FROM \"FraudLog\"');",
                   "console.log('ORDER BY created_at DESC');",
                   "console.log('LIMIT 20;');",
                   "console.log('');",
-                  "console.log('-- FraudLogs do usuário atual:');",
+                  "console.log('-- FraudLogs for the current user:');",
                   "console.log('SELECT type, reason_code, details, created_at');",
                   "console.log('FROM \"FraudLog\"');",
                   "console.log('WHERE \"userId\" = \\'' + userId + '\\'');",
@@ -947,7 +1553,7 @@
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('SQL exibido no console', () => true);"],
+                "exec": ["pm.test('SQL displayed in console', () => true);"],
                 "type": "text/javascript"
               }
             }
@@ -959,23 +1565,23 @@
           }
         },
         {
-          "name": "Ver trust_score e bot_score dos usuários",
+          "name": "SQL — View trust_score and bot_score per user",
           "event": [
             {
               "listen": "prerequest",
               "script": {
                 "exec": [
                   "console.log('');",
-                  "console.log('═ SQL PARA COPIAR NO pgAdmin ═══════════════════');",
+                  "console.log('═ SQL TO COPY INTO pgAdmin ══════════════════════');",
                   "console.log('');",
                   "console.log('SELECT id, name, phone, trust_score, bot_score, is_banned');",
                   "console.log('FROM \"User\"');",
                   "console.log('ORDER BY created_at DESC;');",
                   "console.log('');",
-                  "console.log('-- Resetar trust_score para teste:');",
+                  "console.log('-- Reset trust_score for testing:');",
                   "console.log('-- UPDATE \"User\" SET trust_score = 1.0;');",
                   "console.log('');",
-                  "console.log('-- Simular conta bloqueada (trust LOW):');",
+                  "console.log('-- Simulate blocked account (trust LOW):');",
                   "console.log('-- UPDATE \"User\" SET trust_score = 0.30 WHERE phone = \\'+5511999990001\\';');"
                 ],
                 "type": "text/javascript"
@@ -984,7 +1590,7 @@
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('SQL exibido', () => true);"],
+                "exec": ["pm.test('SQL displayed', () => true);"],
                 "type": "text/javascript"
               }
             }
@@ -996,7 +1602,7 @@
           }
         },
         {
-          "name": "Ver DeviceBinds",
+          "name": "SQL — View DeviceBinds",
           "event": [
             {
               "listen": "prerequest",
@@ -1004,16 +1610,19 @@
                 "exec": [
                   "const userId = pm.environment.get('user_id');",
                   "console.log('');",
-                  "console.log('═ SQL PARA COPIAR NO pgAdmin ═══════════════════');",
+                  "console.log('═ SQL TO COPY INTO pgAdmin ══════════════════════');",
                   "console.log('');",
-                  "console.log('SELECT db.device_id, db.platform, db.first_seen, db.last_seen, db.is_active,');",
+                  "console.log('SELECT db.device_id, db.platform, db.attest_key_id, db.first_seen, db.last_seen, db.is_active,');",
                   "console.log('       u.name, u.phone, u.trust_score');",
                   "console.log('FROM \"DeviceBind\" db');",
                   "console.log('JOIN \"User\" u ON u.id = db.\"userId\"');",
                   "console.log('ORDER BY db.last_seen DESC;');",
                   "console.log('');",
-                  "console.log('-- Limpar DeviceBinds para recomeçar a demo:');",
-                  "console.log('-- DELETE FROM \"DeviceBind\";');"
+                  "console.log('-- Clear DeviceBinds to restart the demo:');",
+                  "console.log('-- DELETE FROM \"DeviceBind\";');",
+                  "console.log('');",
+                  "console.log('-- Revoke a specific App Attest key (Phase 2 revocation demo):');",
+                  "console.log('-- UPDATE \"DeviceBind\" SET is_active = false WHERE attest_key_id = \\'demo-key-id-abc123\\';');"
                 ],
                 "type": "text/javascript"
               }
@@ -1021,7 +1630,7 @@
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('SQL exibido', () => true);"],
+                "exec": ["pm.test('SQL displayed', () => true);"],
                 "type": "text/javascript"
               }
             }
@@ -1033,22 +1642,22 @@
           }
         },
         {
-          "name": "Reset completo para nova gravação",
+          "name": "SQL — Full reset for a new recording session",
           "event": [
             {
               "listen": "prerequest",
               "script": {
                 "exec": [
                   "console.log('');",
-                  "console.log('═ SQL RESET PARA NOVA GRAVAÇÃO ═════════════════');",
-                  "console.log('Execute no pgAdmin ANTES de gravar:');",
+                  "console.log('═ RESET SQL FOR NEW RECORDING ═══════════════════');",
+                  "console.log('Run in pgAdmin BEFORE recording:');",
                   "console.log('');",
                   "console.log('DELETE FROM \"FraudLog\";');",
                   "console.log('DELETE FROM \"DeviceBind\";');",
                   "console.log('UPDATE \"User\" SET trust_score = 1.0, bot_score = 0,');",
                   "console.log('  gps_lat = NULL, gps_lng = NULL, gps_accuracy = NULL, gps_updated_at = NULL;');",
                   "console.log('');",
-                  "console.log('Depois rode o Dev Login novamente para renovar o token.');"
+                  "console.log('Then run Dev Login again to get a fresh token.');"
                 ],
                 "type": "text/javascript"
               }
@@ -1056,7 +1665,7 @@
             {
               "listen": "test",
               "script": {
-                "exec": ["pm.test('SQL de reset exibido', () => true);"],
+                "exec": ["pm.test('Reset SQL displayed', () => true);"],
                 "type": "text/javascript"
               }
             }

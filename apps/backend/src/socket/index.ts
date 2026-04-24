@@ -18,9 +18,9 @@ import {
   MatchmakingVariant,
 } from '../services/matchmaking.service';
 import { getRedisClient, getRedisSubscriber, isRedisAvailable } from '../services/redis.service';
-import { verifyIntegrityToken } from '../services/integrity.service';
+import { verifyIntegrityToken, issueDeviceSessionToken, verifyDeviceSessionToken } from '../services/integrity.service';
 import { consumeNonce } from '../services/nonce.service';
-import { validateGpsBounds, updateUserGps, GpsCoords, checkUserVelocity } from '../middleware/antifraud.middleware';
+import { validateGpsBounds, updateUserGps, GpsCoords, checkUserVelocity, checkIPVelocity } from '../middleware/antifraud.middleware';
 import { applyTrustSignal, getUserTrustLevel } from '../services/trust.service';
 import { getRuntimeConfig } from '../services/runtime-config.service';
 
@@ -132,6 +132,23 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
 
       const isPaidGame = data.betAmount > 0;
 
+      // ── Per-IP velocity check (DoS / account-farm protection) ──────────────
+      const socketIp = (socket.handshake.headers['x-forwarded-for'] as string)
+        ?.split(',')[0].trim() || socket.handshake.address || '';
+      const ipVelocity = await checkIPVelocity(
+        socketIp, 'queue_join',
+        config.antifraud.velocityIPQueueJoinWindowMs,
+        config.antifraud.velocityIPQueueJoinMax,
+      );
+      if (ipVelocity.blocked) {
+        logger.warn('[Socket] IP queue join velocity exceeded', { ip: socketIp, count: ipVelocity.count });
+        socket.emit('queue:error', {
+          message: 'Muitas tentativas neste endereço. Aguarde alguns minutos.',
+          code: 'IP_VELOCITY_EXCEEDED',
+        });
+        return;
+      }
+
       // ── Per-user velocity check ─────────────────────────────────────────────
       const velocity = await checkUserVelocity(
         user.id, 'queue_join',
@@ -171,23 +188,45 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
           return;
         }
 
-        // Consume the server-issued nonce (replay protection)
-        if (data.integrityNonce) {
-          const nonceValid = await consumeNonce(data.integrityNonce);
-          if (!nonceValid) {
-            logger.warn('[Socket] Integrity nonce invalid or already used', { userId: user.id });
-            socket.emit('queue:error', { message: 'Nonce de integridade inválido. Tente novamente.', code: 'NONCE_INVALID' });
-            return;
+        let integrityResult;
+
+        // Phase 2 — App Attest session token from a previous successful attestation.
+        // Session tokens are self-contained JWTs; no nonce needed.
+        if (data.platform === 'ios' && data.attestationType === 'app_attest_session') {
+          integrityResult = await verifyDeviceSessionToken(data.integrityToken, user.id);
+
+        } else {
+          // Phase 1 — fresh attestation (Android Play Integrity or iOS App Attest / DeviceCheck).
+          // Consume the server-issued nonce first to prevent replay attacks.
+          if (data.integrityNonce) {
+            const nonceValid = await consumeNonce(data.integrityNonce);
+            if (!nonceValid) {
+              logger.warn('[Socket] Integrity nonce invalid or already used', { userId: user.id });
+              socket.emit('queue:error', { message: 'Nonce de integridade inválido. Tente novamente.', code: 'NONCE_INVALID' });
+              return;
+            }
+          }
+
+          integrityResult = await verifyIntegrityToken(
+            data.integrityToken,
+            data.platform,
+            data.integrityNonce,
+            data.attestationType,
+            data.keyId,
+          );
+
+          // After a successful iOS App Attest Phase 1, issue a session token so the
+          // client can skip re-attestation for the next DEVICE_SESSION_TTL_MS milliseconds.
+          if (integrityResult.valid && data.platform === 'ios' && data.attestationType === 'app_attest' && data.keyId) {
+            const sessionToken = issueDeviceSessionToken(user.id, data.keyId, 'ios');
+            socket.emit('integrity:session_token', {
+              token: sessionToken,
+              expiresIn: config.integrity.deviceSessionTtlMs,
+            });
+            logger.info('[Integrity] Device session token issued', { userId: user.id, keyId: data.keyId });
           }
         }
 
-        const integrityResult = await verifyIntegrityToken(
-          data.integrityToken,
-          data.platform,
-          data.integrityNonce,
-          data.attestationType,
-          data.keyId,
-        );
         if (!integrityResult.valid) {
           logger.warn('[Socket] Integrity check failed', { userId: user.id, verdict: integrityResult.verdict });
           await applyTrustSignal(user.id, 'integrity_fail');

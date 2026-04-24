@@ -238,26 +238,25 @@ function InPersonTournamentCard({ t, onPress }: { t: Tournament; onPress: () => 
         end={{ x: 0.5, y: 1 }}
         style={styles.tourCardInner}
       >
-        <Text style={[styles.tourTimerText, { color: '#fca5a5' }]}>{dateStr}</Text>
-        <Text style={[styles.tourMetaLabel, { color: '#fca5a5' }]}>Nome + Pres.</Text>
+        <Text style={[styles.tourTimerText, { color: '#fff' }]}>{dateStr}</Text>
+        <Text style={[styles.tourMetaLabel, { color: 'rgba(255,255,255,0.7)' }]}>Presencial</Text>
         <Text style={styles.tourName} numberOfLines={1}>{t.name}</Text>
 
         <View style={styles.tourPlayersRow}>
-          <IconUser size={16} color="#fca5a5" />
+          <IconUser size={16} color="#fff" />
           <View style={styles.tourPlayersMeta}>
-            <Text style={[styles.tourPlayersLabel, { color: '#fca5a5' }]}>Jogadores</Text>
+            <Text style={[styles.tourPlayersLabel, { color: 'rgba(255,255,255,0.75)' }]}>Jogadores</Text>
             <Text style={styles.tourPlayersValue}>{t.current_players}/{t.max_players}</Text>
           </View>
         </View>
 
         <View style={[styles.tourBar, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
-          <Text style={styles.tourBarLabel}>Inscrição</Text>
-          <Text style={styles.tourBarValue}>R${t.entry_fee}</Text>
+          <Text style={[styles.tourBarLabel, { color: '#fff' }]}>Inscrição</Text>
+          <Text style={[styles.tourBarValue, { color: '#fff' }]}>R${t.entry_fee}</Text>
         </View>
 
-        <View style={[styles.tourBar, { backgroundColor: '#991b1b' }]}>
-          <Text style={styles.tourBarLabel}>Presencial</Text>
-          <Text style={styles.tourBarValue}>{t.address ? '📍' : '🎯'}</Text>
+        <View style={[styles.tourBar, { backgroundColor: '#7f1d1d' }]}>
+          <Text style={[styles.tourBarLabel, { color: '#fff' }]}>📍 {t.address ? t.address.split(',')[0] : 'Local a confirmar'}</Text>
         </View>
       </LinearGradient>
     </TouchableOpacity>
@@ -283,6 +282,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const [inPersonTour, setInPersonTour] = useState<Tournament | null>(null);
   const [inPersonName, setInPersonName] = useState('');
   const [inPersonCpf, setInPersonCpf]   = useState('');
+  const [useAccountName, setUseAccountName] = useState(false);
   const [confirmRoom, setConfirmRoom]   = useState<{ room: RoomOption; section: '1v1' | '2v2' } | null>(null);
   const [joining, setJoining]           = useState(false);
   const [searching, setSearching]       = useState(false);
@@ -492,7 +492,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
   const handleJoinInPersonTournament = async () => {
     if (!inPersonTour) return;
-    const trimmedName = inPersonName.trim();
+    const trimmedName = (useAccountName ? (user?.name ?? inPersonName) : inPersonName).trim();
     const trimmedCpf = inPersonCpf.replace(/\D/g, '');
     if (!trimmedName) { toast.error('Informe seu nome completo'); return; }
     if (trimmedCpf.length !== 11) { toast.error('CPF inválido (11 dígitos)'); return; }
@@ -631,7 +631,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tourCardsRow}>
                   {tournaments.map((t) => (
                     t.is_in_person
-                      ? <InPersonTournamentCard key={t.id} t={t} onPress={() => { setInPersonTour(t); setInPersonName(''); setInPersonCpf(''); }} />
+                      ? <InPersonTournamentCard key={t.id} t={t} onPress={() => { setInPersonTour(t); setInPersonName(user?.name ?? ''); setInPersonCpf(''); setUseAccountName(!!user?.name); }} />
                       : <TournamentCard key={t.id} t={t} onJoin={() => setConfirmTour(t)} />
                   ))}
                 </ScrollView>
@@ -796,86 +796,114 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       </Modal>
       {/* In-person tournament modal */}
       <Modal visible={!!inPersonTour} transparent animationType="fade">
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => !joining && setInPersonTour(null)}>
-          <View style={[styles.modalCard, inPersonStyles.card]} onStartShouldSetResponder={() => true}>
-            {inPersonTour && (
-              <>
-                <View style={inPersonStyles.badge}>
-                  <Text style={inPersonStyles.badgeText}>PRESENCIAL</Text>
-                </View>
-                <Text style={styles.modalTitle}>{inPersonTour.name}</Text>
-
-                {inPersonTour.address ? (
-                  <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Local</Text>
-                    <Text style={[styles.modalValue, { flex: 1, textAlign: 'right' }]} numberOfLines={2}>{inPersonTour.address}</Text>
+        <View style={styles.overlay} pointerEvents="box-none">
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => !joining && setInPersonTour(null)} />
+          <ScrollView
+            style={{ width: '100%' }}
+            contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 24, paddingHorizontal: 20 }}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[styles.modalCard, inPersonStyles.card]}>
+              {inPersonTour && (
+                <>
+                  <View style={inPersonStyles.badge}>
+                    <Text style={inPersonStyles.badgeText}>PRESENCIAL</Text>
                   </View>
-                ) : null}
+                  <Text style={styles.modalTitle}>{inPersonTour.name}</Text>
 
-                {inPersonTour.checkin_time ? (
+                  {inPersonTour.address ? (
+                    <View style={styles.modalRow}>
+                      <Text style={styles.modalLabel}>Local</Text>
+                      <Text style={[styles.modalValue, { flex: 1, textAlign: 'right' }]} numberOfLines={2}>{inPersonTour.address}</Text>
+                    </View>
+                  ) : null}
+
+                  {inPersonTour.checkin_time ? (
+                    <View style={styles.modalRow}>
+                      <Text style={styles.modalLabel}>Check-in</Text>
+                      <Text style={styles.modalValue}>
+                        {new Date(inPersonTour.checkin_time).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                  ) : null}
+
                   <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Check-in</Text>
-                    <Text style={styles.modalValue}>
-                      {new Date(inPersonTour.checkin_time).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                    </Text>
+                    <Text style={styles.modalLabel}>Inscrição</Text>
+                    <Text style={styles.modalValue}>R$ {Number(inPersonTour.entry_fee).toFixed(2)}</Text>
                   </View>
-                ) : null}
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Prêmio</Text>
+                    <Text style={[styles.modalValue, { color: '#fbbf24' }]}>R$ {inPersonTour.prize_pool.toLocaleString('pt-BR')}</Text>
+                  </View>
 
-                <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Inscrição</Text>
-                  <Text style={styles.modalValue}>R$ {Number(inPersonTour.entry_fee).toFixed(2)}</Text>
-                </View>
-                <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Prêmio</Text>
-                  <Text style={[styles.modalValue, { color: '#fbbf24' }]}>R$ {inPersonTour.prize_pool.toLocaleString('pt-BR')}</Text>
-                </View>
+                  <View style={styles.modalDivider} />
 
-                <View style={styles.modalDivider} />
+                  {/* Nome completo com toggle conta/manual */}
+                  <View style={inPersonStyles.fieldRow}>
+                    <Text style={inPersonStyles.fieldLabel}>Nome completo</Text>
+                    {user?.name ? (
+                      <View style={inPersonStyles.toggleRow}>
+                        <TouchableOpacity
+                          style={[inPersonStyles.toggleChip, useAccountName && inPersonStyles.toggleChipActive]}
+                          onPress={() => { setUseAccountName(true); setInPersonName(user.name ?? ''); }}
+                        >
+                          <Text style={[inPersonStyles.toggleChipText, useAccountName && inPersonStyles.toggleChipTextActive]}>Da conta</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[inPersonStyles.toggleChip, !useAccountName && inPersonStyles.toggleChipActive]}
+                          onPress={() => { setUseAccountName(false); setInPersonName(''); }}
+                        >
+                          <Text style={[inPersonStyles.toggleChipText, !useAccountName && inPersonStyles.toggleChipTextActive]}>Manual</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                  </View>
+                  <TextInput
+                    style={[inPersonStyles.input, useAccountName && inPersonStyles.inputLocked]}
+                    value={useAccountName ? (user?.name ?? '') : inPersonName}
+                    onChangeText={useAccountName ? undefined : setInPersonName}
+                    placeholder="Como no documento"
+                    placeholderTextColor="rgba(255,255,255,0.35)"
+                    autoCorrect={false}
+                    editable={!joining && !useAccountName}
+                  />
 
-                <Text style={inPersonStyles.fieldLabel}>Nome completo</Text>
-                <TextInput
-                  style={inPersonStyles.input}
-                  value={inPersonName}
-                  onChangeText={setInPersonName}
-                  placeholder="Como no documento"
-                  placeholderTextColor="rgba(255,255,255,0.35)"
-                  autoCorrect={false}
-                  editable={!joining}
-                />
+                  <Text style={inPersonStyles.fieldLabel}>CPF</Text>
+                  <TextInput
+                    style={inPersonStyles.input}
+                    value={inPersonCpf}
+                    onChangeText={(v) => setInPersonCpf(v.replace(/\D/g, '').slice(0, 11))}
+                    placeholder="000.000.000-00"
+                    placeholderTextColor="rgba(255,255,255,0.35)"
+                    keyboardType="numeric"
+                    editable={!joining}
+                  />
 
-                <Text style={inPersonStyles.fieldLabel}>CPF</Text>
-                <TextInput
-                  style={inPersonStyles.input}
-                  value={inPersonCpf}
-                  onChangeText={(v) => setInPersonCpf(v.replace(/\D/g, '').slice(0, 11))}
-                  placeholder="000.000.000-00"
-                  placeholderTextColor="rgba(255,255,255,0.35)"
-                  keyboardType="numeric"
-                  editable={!joining}
-                />
-
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={[styles.modalBtnCancel, joining && styles.modalBtnDisabled]}
-                    onPress={() => setInPersonTour(null)}
-                    disabled={joining}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.modalBtnCancelText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[inPersonStyles.confirmBtn, joining && styles.modalBtnDisabled]}
-                    onPress={handleJoinInPersonTournament}
-                    disabled={joining}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={inPersonStyles.confirmBtnText}>{joining ? 'Enviando...' : 'Comprar Ingresso'}</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </TouchableOpacity>
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={[styles.modalBtnCancel, joining && styles.modalBtnDisabled]}
+                      onPress={() => setInPersonTour(null)}
+                      disabled={joining}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[inPersonStyles.confirmBtn, joining && styles.modalBtnDisabled]}
+                      onPress={handleJoinInPersonTournament}
+                      disabled={joining}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={inPersonStyles.confirmBtnText}>{joining ? 'Enviando...' : 'Comprar Ingresso'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          </ScrollView>
+        </View>
       </Modal>
 
       {/* ── Settings modal ── */}
@@ -1316,4 +1344,24 @@ const inPersonStyles = StyleSheet.create({
     alignItems: 'center',
   },
   confirmBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
+  fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  toggleRow: { flexDirection: 'row', gap: 4 },
+  toggleChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  toggleChipActive: {
+    borderColor: '#b91c1c',
+    backgroundColor: 'rgba(185,28,28,0.25)',
+  },
+  toggleChipText: { color: 'rgba(255,255,255,0.55)', fontSize: 10, fontWeight: '700' },
+  toggleChipTextActive: { color: '#fca5a5' },
+  inputLocked: {
+    opacity: 0.6,
+    borderColor: 'rgba(185,28,28,0.35)',
+  },
 });

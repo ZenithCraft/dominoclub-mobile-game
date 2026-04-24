@@ -94,22 +94,10 @@ export function SplashScreen({ navigation }: Props) {
     loadFromStorage().then(async () => {
       if (!useAuthStore.getState().user && !useAuthStore.getState().accessToken && DEV_AUTO_LOGIN) {
         try {
-          // Use a session-stable unique phone so each browser tab (incl. incognito)
-          // gets a distinct dev user. Without this, both tabs log in as the same
-          // default user and can never be matched against each other.
-          let devPhone: string | undefined;
-          if (typeof window !== 'undefined' && window.sessionStorage) {
-            let stored = window.sessionStorage.getItem('dev_login_phone');
-            if (!stored) {
-              stored = `+5599${String(Date.now()).slice(-8)}`;
-              window.sessionStorage.setItem('dev_login_phone', stored);
-            }
-            devPhone = stored;
-          }
-          const { data } = await api.post(
-            '/auth/dev/login',
-            devPhone ? { phone: devPhone, name: `Dev ${devPhone.slice(-4)}` } : {},
-          );
+          const { data } = await api.post('/auth/dev/login', {
+            phone: '+5599999999999',
+            name: 'Super Admin',
+          });
           setTokens(data.accessToken, data.refreshToken);
           setUser(data.user);
         } catch {}
@@ -119,14 +107,6 @@ export function SplashScreen({ navigation }: Props) {
           navigation.replace('Login');
           return;
         }
-        // Check for an active game and reconnect automatically
-        try {
-          const { data } = await api.get('/game/active');
-          if (data.game?.id && (data.game.status === 'PLAYING' || data.game.status === 'WAITING')) {
-            navigation.replace('Game', { gameId: data.game.id });
-            return;
-          }
-        } catch {}
         // Check for an active tournament enrollment
         try {
           const { data } = await api.get('/game/tournaments/my-active');

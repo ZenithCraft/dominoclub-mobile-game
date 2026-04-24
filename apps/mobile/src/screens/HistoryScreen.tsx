@@ -115,8 +115,8 @@ export function HistoryScreen({ navigation }: Props) {
         </View>
         <Text style={styles.sub}>{dateStr}</Text>
         <View style={styles.row}>
-          <Text style={styles.badge}>Aposta: R$ {(item.bet_amount ?? 0).toFixed(2)}</Text>
-          <Text style={[styles.badge, { marginLeft: spacing.sm }]}>Prêmio: R$ {(item.prize_pool ?? 0).toFixed(2)}</Text>
+          <Text style={styles.badge}>Aposta: R$ {Number(item.bet_amount ?? 0).toFixed(2)}</Text>
+          <Text style={[styles.badge, { marginLeft: spacing.sm }]}>Prêmio: R$ {Number(item.prize_pool ?? 0).toFixed(2)}</Text>
         </View>
         <Text style={[styles.result, { color: winner ? '#4ade80' : colors.textMuted }]}>
           {winner ? 'Vitória registrada' : 'Sem vencedor'}
