@@ -393,20 +393,26 @@ export function WalletScreen() {
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={styles.withdrawBtnGrad}
               >
-                <Text style={styles.withdrawBtnText}>Sacar</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+                <LinearGradient
+                  colors={['#34d399', '#059669']}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={styles.withdrawBtnGrad}
+                >
+                  <Text style={styles.withdrawBtnText}>Sacar</Text>
+                </LinearGradient>
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.depositBtn} onPress={() => setDepositModal(true)}>
-              <LinearGradient
-                colors={['#FFE259', '#FFD000']}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                style={styles.depositBtnGrad}
-              >
-                <Text style={styles.depositBtnText}>+ Depositar</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity style={styles.depositBtn} onPress={() => setDepositModal(true)}>
+                <LinearGradient
+                  colors={['#FFE259', '#FFD000']}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={styles.depositBtnGrad}
+                >
+                  <Text style={styles.depositBtnText}>+ Depositar</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* ── Right panel: transaction table ── */}

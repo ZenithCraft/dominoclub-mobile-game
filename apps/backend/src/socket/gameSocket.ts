@@ -49,6 +49,44 @@ function recordMoveTime(gameId: string, userId: string) {
   playerLastMoveAt.set(key, now);
 }
 
+// Per-game set of userIds that already received a real-time bot warning this game.
+// Prevents spamming the signal on every suspicious move after the threshold is first crossed.
+const realtimeBotWarned = new Set<string>(); // key: `${gameId}:${userId}`
+
+/**
+ * Mid-game bot heuristic — called after every move.
+ * Returns suspicious=true once we have enough samples and the fast-move ratio
+ * exceeds the realtime threshold. Emits game:bot_suspicion to the player's
+ * private room and logs a warning; does NOT apply a trust signal (that happens
+ * post-game in updateBotScore to avoid double-penalising).
+ */
+function checkRealtimeBotPattern(
+  gameId: string,
+  userId: string,
+  io: import('socket.io').Server,
+): void {
+  const key = `${gameId}:${userId}`;
+  if (realtimeBotWarned.has(key)) return; // already flagged this game
+
+  const intervals = playerMoveIntervals.get(key) ?? [];
+  if (intervals.length < config.antifraud.botRealtimeMinSampleSize) return;
+
+  const fastMoves = intervals.filter((t) => t < config.antifraud.botMinMoveMs);
+  const ratio = fastMoves.length / intervals.length;
+  if (ratio < config.antifraud.botRealtimeSuspiciousRatio) return;
+
+  realtimeBotWarned.add(key);
+  logger.warn('[AntifrAud] Real-time bot pattern detected', {
+    gameId, userId, fastRatio: ratio.toFixed(2), sampleSize: intervals.length,
+  });
+  // Notify the player's own socket room (invisible to opponents)
+  io.to(`user:${userId}`).emit('game:bot_suspicion', {
+    gameId,
+    fastRatio: Math.round(ratio * 100),
+    message: 'Padrão de jogo suspeito detectado.',
+  });
+}
+
 function flushMoveTimings(gameId: string): Map<string, number[]> {
   const result = new Map<string, number[]>();
   const prefix = `${gameId}:`;
@@ -57,6 +95,7 @@ function flushMoveTimings(gameId: string): Map<string, number[]> {
       result.set(key.slice(prefix.length), intervals);
       playerMoveIntervals.delete(key);
       playerLastMoveAt.delete(key);
+      realtimeBotWarned.delete(key);
     }
   }
   return result;
@@ -279,6 +318,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       clearTurnTimer(gameId);
 
       recordMoveTime(gameId, user.id);
+      checkRealtimeBotPattern(gameId, user.id, io);
       recordMove(gameId, {
         type: 'play',
         userId: user.id,
@@ -314,6 +354,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     activeGames.set(gameId, newState);
 
     recordMoveTime(gameId, user.id);
+    checkRealtimeBotPattern(gameId, user.id, io);
     recordMove(gameId, {
       type: 'draw',
       userId: user.id,
@@ -346,6 +387,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     clearTurnTimer(gameId);
 
     recordMoveTime(gameId, user.id);
+    checkRealtimeBotPattern(gameId, user.id, io);
     recordMove(gameId, {
       type: 'pass',
       userId: user.id,

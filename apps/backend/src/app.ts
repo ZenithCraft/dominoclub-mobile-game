@@ -33,12 +33,14 @@ app.use(express.urlencoded({ extended: true }));
 // ── Rate limiting — tiered per route sensitivity ───────────────────────────
 
 // Auth endpoints: tight limits to prevent brute-force / OTP abuse
+// /dev/login is exempt outside production — auto-login on every reload would exhaust the quota
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
   max: 20,
   message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV !== 'production' && req.path === '/dev/login',
 });
 
 // PIX webhook: very loose — called by Banco Inter servers

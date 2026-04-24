@@ -392,6 +392,44 @@ export async function checkUserVelocity(
 }
 
 /**
+ * Same sliding-window rate check as checkUserVelocity but keyed by IP address.
+ * Used to block queue flooding from a single IP regardless of how many accounts
+ * are behind it (e.g. account-farm using the same exit node).
+ *
+ * The per-IP ceiling is intentionally higher than the per-user ceiling to
+ * accommodate households and mobile NAT with multiple legitimate users.
+ */
+export async function checkIPVelocity(
+  ip: string,
+  action: string,
+  windowMs: number,
+  maxCount: number,
+): Promise<{ blocked: boolean; count: number }> {
+  if (!ip) return { blocked: false, count: 0 };
+  const key = `velocity:ip:${action}:${ip}`;
+
+  if (isRedisAvailable()) {
+    try {
+      const redis = getRedisClient();
+      const count = await redis.incr(key);
+      if (count === 1) await redis.pexpire(key, windowMs);
+      return { blocked: count > maxCount, count };
+    } catch (err: any) {
+      logger.warn('[AntifrAud] Redis IP velocity check failed — using in-memory', { message: err.message });
+    }
+  }
+
+  const now = Date.now();
+  const entry = velocityStore.get(key);
+  if (!entry || now > entry.resetAt) {
+    velocityStore.set(key, { count: 1, resetAt: now + windowMs });
+    return { blocked: false, count: 1 };
+  }
+  entry.count += 1;
+  return { blocked: entry.count > maxCount, count: entry.count };
+}
+
+/**
  * Purge stale entries from the in-memory velocity store.
  * Only relevant when Redis is unavailable.
  */
