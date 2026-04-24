@@ -156,6 +156,7 @@ export function LoginScreen({ navigation }: Props) {
                       <IconGoogle size={20} accessibilityLabel="Google" />
                     </Pressable>
                   </View>
+
                 </View>
               </View>
             </View>

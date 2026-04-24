@@ -101,6 +101,8 @@ export const config = {
     appleAppAttestEnv: (process.env.APPLE_APP_ATTEST_ENV  || 'development') as 'development' | 'production',
     // PEM private key for signing DeviceCheck / App Attest JWTs
     applePrivateKey: (process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    // App Attest Phase 2 — device session token TTL (default: 48 h)
+    deviceSessionTtlMs: parseInt(process.env.DEVICE_SESSION_TTL_MS || String(48 * 3600 * 1000), 10),
   },
 
   antifraud: {
@@ -129,6 +131,12 @@ export const config = {
     // Per-user withdrawal velocity limits
     velocityWithdrawMax:        parseInt(process.env.VELOCITY_WITHDRAW_MAX         || '3',       10),
     velocityWithdrawWindowMs:   parseInt(process.env.VELOCITY_WITHDRAW_WINDOW_MS   || '3600000', 10),
+    // Per-IP queue join velocity limits (higher ceiling than per-user — accounts for shared NAT)
+    velocityIPQueueJoinMax:      parseInt(process.env.VELOCITY_IP_QUEUE_JOIN_MAX      || '20',     10),
+    velocityIPQueueJoinWindowMs: parseInt(process.env.VELOCITY_IP_QUEUE_JOIN_WINDOW_MS || '300000', 10),
+    // Real-time bot detection (mid-game)
+    botRealtimeMinSampleSize:   parseInt(process.env.BOT_REALTIME_MIN_SAMPLE_SIZE   || '10',  10),
+    botRealtimeSuspiciousRatio: parseFloat(process.env.BOT_REALTIME_SUSPICIOUS_RATIO || '0.6'),
   },
 };
 

@@ -141,21 +141,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             })();
             if (allowDevLogin) {
               try {
-                // Reuse the session phone so each tab keeps its own dev user even
-                // after token expiry — same logic as SplashScreen / handleJoinRoom.
-                let devPhone: string | undefined;
-                if (typeof window !== 'undefined' && window.sessionStorage) {
-                  let stored = window.sessionStorage.getItem('dev_login_phone');
-                  if (!stored) {
-                    stored = `+5599${String(Date.now()).slice(-8)}`;
-                    window.sessionStorage.setItem('dev_login_phone', stored);
-                  }
-                  devPhone = stored;
-                }
-                const { data } = await api.post(
-                  '/auth/dev/login',
-                  devPhone ? { phone: devPhone, name: `Dev ${devPhone.slice(-4)}` } : {},
-                );
+                const { data } = await api.post('/auth/dev/login', {
+                  phone: '+5599999999999',
+                  name: 'Super Admin',
+                });
                 get().setTokens(data.accessToken, data.refreshToken);
                 const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
                 set({ user: avatarUri ? { ...data.user, avatar: avatarUri } : data.user });

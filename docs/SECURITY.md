@@ -1,7 +1,7 @@
 # DominoClub — Security Reference
 
-> Consolidated report covering Milestone 4 (anti-cheat & attestation) and Milestone 5 (critical vulnerability remediation).  
-> Last updated: **2026-04-21**
+> Consolidated report covering Milestone 4 (anti-cheat & attestation), Milestone 5 (critical vulnerability remediation), and M6 (security gap remediation).  
+> Last updated: **2026-04-23**
 
 ---
 
@@ -11,9 +11,10 @@
 2. [M4 — Anti-Cheat & Attestation Layer](#2-m4--anti-cheat--attestation-layer)
 3. [M5 — Critical Vulnerability Remediation](#3-m5--critical-vulnerability-remediation)
 4. [M5 — Additional Hardening (High/Medium)](#4-m5--additional-hardening-highmedium)
-5. [Current Security Posture](#5-current-security-posture)
-6. [Environment Variables Reference](#6-environment-variables-reference)
-7. [Known Gaps & Recommendations](#7-known-gaps--recommendations)
+5. [M6 — Security Gap Remediation](#5-m6--security-gap-remediation)
+6. [Current Security Posture](#6-current-security-posture)
+7. [Environment Variables Reference](#7-environment-variables-reference)
+8. [Known Gaps & Recommendations](#8-known-gaps--recommendations)
 
 ---
 
@@ -314,7 +315,96 @@ These were identified in the same audit as the 6 critical fixes and remediated i
 
 ---
 
-## 5. Current Security Posture
+## 5. M6 — Security Gap Remediation
+
+**Completed:** 2026-04-23 | Zero TypeScript errors | Three gaps closed from the G2/R-series list
+
+---
+
+### 5.1 App Attest Phase 2 — Device Session Tokens
+
+**Problem (G2):** After iOS Phase 1 attestation, subsequent sessions re-attested unconditionally. Apple rate-limits `attestKey()` calls — in high-traffic scenarios this caused silent integrity failures.
+
+**Solution — server-signed device session tokens:**
+
+```
+Phase 1 (first session)
+  Client → queue:join { attestationType: 'app_attest', keyId, integrityToken, integrityNonce }
+         → Server verifies with Apple API (existing flow)
+         → Server emits integrity:session_token { token, expiresIn: 172800000 }
+         → Client stores token in SecureStore / Keychain
+
+Phase 2 (subsequent sessions, up to 48 h)
+  Client → queue:join { attestationType: 'app_attest_session', integrityToken: <JWT> }
+         → Server calls verifyDeviceSessionToken(token, userId):
+             1. jwt.verify(token, secret)          — signature + expiry
+             2. payload.sub === userId             — user binding
+             3. DeviceBind.attest_key_id === kid   — revocation check
+                && is_active = true
+         → Passes: proceed to queue
+         → Fails: INTEGRITY_FAIL, trust signal applied
+```
+
+**Security properties:**
+- Token is bound to a specific `userId` + `keyId` pair — cannot be transferred between accounts
+- Token signed with `JWT_ACCESS_SECRET + ':device-session-v1'` — separate from auth tokens
+- Revocable: setting `DeviceBind.is_active = false` immediately invalidates the token
+- Expires in 48 h (configurable via `DEVICE_SESSION_TTL_MS`)
+- Mock-mode compatible: accepts `INTEGRITY_MOCK_TOKEN` in development
+
+**Files:** `services/integrity.service.ts` (`issueDeviceSessionToken`, `verifyDeviceSessionToken`), `socket/index.ts`
+
+---
+
+### 5.2 IP-Level Velocity Limiting
+
+**Problem:** Per-user velocity limits (`checkUserVelocity`) could be bypassed by account-farms — an attacker with 50 accounts behind the same IP could send 500 `queue:join` attempts in 5 minutes, each under the per-user threshold.
+
+**Solution — `checkIPVelocity(ip, action, windowMs, maxCount)`:**
+
+- Keyed by `velocity:ip:{action}:{ip}` — same Redis INCR + PEXPIRE pattern as per-user checks
+- Applied in `queue:join` **before** the per-user check — cheaper fast-path for floods
+- Ceiling: 20 `queue_join` attempts per IP per 5 minutes (2× the per-user limit to tolerate shared NAT)
+- Returns `{ code: 'IP_VELOCITY_EXCEEDED' }` — no trust signal (IP may be shared; penalising trust on an account for an IP flood is a false positive risk)
+- In-memory Map fallback when Redis unavailable (not shared across instances)
+
+**Files:** `middleware/antifraud.middleware.ts` (`checkIPVelocity`), `socket/index.ts`, `config/index.ts`
+
+---
+
+### 5.3 Real-Time Bot Detection (Mid-Game)
+
+**Problem:** `updateBotScore` only ran at game end. A bot could complete a full game before being flagged — in a paid match this means they may already have won the prize.
+
+**Solution — `checkRealtimeBotPattern(gameId, userId, io)`:**
+
+Called after every `game:move`, `game:draw`, and `game:pass`. Once ≥ 10 move intervals are recorded:
+
+```typescript
+fastRatio = intervals.filter(t => t < botMinMoveMs).length / intervals.length
+if (fastRatio >= botRealtimeSuspiciousRatio) → emit game:bot_suspicion
+```
+
+**Behaviour:**
+- Fires **once per game per player** — a `realtimeBotWarned` Set prevents repeated events on subsequent moves
+- Emits `game:bot_suspicion { gameId, fastRatio, message }` to `user:{userId}` (private room) — opponents do not see it
+- Logs at WARN level: `[AntifrAud] Real-time bot pattern detected`
+- Does **not** apply a trust signal mid-game (post-game `updateBotScore` handles that — double-penalising would compound falsely)
+- Set is cleaned up in `flushMoveTimings` when the game ends
+
+**Thresholds (configurable):**
+
+| Config key | Default | Meaning |
+|---|---|---|
+| `BOT_REALTIME_MIN_SAMPLE_SIZE` | 10 | Minimum moves before check activates |
+| `BOT_REALTIME_SUSPICIOUS_RATIO` | 0.6 | Fast-move fraction to trigger warning |
+| `BOT_MIN_MOVE_MS` | 800 | Under this ms counts as suspiciously fast |
+
+**Files:** `socket/gameSocket.ts` (`checkRealtimeBotPattern`, `realtimeBotWarned`), `config/index.ts`
+
+---
+
+## 6. Current Security Posture
 
 | Threat | Before M4/M5 | After M4/M5 |
 |--------|-------------|-------------|
@@ -335,10 +425,13 @@ These were identified in the same audit as the 6 critical fixes and remediated i
 | Multi-account (device) | Single flag | DeviceBind history + limit |
 | LGPD account deletion | Single-step, immediate | OTP-confirmed two-step |
 | Refresh token reuse | Reusable after rotation | Old token blacklisted |
+| App Attest re-attestation rate limit | Re-attested every session | 48 h session token, revocable via DeviceBind |
+| IP-level queue flooding | No IP-level gate | 20 attempts / 5 min per IP, blocks before per-user check |
+| Bot detected only post-game | Prize already paid if bot won | Real-time warning at move 10+ |
 
 ---
 
-## 6. Environment Variables Reference
+## 7. Environment Variables Reference
 
 Variables introduced by the security layer (in addition to those in `DOCUMENTATION.md`):
 
@@ -348,6 +441,9 @@ INTEGRITY_NONCE_TTL_MS=120000
 
 # iOS App Attest
 APPLE_APP_ATTEST_ENV=development    # 'production' for App Store builds
+
+# App Attest Phase 2 — device session token (M6)
+DEVICE_SESSION_TTL_MS=172800000     # 48 hours
 
 # GPS thresholds
 GPS_IMPOSSIBLE_SPEED_KMH=900        # hard block (km/h)
@@ -362,18 +458,26 @@ VELOCITY_QUEUE_JOIN_MAX=10
 VELOCITY_QUEUE_JOIN_WINDOW_MS=300000    # 5 minutes
 VELOCITY_WITHDRAW_MAX=3
 VELOCITY_WITHDRAW_WINDOW_MS=3600000    # 1 hour
+
+# Per-IP velocity limits (M6)
+VELOCITY_IP_QUEUE_JOIN_MAX=20           # higher ceiling for shared NAT
+VELOCITY_IP_QUEUE_JOIN_WINDOW_MS=300000 # 5 minutes
+
+# Real-time bot detection (M6)
+BOT_REALTIME_MIN_SAMPLE_SIZE=10     # moves before check activates
+BOT_REALTIME_SUSPICIOUS_RATIO=0.6   # fast-move fraction to trigger warning
 ```
 
 ---
 
-## 7. Known Gaps & Recommendations
+## 8. Known Gaps & Recommendations
 
 ### Before production
 
 | # | Gap | Action required |
 |---|-----|-----------------|
 | G1 | Play Integrity nonce must be base64-encoded | `Buffer.from(nonce).toString('base64')` in `integrity.service.ts` |
-| G2 | App Attest Phase 2 (assertion) not implemented | Subsequent sessions should call `generateAssertion`, not re-attest — re-attestation is rate-limited by Apple |
+| ~~G2~~ | ~~App Attest Phase 2 not implemented~~ | **Closed M6** — device session token approach implemented |
 | G3 | Device binding hard-block not enforced | Add `DEVICE_LIMIT_EXCEEDED` gate to `queue:join` (currently flag + trust penalty only) |
 | G4 | `prisma db push` used instead of `prisma migrate` | Establish a clean migration baseline before production deploy |
 
