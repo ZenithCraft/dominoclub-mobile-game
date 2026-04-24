@@ -1086,13 +1086,13 @@ function TournamentsTab() {
           <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Criar torneio</CardTitle>
         </CardHeader>
         <CardContent className="pt-4">
-          <form onSubmit={create} className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-4 items-end">
-            {/* Name */}
-            <div className="md:col-span-2 space-y-1.5">
+          <form onSubmit={create} className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Nome — full width */}
+            <div className="col-span-full space-y-1.5">
               <Label>Nome</Label>
               <Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Ex: Torneio da semana" required />
             </div>
-            {/* Mode */}
+            {/* Modo */}
             <div className="space-y-1.5">
               <Label>Modo</Label>
               <Select value={form.mode} onValueChange={v => setForm(p => ({ ...p, mode: v }))}>
@@ -1105,7 +1105,7 @@ function TournamentsTab() {
                 </SelectContent>
               </Select>
             </div>
-            {/* Variant */}
+            {/* Variante */}
             <div className="space-y-1.5">
               <Label>Variante</Label>
               <Select value={form.variant} onValueChange={v => setForm(p => ({ ...p, variant: v }))}>
@@ -1117,51 +1117,60 @@ function TournamentsTab() {
                 </SelectContent>
               </Select>
             </div>
-            {/* Entry fee */}
+            {/* Entrada */}
             <div className="space-y-1.5">
               <Label>Entrada (R$)</Label>
               <Input value={form.entryFee} onChange={e => setForm(p => ({ ...p, entryFee: e.target.value }))} inputMode="decimal" required />
             </div>
-            {/* Max players */}
+            {/* Máx jogadores */}
             <div className="space-y-1.5">
               <Label>Máx. jogadores</Label>
               <Input value={form.maxPlayers} onChange={e => setForm(p => ({ ...p, maxPlayers: e.target.value }))} inputMode="numeric" required />
             </div>
-            {/* DateTime picker */}
-            <div className="md:col-span-2 space-y-1.5">
+            {/* Data e hora — full width */}
+            <div className="col-span-full space-y-1.5">
               <Label>Data e hora de início</Label>
               <DateTimePicker value={form.startsAt} onChange={v => setForm(p => ({ ...p, startsAt: v }))} />
             </div>
-            {/* In-person toggle */}
-            <div className="flex items-center gap-2 col-span-2 md:col-span-1">
-              <input
-                type="checkbox"
-                id="is-in-person"
-                checked={form.isInPerson}
-                onChange={e => setForm(p => ({ ...p, isInPerson: e.target.checked }))}
-                className="w-4 h-4 rounded"
-              />
-              <Label htmlFor="is-in-person" className="cursor-pointer">Presencial</Label>
+            {/* Toggle presencial — full width, estilizado */}
+            <div className="col-span-full">
+              <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${form.isInPerson ? 'border-red-700/60 bg-red-950/20' : 'border-border/60 hover:bg-accent/30'}`}>
+                <input
+                  type="checkbox"
+                  id="is-in-person"
+                  checked={form.isInPerson}
+                  onChange={e => setForm(p => ({ ...p, isInPerson: e.target.checked }))}
+                  className="sr-only"
+                />
+                <div className={`w-9 h-5 rounded-full transition-colors flex items-center flex-shrink-0 ${form.isInPerson ? 'bg-red-600' : 'bg-muted'}`}>
+                  <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform mx-0.5 ${form.isInPerson ? 'translate-x-4' : 'translate-x-0'}`} />
+                </div>
+                <MapPin className={`w-4 h-4 flex-shrink-0 ${form.isInPerson ? 'text-red-400' : 'text-muted-foreground'}`} />
+                <div>
+                  <span className="text-sm font-medium">Torneio Presencial</span>
+                  <span className="text-xs text-muted-foreground ml-2">requer endereço, check-in e nome/CPF do participante</span>
+                </div>
+              </label>
             </div>
-            {/* In-person extra fields */}
+            {/* Campos extras presencial */}
             {form.isInPerson && (
               <>
-                <div className="md:col-span-2 space-y-1.5">
+                <div className="col-span-full space-y-1.5">
                   <Label>Endereço</Label>
                   <Input value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} placeholder="Rua, nº, cidade" />
                 </div>
-                <div className="space-y-1.5">
+                <div className="col-span-2 space-y-1.5">
                   <Label>Check-in</Label>
                   <DateTimePicker value={form.checkinTime} onChange={v => setForm(p => ({ ...p, checkinTime: v }))} />
                 </div>
-                <div className="space-y-1.5">
+                <div className="col-span-2 space-y-1.5">
                   <Label>URL do banner</Label>
                   <Input value={form.bannerUrl} onChange={e => setForm(p => ({ ...p, bannerUrl: e.target.value }))} placeholder="https://..." />
                 </div>
               </>
             )}
-            {/* Submit */}
-            <div className="flex items-end">
+            {/* Botão criar — full width */}
+            <div className="col-span-full">
               <Button type="submit" disabled={creating} className="w-full">
                 {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Criar torneio'}
               </Button>
@@ -1180,11 +1189,19 @@ function TournamentsTab() {
             </thead>
             <tbody>
               {(data?.tournaments ?? []).map((t: any) => (
-                <tr key={t.id} className="border-b border-border/40 hover:bg-accent/20 transition-colors">
+                <tr key={t.id} className={`border-b hover:bg-accent/20 transition-colors ${t.is_in_person ? 'border-red-700/50 bg-red-950/20' : 'border-border/40'}`}>
                   <Td>
-                    <p className="font-medium text-foreground text-xs">{t.name}</p>
-                    <p className="font-mono text-xs text-muted-foreground">{t.id.slice(0, 8)}</p>
-                    {t.is_in_person && <Badge variant="destructive" className="mt-1 text-[10px]">Presencial</Badge>}
+                    <div className="flex items-start gap-1.5">
+                      {t.is_in_person && (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0">
+                          <path fillRule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                      <div>
+                        <p className="font-medium text-foreground text-xs">{t.name}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{t.id.slice(0, 8)}</p>
+                      </div>
+                    </div>
                   </Td>
                   <Td><span className="text-xs text-muted-foreground">{MODE_LABEL[t.mode] || t.mode}</span></Td>
                   <Td><span className="text-xs text-muted-foreground">{VARIANT_PT[t.variant] || t.variant}</span></Td>

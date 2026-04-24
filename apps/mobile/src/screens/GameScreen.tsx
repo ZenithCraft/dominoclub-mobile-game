@@ -974,33 +974,43 @@ const TEAM_COLORS = {
 function teamTurnStyle(team: number) {
   const g = TEAM_COLORS.glow(team);
   return Platform.OS === 'web'
-    ? ({ borderColor: TEAM_COLORS.turn(team), boxShadow: `0 0 14px ${g}88` } as any)
-    : { borderColor: TEAM_COLORS.turn(team), shadowColor: g, shadowOpacity: 0.75, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 10 };
+    ? ({ borderColor: TEAM_COLORS.turn(team), boxShadow: `0 0 22px ${g}, 0 0 44px ${g}77` } as any)
+    : { borderColor: TEAM_COLORS.turn(team), shadowColor: g, shadowOpacity: 1.0, shadowRadius: 20, shadowOffset: { width: 0, height: 0 }, elevation: 20 };
 }
 
-function OpponentCard({ player, tileCount, isTurn, team = 0, matchScore = 0 }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number }) {
+function usePulse(active: boolean) {
+  const anim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (active) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, { toValue: 1.05, duration: 650, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 1.0,  duration: 650, useNativeDriver: true }),
+        ])
+      );
+      loop.start();
+      return () => { loop.stop(); anim.setValue(1); };
+    } else {
+      anim.setValue(1);
+    }
+  }, [active]);
+  return anim;
+}
+
+function OpponentCard({ player, tileCount, isTurn, team = 0 }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
   const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
+  const scale = usePulse(isTurn);
   return (
-    <LinearGradient
-      colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={[oppStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
-    >
-      <View style={oppStyles.sideSlot}>
-        <DominoTile tile={[1, 1]} size="icon" />
-        <Text style={oppStyles.tileCount}>{tileCount}</Text>
-      </View>
-
-      <View style={oppStyles.nameWrap}>
-        <Text style={oppStyles.name} numberOfLines={1}>{name}</Text>
-        <Text style={oppStyles.sub}>{matchScore}/6 pts</Text>
-      </View>
-
-      <View style={[oppStyles.sideSlot, oppStyles.sideSlotRight]}>
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <LinearGradient
+        colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[oppStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
+      >
         <View style={oppStyles.avatar}>
           {avatarUri ? (
             <Image source={{ uri: avatarUri }} style={oppStyles.avatarImg} />
@@ -1008,45 +1018,26 @@ function OpponentCard({ player, tileCount, isTurn, team = 0, matchScore = 0 }: {
             <Text style={oppStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
           )}
         </View>
-      </View>
-    </LinearGradient>
+        <Text style={oppStyles.name} numberOfLines={1}>{name}</Text>
+        <Text style={oppStyles.sub}>{tileCount} peças</Text>
+      </LinearGradient>
+    </Animated.View>
   );
 }
 const oppStyles = StyleSheet.create({
   card: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    borderRadius: radius.full,
+    borderRadius: radius.xl,
     paddingVertical: 10,
-    paddingLeft: 12,
-    paddingRight: 12,
-    gap: 8,
+    paddingHorizontal: 14,
+    gap: 4,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: 200,
-    minHeight: 48,
-  },
-  sideSlot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    width: 62,
-  },
-  sideSlotRight: { justifyContent: 'flex-end' },
-  tileIcon: { width: 16, height: 22 },
-  tileCount: {
-    color: '#c8c8c8',
-    fontWeight: '800',
-    fontSize: 24,
-    lineHeight: 26,
-  },
-  nameWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    minWidth: 80,
   },
   name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
-  sub:  { color: '#fff', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.xs, textAlign: 'center' },
   avatar: {
     width: 40,
     height: 40,
@@ -1064,68 +1055,47 @@ const oppStyles = StyleSheet.create({
 
 // ─── Side player card (4p left/right) — horizontal pill, same as OpponentCard ─
 
-function SidePlayerCard({ player, tileCount, isTurn, team = 0, matchScore = 0 }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number }) {
+function SidePlayerCard({ player, tileCount, isTurn, team = 0 }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
   const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
+  const scale = usePulse(isTurn);
   return (
-    <LinearGradient
-      colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={[sideStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
-    >
-      <View style={sideStyles.sideSlot}>
-        <DominoTile tile={[1, 1]} size="icon" />
-        <Text style={sideStyles.tileCount}>{tileCount}</Text>
-      </View>
-      <View style={sideStyles.nameWrap}>
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <LinearGradient
+        colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[sideStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
+      >
+        <View style={sideStyles.avatar}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={sideStyles.avatarImg} />
+          ) : (
+            <Text style={sideStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
+          )}
+        </View>
         <Text style={sideStyles.name} numberOfLines={1}>{name}</Text>
-        <Text style={sideStyles.sub}>{matchScore}/6 pts</Text>
-      </View>
-      <View style={sideStyles.avatar}>
-        {avatarUri ? (
-          <Image source={{ uri: avatarUri }} style={sideStyles.avatarImg} />
-        ) : (
-          <Text style={sideStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
-        )}
-      </View>
-    </LinearGradient>
+        <Text style={sideStyles.sub}>{tileCount} peças</Text>
+      </LinearGradient>
+    </Animated.View>
   );
 }
 const sideStyles = StyleSheet.create({
   card: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    borderRadius: radius.full,
+    borderRadius: radius.xl,
     paddingVertical: 10,
-    paddingLeft: 12,
-    paddingRight: 12,
-    gap: 8,
+    paddingHorizontal: 14,
+    gap: 4,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    width: 180,
-  },
-  sideSlot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    width: 52,
-  },
-  tileCount: {
-    color: '#c8c8c8',
-    fontWeight: '800',
-    fontSize: 22,
-    lineHeight: 24,
-  },
-  nameWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    minWidth: 80,
   },
   name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
-  sub:  { color: '#fff', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.xs, textAlign: 'center' },
   avatar: {
     width: 40,
     height: 40,
@@ -1143,29 +1113,25 @@ const sideStyles = StyleSheet.create({
 
 // ─── My player card (right side, below emoji) ────────────────────────────────
 
-function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji, team = 0, matchScore = 0 }: {
+function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji, team = 0 }: {
   name: string; hand: number; isMyTurn: boolean; avatarUri?: string; onSelectEmoji?: (e: string) => void; team?: number; matchScore?: number;
 }) {
   const [open, setOpen] = React.useState(false);
   const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
+  const scale = usePulse(isMyTurn);
   return (
-    <LinearGradient
-      colors={['rgba(32,100,22,0.93)', 'rgba(8,38,14,0.97)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={[myCardStyles.card, { borderColor: idleBorder }, isMyTurn && teamTurnStyle(team)]}
-    >
-      <View style={myCardStyles.sideSlot}>
-        <DominoTile tile={[1, 1]} size="icon" />
-        <Text style={myCardStyles.tileCount}>{hand}</Text>
-      </View>
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <LinearGradient
+        colors={['rgba(32,100,22,0.93)', 'rgba(8,38,14,0.97)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[myCardStyles.card, { borderColor: idleBorder }, isMyTurn && teamTurnStyle(team)]}
+      >
+        <View style={myCardStyles.nameWrap}>
+          <Text style={myCardStyles.name} numberOfLines={1}>{name}</Text>
+          <Text style={myCardStyles.sub}>{hand} peças</Text>
+        </View>
 
-      <View style={myCardStyles.nameWrap}>
-        <Text style={myCardStyles.name} numberOfLines={1}>{name}</Text>
-        <Text style={myCardStyles.sub}>{matchScore}/6 pts</Text>
-      </View>
-
-      <View style={[myCardStyles.sideSlot, myCardStyles.sideSlotRight]}>
         <View>
           <TouchableOpacity onPress={() => setOpen(v => !v)} activeOpacity={0.75} accessibilityLabel="Abrir reações">
             <View style={myCardStyles.avatar}>
@@ -1196,8 +1162,8 @@ function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji, team = 0
             </View>
           )}
         </View>
-      </View>
-    </LinearGradient>
+      </LinearGradient>
+    </Animated.View>
   );
 }
 const myCardStyles = StyleSheet.create({
@@ -1206,31 +1172,17 @@ const myCardStyles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: radius.full,
     paddingVertical: 10,
-    paddingLeft: 12,
+    paddingLeft: 16,
     paddingRight: 12,
-    gap: 8,
+    gap: 10,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: 200,
+    minWidth: 140,
     minHeight: 48,
   },
-  sideSlot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    width: 62,
-  },
-  sideSlotRight: { justifyContent: 'flex-end' },
-  tileIcon: { width: 16, height: 22 },
-  tileCount: {
-    color: '#c8c8c8',
-    fontWeight: '800',
-    fontSize: 24,
-    lineHeight: 26,
-  },
-  nameWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
-  sub:  { color: '#fff', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  nameWrap: { flex: 1, justifyContent: 'center' },
+  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
+  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.xs },
   avatar: {
     width: 40,
     height: 40,
