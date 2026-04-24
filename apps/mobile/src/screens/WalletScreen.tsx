@@ -369,37 +369,29 @@ export function WalletScreen() {
           <BalanceRow label="Saldo de bônus" value={bonusBalance} />
           <BalanceRow label="Saldo disponível para saque" value={canWithdraw ? realBalance : 0} />
 
-          {kycChecked && kycStatus !== 'APPROVED' ? (
-            <View style={styles.kycGate}>
-              <Text style={styles.kycGateTitle}>Conta não verificada</Text>
-              <Text style={styles.kycGateSub}>
-                {kycStatus === 'PENDING'
-                  ? 'Seus documentos estão em análise. Aguarde até 48 horas para liberar depósito e saque.'
-                  : kycStatus === 'REJECTED'
-                  ? 'Seus documentos foram rejeitados. Envie novamente para liberar depósito e saque.'
-                  : 'Verifique sua identidade para depositar e sacar.'}
-              </Text>
-              {kycStatus !== 'PENDING' && (
-                <TouchableOpacity style={styles.kycGateBtn} onPress={() => navigation.navigate('KYC')}>
-                  <Text style={styles.kycGateBtnText}>Verificar Conta</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ) : (
-            <View style={styles.actionsCol}>
-              <TouchableOpacity
-                style={styles.withdrawBtn}
-                activeOpacity={0.85}
-                onPress={() => {
-                  if (!canWithdraw) {
-                    Alert.alert('Saque bloqueado',
-                      rolloverRemaining > 0
-                        ? `Complete o rollover de R$ ${rolloverRemaining.toFixed(2)}`
-                        : 'Saldo mínimo para saque é R$ 20,00');
-                  } else {
-                    setWithdrawModal(true);
-                  }
-                }}
+          <View style={styles.actionsCol}>
+            <TouchableOpacity
+              style={styles.withdrawBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                if (!firstWithdrawalDone && kycStatus !== 'APPROVED') {
+                  navigation.navigate('KYC');
+                  return;
+                }
+                if (!canWithdraw) {
+                  Alert.alert('Saque bloqueado',
+                    rolloverRemaining > 0
+                      ? `Complete o rollover de R$ ${rolloverRemaining.toFixed(2)}`
+                      : 'Saldo mínimo para saque é R$ 20,00');
+                } else {
+                  setWithdrawModal(true);
+                }
+              }}
+            >
+              <LinearGradient
+                colors={['#34d399', '#059669']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={styles.withdrawBtnGrad}
               >
                 <LinearGradient
                   colors={['#34d399', '#059669']}
@@ -768,26 +760,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   kycTableBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
-  kycGate: {
-    backgroundColor: 'rgba(250, 204, 21, 0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(250, 204, 21, 0.35)',
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginTop: spacing.md,
-    alignItems: 'center',
-  },
-  kycGateTitle: { color: '#fde68a', fontWeight: '800', fontSize: fonts.sizes.md, marginBottom: 4 },
-  kycGateSub: { color: '#a3c4a3', fontSize: fonts.sizes.xs, textAlign: 'center', lineHeight: 18 },
-  kycGateBtn: {
-    marginTop: spacing.sm,
-    backgroundColor: '#facc15',
-    borderRadius: radius.sm,
-    paddingVertical: 10,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-  },
-  kycGateBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
   tableTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
