@@ -2667,8 +2667,9 @@ const styles = StyleSheet.create({
   joinSubtitle: { color: 'rgba(255,255,255,0.72)', fontSize: fonts.sizes.sm, fontWeight: '700', textAlign: 'center', marginTop: 6 },
   joinMiniRow: { flexDirection: 'row', gap: 10, justifyContent: 'center', marginTop: 16 },
   miniDomino: {
-    width: 44,
-    height: 64,
+    width: 64,
+    height: 44,
+    flexDirection: 'row',
     borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 1,
@@ -2676,7 +2677,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   miniHalf: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  miniDivider: { height: 1, backgroundColor: 'rgba(0,0,0,0.12)' },
+  miniDivider: { width: 1, backgroundColor: 'rgba(0,0,0,0.12)' },
   miniPips: { width: '100%', height: '100%' },
   miniPip: {
     position: 'absolute',

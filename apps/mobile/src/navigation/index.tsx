@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import { setAuthFailureCallback } from '../services/api';
+import { useAuthStore } from '../store/auth.store';
+import { navigationRef } from './navigationRef';
 
 import { SplashScreen } from '../screens/SplashScreen';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -111,6 +114,15 @@ class ErrorBoundary extends React.Component<
 }
 
 export function AppNavigator() {
+  useEffect(() => {
+    setAuthFailureCallback(() => {
+      useAuthStore.getState().logout().catch(() => {});
+      if (navigationRef.isReady()) {
+        navigationRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+      }
+    });
+  }, []);
+
   const url = typeof window !== 'undefined' ? new URL(window.location.href) : null;
   const directGame = !!url && (url.searchParams.get('screen') === 'game' || url.searchParams.get('game') === '1');
   const mockGame = !!url && (url.searchParams.get('mockGame') === '1' || url.searchParams.get('mock') === '1');
@@ -128,7 +140,7 @@ export function AppNavigator() {
   const initialGameId = gameIdFromUrl || 'demo-1';
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <ErrorBoundary>
         <View style={{ flex: 1 }}>
           <Stack.Navigator

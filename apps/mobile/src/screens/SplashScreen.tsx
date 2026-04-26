@@ -31,7 +31,7 @@ function MiniPips({ value }: { value: number }) {
     3: [0, 4, 8],
     4: [0, 2, 6, 8],
     5: [0, 2, 4, 6, 8],
-    6: [0, 2, 3, 5, 6, 8],
+    6: [0, 1, 2, 6, 7, 8],
   };
   const ids = map[Math.max(0, Math.min(6, value))] ?? [];
   return (
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   },
 
   miniDomino: {
-    width: 96,
+    width: 108,
     height: 54,
     borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.96)',
