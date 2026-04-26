@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, ImageBackground, Image,
+  View, Text, StyleSheet, ScrollView, Image,
   TouchableOpacity, Modal, Alert, Animated, Pressable, ActivityIndicator,
   Platform, useWindowDimensions, Easing, PanResponder, Dimensions,
 } from 'react-native';
@@ -13,7 +13,8 @@ import {
   IconTrophy, IconSettings, IconAlert, IconX, IconFrown,
   IconVolumeUp, IconMusic,
 } from '../components/Icons';
-import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import { useGameStore, Tile, GameState, PlacedTile, WIN_TYPE_LABEL, WIN_TYPE_POINTS } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
@@ -1853,12 +1854,7 @@ export function GameScreen({ navigation, route }: Props) {
     const glowScale = joinPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.06] });
     const tileLift = joinPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -6] });
     return (
-      <ImageBackground
-        source={require('../../assets/background.png')}
-        style={[styles.bg, backgroundCoverFix]}
-        resizeMode="cover"
-      >
-        <View style={styles.bgOverlay} />
+      <ScreenBackground style={styles.bg}>
         <SafeAreaView style={[styles.container, styles.centered]}>
           <View style={styles.joinWrap}>
             <Animated.View style={[styles.joinGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]} />
@@ -1902,7 +1898,7 @@ export function GameScreen({ navigation, route }: Props) {
             </View>
           )}
         </SafeAreaView>
-      </ImageBackground>
+      </ScreenBackground>
     );
   }
 
@@ -2007,12 +2003,7 @@ export function GameScreen({ navigation, route }: Props) {
   };
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.bg, backgroundCoverFix]}
-      resizeMode="cover"
-    >
-      <View style={styles.bgOverlay} />
+    <ScreenBackground style={styles.bg}>
       <SafeAreaView style={styles.container}>
 
       {/* Disconnect banner */}
@@ -2635,7 +2626,7 @@ export function GameScreen({ navigation, route }: Props) {
         </View>
       )}
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 

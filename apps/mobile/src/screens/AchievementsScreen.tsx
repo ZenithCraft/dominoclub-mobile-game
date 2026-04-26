@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ImageBackground, ActivityIndicator,
+  View, Text, StyleSheet, ActivityIndicator,
   FlatList, TouchableOpacity, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { IconChevronLeft, IconTrophy, IconStar } from '../components/Icons';
 import { api } from '../services/api';
 
@@ -143,11 +144,7 @@ export function AchievementsScreen({ navigation }: Props) {
   );
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.root, backgroundCoverFix]}
-      resizeMode="cover"
-    >
+    <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
@@ -210,7 +207,7 @@ export function AchievementsScreen({ navigation }: Props) {
           />
         )}
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 

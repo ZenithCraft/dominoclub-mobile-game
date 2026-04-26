@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ImageBackground,
+  View, Text, StyleSheet,
   TouchableOpacity, Modal, Image, Platform, Pressable, Animated, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
-import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { useAuthStore } from '../store/auth.store';
 import { toast } from '../store/toast.store';
 import { connectSocket } from '../services/socket';
@@ -443,11 +444,7 @@ export function HomeScreen({ navigation }: Props) {
   };
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.root, backgroundCoverFix]}
-      resizeMode="cover"
-    >
+    <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
       <ConsentModal onAccepted={() => {}} />
 
@@ -658,7 +655,7 @@ export function HomeScreen({ navigation }: Props) {
         </TouchableOpacity>
       </Modal>
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 

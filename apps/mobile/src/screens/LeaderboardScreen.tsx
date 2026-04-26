@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ImageBackground, FlatList,
+  View, Text, StyleSheet, FlatList,
   ActivityIndicator, TouchableOpacity, RefreshControl, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { IconChevronLeft, IconTrophy } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
@@ -217,11 +218,7 @@ export function LeaderboardScreen({ navigation }: Props) {
   const podiumOrder = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3;
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.root, backgroundCoverFix]}
-      resizeMode="cover"
-    >
+    <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
         {/* Header */}
         <View style={styles.header}>
@@ -297,7 +294,7 @@ export function LeaderboardScreen({ navigation }: Props) {
           />
         )}
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 
