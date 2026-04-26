@@ -2,14 +2,15 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as Location from 'expo-location';
 import { getIntegrityToken } from '../services/integrity';
 import {
-  View, Text, StyleSheet, ImageBackground, ScrollView, useWindowDimensions,
+  View, Text, StyleSheet, ScrollView, useWindowDimensions,
   TouchableOpacity, Modal, ActivityIndicator, RefreshControl,
   Platform, Animated, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { IconUser, IconUsers, IconTrophy } from '../components/Icons';
 import { useGameStore } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
@@ -233,7 +234,7 @@ function InPersonTournamentCard({ t, onPress }: { t: Tournament; onPress: () => 
   return (
     <TouchableOpacity style={styles.tourCard} onPress={onPress} activeOpacity={0.85}>
       <LinearGradient
-        colors={['#3d0000', '#7f0000', '#b91c1c']}
+        colors={['#040001', '#040001', '#7F0000']}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={styles.tourCardInner}
@@ -520,11 +521,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const roomCardWidth = Math.max(1, Math.floor((sectionInnerWidth - rowGap * 3) / 4));
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.root, backgroundCoverFix]}
-      resizeMode="cover"
-    >
+    <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
       <GameTopBar
         user={user}
@@ -937,7 +934,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       </Modal>
 
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 

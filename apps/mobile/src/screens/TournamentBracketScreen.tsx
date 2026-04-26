@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ImageBackground, ScrollView,
+  View, Text, StyleSheet, ScrollView,
   TouchableOpacity, ActivityIndicator, Modal, Pressable, Image, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { IconTrophy, IconSettings, IconX } from '../components/Icons';
 import { GradientToggle } from './HomeScreen';
 import { api } from '../services/api';
@@ -96,14 +97,13 @@ export function TournamentBracketScreen({ navigation, route }: Props) {
 
   if (loading || !data) {
     return (
-      <ImageBackground source={require('../../assets/background.png')} style={[styles.bg, backgroundCoverFix]} resizeMode="cover">
-        <View style={styles.overlay} />
+      <ScreenBackground style={styles.bg}>
         <SafeAreaView style={styles.safe}>
           <View style={styles.centered}>
             <ActivityIndicator color="#4ade80" size="large" />
           </View>
         </SafeAreaView>
-      </ImageBackground>
+      </ScreenBackground>
     );
   }
 
@@ -115,8 +115,7 @@ export function TournamentBracketScreen({ navigation, route }: Props) {
     players.find((p) => p.userId === userId)?.eliminated_at != null;
 
   return (
-    <ImageBackground source={require('../../assets/background.png')} style={[styles.bg, backgroundCoverFix]} resizeMode="cover">
-      <View style={styles.overlay} />
+    <ScreenBackground style={styles.bg}>
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
@@ -237,7 +236,7 @@ export function TournamentBracketScreen({ navigation, route }: Props) {
         </Modal>
 
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 

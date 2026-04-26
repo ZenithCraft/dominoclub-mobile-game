@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, ImageBackground, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { api } from '../services/api';
 import { IconChevronLeft, IconTrophy } from '../components/Icons';
 import { useAuthStore } from '../store/auth.store';
@@ -126,11 +127,7 @@ export function HistoryScreen({ navigation }: Props) {
   };
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.root, backgroundCoverFix]}
-      resizeMode="cover"
-    >
+    <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
@@ -170,7 +167,7 @@ export function HistoryScreen({ navigation }: Props) {
           />
         )}
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 
