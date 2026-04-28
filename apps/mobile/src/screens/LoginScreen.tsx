@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ImageBackground,
+  View, Text, StyleSheet,
   KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
-import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -72,11 +73,7 @@ export function LoginScreen({ navigation }: Props) {
   };
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.root, backgroundCoverFix]}
-      resizeMode="cover"
-    >
+    <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -163,7 +160,7 @@ export function LoginScreen({ navigation }: Props) {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 

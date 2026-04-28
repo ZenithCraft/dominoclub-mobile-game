@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ImageBackground, TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity,
   Platform, Animated, Modal, Pressable, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { IconTrophy, IconSettings, IconX } from '../components/Icons';
 import { GradientToggle } from './HomeScreen';
 import { connectSocket } from '../services/socket';
@@ -212,12 +213,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
   const pad = (n: number) => String(n).padStart(2, '0');
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.bg, backgroundCoverFix]}
-      resizeMode="cover"
-    >
-      <View style={styles.overlay} />
+    <ScreenBackground style={styles.bg}>
       <SafeAreaView style={styles.safe}>
         <View style={styles.topBar}>
           <View style={{ flex: 1 }} />
@@ -351,7 +347,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
         </Modal>
 
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 

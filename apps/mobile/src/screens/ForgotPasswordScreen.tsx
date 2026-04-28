@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ImageBackground,
+  View, Text, StyleSheet,
   TouchableOpacity, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
-import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { IconLock } from '../components/Icons';
 import { api } from '../services/api';
 
@@ -35,11 +36,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
   };
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.root, backgroundCoverFix]}
-      resizeMode="cover"
-    >
+    <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -96,7 +93,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 

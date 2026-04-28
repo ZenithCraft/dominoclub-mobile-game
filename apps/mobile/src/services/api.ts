@@ -43,6 +43,57 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+// ── Token refresh — deduplicated + cooldown ────────────────────────────────
+// Prevents multiple concurrent 401s from hammering POST /auth/token/refresh
+// and exhausting the 20 req/15-min rate limit.
+let _refreshInFlight: Promise<string> | null = null;
+let _refreshFailedAt = 0;
+const REFRESH_COOLDOWN_MS = 15_000; // 15 s cooldown after any failure
+
+// Registered by the auth store on startup to trigger navigation→Login when
+// all refresh attempts are exhausted.
+let _onAuthFailure: (() => void) | null = null;
+export function setAuthFailureCallback(cb: () => void) {
+  _onAuthFailure = cb;
+}
+
+export async function refreshAccessToken(): Promise<string> {
+  if (_refreshInFlight) return _refreshInFlight;
+
+  // During cooldown: fail fast instead of hitting the rate limiter again.
+  if (Date.now() - _refreshFailedAt < REFRESH_COOLDOWN_MS) {
+    throw new Error('Refresh cooldown active');
+  }
+
+  _refreshInFlight = (async () => {
+    const storageRefresh = await AsyncStorage.getItem('refresh_token');
+    const webRefresh =
+      typeof window !== 'undefined' && window.localStorage
+        ? window.localStorage.getItem('refresh_token')
+        : null;
+    const refreshToken = webRefresh || storageRefresh;
+    if (!refreshToken) throw new Error('No refresh token');
+
+    const { data } = await axios.post(`${BASE_URL}/auth/token/refresh`, { refreshToken });
+
+    await AsyncStorage.setItem('access_token', data.accessToken);
+    await AsyncStorage.setItem('refresh_token', data.refreshToken);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem('access_token', data.accessToken);
+      window.localStorage.setItem('refresh_token', data.refreshToken);
+    }
+    // Reset cooldown on success
+    _refreshFailedAt = 0;
+    return data.accessToken as string;
+  })().catch((err) => {
+    _refreshFailedAt = Date.now();
+    throw err;
+  }).finally(() => {
+    _refreshInFlight = null;
+  });
+
+  return _refreshInFlight;
+}
 
 // Auto-refresh on 401 + global error toast
 api.interceptors.response.use(
@@ -50,31 +101,22 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config;
 
-    // 401 — attempt token refresh
+    // 401 — attempt token refresh (shared, deduplicated, rate-limit-safe)
     if (error.response?.status === 401 && !original?._retry) {
       original._retry = true;
       try {
-        const storageRefresh = await AsyncStorage.getItem('refresh_token');
-        const webRefresh =
-          typeof window !== 'undefined' && window.localStorage
-            ? window.localStorage.getItem('refresh_token')
-            : null;
-        const refreshToken = webRefresh || storageRefresh;
-        const { data } = await axios.post(`${BASE_URL}/auth/token/refresh`, { refreshToken });
-        await AsyncStorage.setItem('access_token', data.accessToken);
-        await AsyncStorage.setItem('refresh_token', data.refreshToken);
-        if (typeof window !== 'undefined' && window.localStorage) {
-          window.localStorage.setItem('access_token', data.accessToken);
-          window.localStorage.setItem('refresh_token', data.refreshToken);
-        }
-        original.headers.Authorization = `Bearer ${data.accessToken}`;
+        const newToken = await refreshAccessToken();
+        original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
       } catch {
+        // Clear stored tokens so the next app start begins fresh
         await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
         if (typeof window !== 'undefined' && window.localStorage) {
           window.localStorage.removeItem('access_token');
           window.localStorage.removeItem('refresh_token');
         }
+        // Signal app to redirect to Login (set via setAuthFailureCallback)
+        _onAuthFailure?.();
         return Promise.reject(error);
       }
     }

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ImageBackground, TouchableOpacity, Animated, Modal, Pressable, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Modal, Pressable, Image, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { IconTrophy, IconSettings, IconX } from '../components/Icons';
 import { GradientToggle } from './HomeScreen';
 
@@ -38,12 +39,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
   const hasPrize   = prize > 0;
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.bg, backgroundCoverFix]}
-      resizeMode="cover"
-    >
-      <View style={styles.overlay} />
+    <ScreenBackground style={styles.bg}>
       <SafeAreaView style={styles.safe}>
         <View style={styles.topBar}>
           <View style={{ flex: 1 }} />
@@ -158,7 +154,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
         </Modal>
 
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 
