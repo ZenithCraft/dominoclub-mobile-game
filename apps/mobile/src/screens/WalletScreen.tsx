@@ -2,13 +2,13 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Modal, TextInput, Alert, RefreshControl, Animated,
-  ImageBackground,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { colors, spacing, fonts, radius, shadows, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { IconSettings, IconLogOut, IconX, IconHourglass, IconClipboard, IconParty, IconQrCode, IconCheck, IconChevronLeft } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
@@ -340,11 +340,7 @@ export function WalletScreen() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.root, backgroundCoverFix]}
-      resizeMode="cover"
-    >
+    <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
         {/* Header - Same as HomeScreen (no balance) */}
         <GameTopBarMinimal
@@ -393,13 +389,8 @@ export function WalletScreen() {
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={styles.withdrawBtnGrad}
               >
-                <LinearGradient
-                  colors={['#34d399', '#059669']}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={styles.withdrawBtnGrad}
-                >
-                  <Text style={styles.withdrawBtnText}>Sacar</Text>
-                </LinearGradient>
+                <Text style={styles.withdrawBtnText}>Sacar</Text>
+              </LinearGradient>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.depositBtn} onPress={() => setDepositModal(true)}>
@@ -691,7 +682,7 @@ export function WalletScreen() {
         </View>
       </Modal>
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 

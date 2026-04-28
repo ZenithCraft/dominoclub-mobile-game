@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api } from './api';
+import { api, refreshAccessToken } from './api';
 
 function getSocketUrl(): string {
   const envSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL;
@@ -33,25 +33,6 @@ let socket: Socket | null = null;
 function isAuthSocketError(err: any) {
   const msg = String(err?.message || err || '');
   return /invalid token|unauthorized|authentication required/i.test(msg);
-}
-
-async function refreshAccessToken(): Promise<string | null> {
-  const storageRefresh = await AsyncStorage.getItem('refresh_token');
-  const webRefresh =
-    typeof window !== 'undefined' && window.localStorage
-      ? window.localStorage.getItem('refresh_token')
-      : null;
-  const refreshToken = webRefresh || storageRefresh;
-  if (!refreshToken) return null;
-
-  const { data } = await api.post('/auth/token/refresh', { refreshToken });
-  await AsyncStorage.setItem('access_token', data.accessToken);
-  await AsyncStorage.setItem('refresh_token', data.refreshToken);
-  if (typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem('access_token', data.accessToken);
-    window.localStorage.setItem('refresh_token', data.refreshToken);
-  }
-  return data.accessToken;
 }
 
 function waitForConnect(s: Socket): Promise<Socket> {
@@ -134,18 +115,16 @@ export async function connectSocket(): Promise<Socket> {
   } catch (err: any) {
     if (!isAuthSocketError(err)) throw err;
 
+    // Auth failure: attempt a single token refresh (shared with api.ts, rate-limit-safe)
+    // then reconnect. Do NOT clear tokens here — api.ts owns that responsibility.
     try {
       const newAccessToken = await refreshAccessToken();
-      if (!newAccessToken) throw err;
       disconnectSocket();
       socket = createSocket(newAccessToken);
       return await waitForConnect(socket);
     } catch {
-      await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem('access_token');
-        window.localStorage.removeItem('refresh_token');
-      }
+      // Refresh failed: disconnect and stop reconnecting. The api.ts interceptor
+      // already handled clearing tokens and calling onAuthFailure.
       disconnectSocket();
       throw err;
     }

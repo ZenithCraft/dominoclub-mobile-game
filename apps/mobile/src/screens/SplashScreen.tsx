@@ -1,11 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ImageBackground, Image,
+  View, Text, StyleSheet, Image,
   ActivityIndicator, Animated, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, fonts, radius, spacing, backgroundCoverFix } from '../theme';
+import { colors, fonts, radius, spacing } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { useAuthStore } from '../store/auth.store';
 import { api } from '../services/api';
 
@@ -30,7 +31,7 @@ function MiniPips({ value }: { value: number }) {
     3: [0, 4, 8],
     4: [0, 2, 6, 8],
     5: [0, 2, 4, 6, 8],
-    6: [0, 2, 3, 5, 6, 8],
+    6: [0, 1, 2, 6, 7, 8],
   };
   const ids = map[Math.max(0, Math.min(6, value))] ?? [];
   return (
@@ -131,11 +132,7 @@ export function SplashScreen({ navigation }: Props) {
   }, []);
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.root, backgroundCoverFix]}
-      resizeMode="cover"
-    >
+    <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
         <Animated.View style={[styles.card, { opacity, transform: [{ scale }] }]}>
           <Image
@@ -156,7 +153,7 @@ export function SplashScreen({ navigation }: Props) {
           </View>
         </Animated.View>
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 
@@ -188,7 +185,7 @@ const styles = StyleSheet.create({
   },
 
   miniDomino: {
-    width: 96,
+    width: 108,
     height: 54,
     borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -199,14 +196,14 @@ const styles = StyleSheet.create({
   },
   miniHalf: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   miniDivider: { width: 1, backgroundColor: 'rgba(0,0,0,0.16)' },
-  miniPips: { width: '100%', height: '100%', position: 'relative' },
+  miniPips: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   miniPip: {
     position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#0a1f0a',
-    transform: [{ translateX: -3 }, { translateY: -3 }],
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#1a1a1a',
+    transform: [{ translateX: -3.5 }, { translateY: -3.5 }],
   },
   brandLogo: {
     width: 260,

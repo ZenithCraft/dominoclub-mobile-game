@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, ImageBackground, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, spacing, fonts, radius, backgroundCoverFix } from '../theme';
+import { colors, spacing, fonts, radius } from '../theme';
+import { ScreenBackground } from '../components/ScreenBackground';
 import { api } from '../services/api';
-import { IconChevronLeft, IconTrophy } from '../components/Icons';
+import { IconTrophy } from '../components/Icons';
 import { useAuthStore } from '../store/auth.store';
+import { GameTopBarMinimal } from './HomeScreen';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -23,7 +25,8 @@ type GameItem = {
 };
 
 export function HistoryScreen({ navigation }: Props) {
-  const myUserId = useAuthStore((s) => s.user?.id) ?? '';
+  const user = useAuthStore((s) => s.user);
+  const myUserId = user?.id ?? '';
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [items, setItems] = useState<GameItem[]>([]);
@@ -126,19 +129,13 @@ export function HistoryScreen({ navigation }: Props) {
   };
 
   return (
-    <ImageBackground
-      source={require('../../assets/background.png')}
-      style={[styles.root, backgroundCoverFix]}
-      resizeMode="cover"
-    >
+    <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <IconChevronLeft size={20} color="#fff" accessibilityLabel="Voltar" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Histórico de partidas</Text>
-          <View style={{ width: 40 }} />
-        </View>
+        <GameTopBarMinimal
+          user={user}
+          exitVariant="back"
+          onExit={() => navigation.goBack()}
+        />
 
         {loading ? (
           <ActivityIndicator color="#4ade80" style={{ marginTop: spacing.xl }} />
@@ -147,7 +144,7 @@ export function HistoryScreen({ navigation }: Props) {
             data={items}
             keyExtractor={(g) => g.id}
             renderItem={renderItem}
-            contentContainerStyle={{ padding: spacing.lg }}
+            contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.xl }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4ade80" />}
             ListHeaderComponent={pairStats.length > 0 ? (
               <View style={styles.summaryCard}>
@@ -170,7 +167,7 @@ export function HistoryScreen({ navigation }: Props) {
           />
         )}
       </SafeAreaView>
-    </ImageBackground>
+    </ScreenBackground>
   );
 }
 
@@ -192,7 +189,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.lg },
   card: {
-    backgroundColor: 'rgba(8, 18, 8, 0.72)',
+    backgroundColor: 'rgba(24, 73, 18, 0.92)',
     borderWidth: 1,
     borderColor: 'rgba(74, 222, 128, 0.28)',
     borderRadius: radius.lg,
@@ -213,7 +210,7 @@ const styles = StyleSheet.create({
   result: { marginTop: spacing.sm, fontWeight: '700' },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl },
   summaryCard: {
-    backgroundColor: 'rgba(8, 18, 8, 0.72)',
+    backgroundColor: 'rgba(24, 73, 18, 0.92)',
     borderWidth: 1,
     borderColor: 'rgba(255, 212, 0, 0.28)',
     borderRadius: radius.lg,
