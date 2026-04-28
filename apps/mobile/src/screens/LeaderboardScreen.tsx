@@ -8,9 +8,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius } from '../theme';
 import { ScreenBackground } from '../components/ScreenBackground';
-import { IconChevronLeft, IconTrophy } from '../components/Icons';
+import { IconTrophy } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
+import { GameTopBarMinimal } from './HomeScreen';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -73,7 +74,7 @@ function MyLeagueCard({ data }: { data: MyLeague }) {
   const m = rankMeta(data.rank);
   return (
     <LinearGradient
-      colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.3)']}
+      colors={['rgba(24,73,18,0.95)', 'rgba(24,73,18,0.88)']}
       style={cardStyles.wrap}
     >
       <View style={{ flex: 1 }}>
@@ -184,7 +185,8 @@ const rowStyles = StyleSheet.create({
 });
 
 export function LeaderboardScreen({ navigation }: Props) {
-  const myUserId = useAuthStore((s) => s.user?.id);
+  const user = useAuthStore((s) => s.user);
+  const myUserId = user?.id;
   const [period, setPeriod] = useState<Period>('month');
   const [entries, setEntries] = useState<LeaderEntry[]>([]);
   const [myLeague, setMyLeague] = useState<MyLeague | null>(null);
@@ -221,19 +223,14 @@ export function LeaderboardScreen({ navigation }: Props) {
     <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <IconChevronLeft size={20} color="#fff" accessibilityLabel="Voltar" />
-          </TouchableOpacity>
-          <View style={styles.headerTitle}>
-            <IconTrophy size={18} color="#ffd700" accessibilityLabel="Liga" />
-            <Text style={styles.headerTitleText}>Liga & Ranking</Text>
-          </View>
-          <View style={{ width: 40 }} />
-        </View>
+        <GameTopBarMinimal
+          user={user}
+          exitVariant="back"
+          onExit={() => navigation.goBack()}
+        />
 
         {/* Period toggle */}
-        <View style={styles.toggleRow}>
+        <View style={[styles.toggleRow, { marginTop: spacing.lg }]}>
           {(['week', 'month'] as Period[]).map((p) => (
             <TouchableOpacity
               key={p}
@@ -335,7 +332,7 @@ const styles = StyleSheet.create({
   listHeader: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
 
   podiumWrap: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(24, 73, 18, 0.92)',
     borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
