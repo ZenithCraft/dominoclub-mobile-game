@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ActivityIndicator,
-  FlatList, TouchableOpacity, Platform,
+  FlatList, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, fonts, radius } from '../theme';
 import { ScreenBackground } from '../components/ScreenBackground';
-import { IconChevronLeft, IconTrophy, IconStar } from '../components/Icons';
+import { IconTrophy, IconStar } from '../components/Icons';
 import { api } from '../services/api';
+import { useAuthStore } from '../store/auth.store';
+import { GameTopBarMinimal } from './HomeScreen';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -58,6 +60,7 @@ function computeWinStreak(games: Game[], myId: string): number {
 }
 
 export function AchievementsScreen({ navigation }: Props) {
+  const user = useAuthStore((s) => s.user);
   const [loading, setLoading] = useState(true);
   const [achs, setAchs] = useState<Achievement[]>([]);
   const [myLeague, setMyLeague] = useState<MyLeague | null>(null);
@@ -146,13 +149,11 @@ export function AchievementsScreen({ navigation }: Props) {
   return (
     <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <IconChevronLeft size={20} color="#fff" accessibilityLabel="Voltar" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Conquistas</Text>
-          <View style={{ width: 40 }} />
-        </View>
+        <GameTopBarMinimal
+          user={user}
+          exitVariant="back"
+          onExit={() => navigation.goBack()}
+        />
 
         {loading ? (
           <ActivityIndicator color="#4ade80" style={{ marginTop: spacing.xl }} />
@@ -161,7 +162,7 @@ export function AchievementsScreen({ navigation }: Props) {
             data={achs}
             keyExtractor={(a) => a.id}
             renderItem={renderItem}
-            contentContainerStyle={{ padding: spacing.lg }}
+            contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.xl }}
             ListHeaderComponent={
               <View style={{ gap: spacing.md, marginBottom: spacing.lg }}>
                 {/* League rank card */}
@@ -241,7 +242,7 @@ const styles = StyleSheet.create({
 
   statsRow: { flexDirection: 'row', gap: spacing.sm },
   statBox: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.3)',
+    flex: 1, backgroundColor: 'rgba(24, 73, 18, 0.92)',
     borderRadius: radius.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center', paddingVertical: spacing.md,
   },
@@ -255,7 +256,7 @@ const styles = StyleSheet.create({
 
   achCard: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(8,18,8,0.72)',
+    backgroundColor: 'rgba(24, 73, 18, 0.92)',
     borderWidth: 1, borderRadius: radius.lg,
     padding: spacing.md, gap: spacing.md, marginBottom: spacing.md,
   },

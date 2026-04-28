@@ -442,7 +442,7 @@ function buildSnakeLayout(
     const bi = r * rowCells;
     const tiles = Array.from({ length: hPerRow }, (_, i) => seq[bi + i] ?? null) as (Tile | null)[];
     const corner = (seq[bi + hPerRow] ?? null) as Tile | null;
-    const steps = tiles.map(() => L + GH);
+    const steps = tiles.map((t) => t ? ((t[0] === t[1] ? S : L) + GH) : L + GH);
     const cum: number[] = [0];
     for (const w of steps) cum.push(cum[cum.length - 1] + w);
     let pFirst = -1, pLast = -1;
@@ -474,11 +474,13 @@ function buildSnakeLayout(
     for (let i = 0; i < rowTiles.length; i++) {
       const t = rowTiles[i];
       if (!t) continue;
-      const horizontal = true;
-      const tileW = L;
-      const tileH = S;
+      const isDouble = t[0] === t[1];
+      const horizontal = !isDouble;
+      const tileW = isDouble ? S : L;
+      const tileH = isDouble ? L : S;
 
       // cell origin in row-local coords; GH/2 is the consistent leading margin
+      // Steps are variable (doubles use S, others use L), so no centering offset needed
       const cellXLocal = rtl ? (totalRowWidth - cumSteps[i + 1]) : cumSteps[i];
       const left = baseX + cellXLocal + Math.floor(GH / 2);
       const top  = cursorY + Math.floor((rowHeight - tileH) / 2);
@@ -494,16 +496,23 @@ function buildSnakeLayout(
       let cornerLeft: number;
       let cornerTop: number;
 
+      const lastTile = last >= 0 ? rowTiles[last] : null;
+      const lastIsDouble = lastTile ? lastTile[0] === lastTile[1] : false;
+      const lastTileW = lastIsDouble ? S : L;
+
       if (rtl) {
-        // Left-side corner: within the leftmost tile's column, left-aligned
+        // Left-side corner: aligned with left edge of the last (leftmost) tile
         const leftCellStart = last >= 0 ? (totalRowWidth - cumSteps[last + 1]) : 0;
         cornerLeft = baseX + leftCellStart + Math.floor(GH / 2);
       } else {
-        // Right-side corner: within the last tile's column, right-aligned
-        cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + Math.floor(GH / 2) + L - S;
+        // Right-side corner: aligned with right edge of the last tile minus cornerW
+        cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + Math.floor(GH / 2) + lastTileW - S;
       }
-      cornerTop = cursorY + Math.floor((L + S) / 2) + GH;
-      cursorY = cursorY + L + S + 2 * GH;
+      // Corner must start below the last tile's actual bottom (doubles extend to cursorY+L,
+      // horizontal tiles only to cursorY+(L+S)/2). Then cursorY advances just past corner bottom.
+      const lastBottom = cursorY + (lastIsDouble ? L : Math.floor((L + S) / 2));
+      cornerTop = Math.max(cursorY + Math.floor((L + S) / 2) + GH, lastBottom + GH);
+      cursorY = cornerTop + L + 1;
 
       placed.push({ tile: cornerTile, x: cornerLeft, y: cornerTop, horizontal: false });
       minX = Math.min(minX, cornerLeft);
@@ -756,7 +765,7 @@ function DraggableTile({ tile, isPlayable, isSelected, onPress, onDragUp, onWebD
 }
 
 // ─── Tile size presets ────────────────────────────────────────────────────────
-type DominoTileSize = 'icon' | 'hand' | 'xs' | 'sm' | 'md';
+type DominoTileSize = 'icon' | 'hand' | 'xxs' | 'xs' | 'sm' | 'md';
 type DominoTileProps = {
   tile: Tile;
   size?: DominoTileSize;
@@ -770,6 +779,7 @@ type DominoTileProps = {
 const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
   icon: { short: 16, long: 28, pip: 2, corner: 2 },
   hand: { short: 28, long: 50, pip: 4, corner: 6 },
+  xxs:  { short: 19, long: 38, pip: 4, corner: 3 },
   xs:   { short: 22, long: 44, pip: 4, corner: 4 },
   sm:   { short: 32, long: 64, pip: 5, corner: 6 },
   md:   { short: 44, long: 88, pip: 7, corner: 8 },
@@ -1349,7 +1359,7 @@ export function GameScreen({ navigation, route }: Props) {
   const drawAnimRef    = useRef<Map<string, Animated.Value>>(new Map());
   const drawPulseAnim  = useRef(new Animated.Value(0)).current;
 
-  // ── Dev mock: inject a 2v2 game so the board can be screenshotted ────────────
+  // ── Dev mock: inject a pre-seeded game so the board can be inspected ─────────
   useEffect(() => {
     const isMockGame =
       process.env.EXPO_PUBLIC_MOCK_GAME === 'true' ||
@@ -1357,59 +1367,77 @@ export function GameScreen({ navigation, route }: Props) {
       (typeof window !== 'undefined' && !!(window as any).__MOCK_GAME__);
     if (!isMockGame) return;
     if (currentGame) return;
-    const board: PlacedTile[] = [
-      { tile: [6,6], side:'left',  flipped:false },
-      { tile: [6,5], side:'right', flipped:false },
-      { tile: [5,4], side:'right', flipped:false },
-      { tile: [4,4], side:'right', flipped:false },
-      { tile: [4,3], side:'right', flipped:false },
-      { tile: [3,2], side:'right', flipped:false },
-      { tile: [2,2], side:'right', flipped:false },
-      { tile: [2,1], side:'right', flipped:false },
-      { tile: [1,0], side:'right', flipped:false },
-      { tile: [0,0], side:'right', flipped:false },
-      { tile: [6,4], side:'left',  flipped:true  },
-      { tile: [4,2], side:'left',  flipped:true  },
-      { tile: [2,0], side:'left',  flipped:true  },
-      { tile: [6,3], side:'left',  flipped:true  },
-      { tile: [3,1], side:'left',  flipped:true  },
-      { tile: [5,3], side:'left',  flipped:true  },
-      { tile: [3,0], side:'left',  flipped:true  },
-      { tile: [5,2], side:'left',  flipped:true  },
-      { tile: [5,1], side:'left',  flipped:true  },
-      { tile: [5,0], side:'left',  flipped:true  },
-      { tile: [0,1], side:'right', flipped:false },
-      { tile: [1,3], side:'right', flipped:false },
-      { tile: [3,3], side:'right', flipped:false },
-      { tile: [3,5], side:'right', flipped:false },
-      { tile: [5,5], side:'right', flipped:false },
-      { tile: [5,6], side:'right', flipped:false },
-      { tile: [6,2], side:'right', flipped:false },
-      { tile: [2,4], side:'right', flipped:false },
+
+    // All 27 VISIBLE_TILES on board — Eulerian path leftOpen=4, rightOpen=5
+    const mockBoard: PlacedTile[] = [
+      { tile: [4,4], side: 'left',  flipped: false },
+      { tile: [4,6], side: 'right', flipped: false },
+      { tile: [6,6], side: 'right', flipped: false },
+      { tile: [5,6], side: 'right', flipped: true  },
+      { tile: [5,5], side: 'right', flipped: false },
+      { tile: [2,5], side: 'right', flipped: true  },
+      { tile: [2,2], side: 'right', flipped: false },
+      { tile: [2,6], side: 'right', flipped: false },
+      { tile: [1,6], side: 'right', flipped: true  },
+      { tile: [1,1], side: 'right', flipped: false },
+      { tile: [0,1], side: 'right', flipped: true  },
+      { tile: [0,0], side: 'right', flipped: false },
+      { tile: [0,6], side: 'right', flipped: false },
+      { tile: [3,6], side: 'right', flipped: true  },
+      { tile: [3,3], side: 'right', flipped: false },
+      { tile: [3,5], side: 'right', flipped: false },
+      { tile: [1,5], side: 'right', flipped: true  },
+      { tile: [1,3], side: 'right', flipped: false },
+      { tile: [3,4], side: 'right', flipped: false },
+      { tile: [2,4], side: 'right', flipped: true  },
+      { tile: [2,3], side: 'right', flipped: false },
+      { tile: [0,3], side: 'right', flipped: true  },
+      { tile: [0,4], side: 'right', flipped: false },
+      { tile: [1,4], side: 'right', flipped: true  },
+      { tile: [1,2], side: 'right', flipped: false },
+      { tile: [0,2], side: 'right', flipped: true  },
+      { tile: [0,5], side: 'right', flipped: false },
     ];
-    const mockState = {
-      id: 'dev-mock-2v2',
-      mode: 'TOURNAMENT_2V2',
-      variant: 'CARROCA',
-      status: 'playing' as const,
-      currentPlayerIndex: 0,
-      turnCount: 20,
-      firstPlayMade: true,
-      leftOpen: 0,
-      rightOpen: 0,
-      boneyard: [],
-      board,
-      players: [
-        { userId: 'me',  name: 'Você',    team: 1, seat: 0, hand: [[6,1],[6,2],[6,0]] as Tile[],         isBot: false, connected: true },
-        { userId: 'p2',  name: 'Carlos',  team: 2, seat: 1, hand: Array(4).fill(null) as null[],         isBot: false, connected: true },
-        { userId: 'p3',  name: 'Ana',     team: 1, seat: 2, hand: Array(3).fill(null) as null[],         isBot: false, connected: true },
-        { userId: 'p4',  name: 'Pedro',   team: 2, seat: 3, hand: Array(3).fill(null) as null[],         isBot: false, connected: true },
-      ],
-      matchScores: { 1: 3, 2: 2 },
-      roundNumber: 4,
-      targetScore: 6,
-    };
-    // Pre-seed fakeSocket so game:join re-emits this state instead of creating a new 1v1 game
+
+    const is2v2 = String(gameId).includes('2v2');
+    const mockState = is2v2
+      ? {
+          id: gameId,
+          mode: 'RECREATIONAL_2V2',
+          variant: 'CARROCA',
+          status: 'playing' as const,
+          currentPlayerIndex: 0,
+          turnCount: 28,
+          firstPlayMade: true,
+          leftOpen: 4,
+          rightOpen: 5,
+          boneyard: [],
+          board: mockBoard,
+          players: [
+            { userId: String((user as any)?.id ?? 'me'), name: (user as any)?.name ?? 'Você', team: 1, seat: 0, hand: [] as Tile[], isBot: false, connected: true },
+            { userId: 'p2', name: 'Ana',    team: 2, seat: 1, hand: [] as Tile[], isBot: true,  connected: true },
+            { userId: 'p3', name: 'Pedro',  team: 1, seat: 2, hand: [] as Tile[], isBot: true,  connected: true },
+            { userId: 'p4', name: 'Carlos', team: 2, seat: 3, hand: [] as Tile[], isBot: true,  connected: true },
+          ],
+        }
+      : {
+          id: gameId,
+          mode: 'ARENA_1V1',
+          variant: 'CARROCA',
+          status: 'playing' as const,
+          currentPlayerIndex: 0,
+          turnCount: 28,
+          firstPlayMade: true,
+          leftOpen: 4,
+          rightOpen: 5,
+          boneyard: [],
+          board: mockBoard,
+          players: [
+            { userId: String((user as any)?.id ?? 'me'), name: (user as any)?.name ?? 'Você', team: 1, seat: 0, hand: [] as Tile[], isBot: false, connected: true },
+            { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: [] as Tile[], isBot: true,  connected: true },
+          ],
+        };
+
     try {
       const { fakeSocket } = require('../mocks/fakeSocket');
       fakeSocket.setInitialState(mockState);
@@ -1438,7 +1466,7 @@ export function GameScreen({ navigation, route }: Props) {
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const is2v2 = currentGame?.mode?.includes('2V2') ?? false;
-  const boardTileSize: DominoTileSize = 'xs';
+  const boardTileSize: DominoTileSize = 'xxs';
   const boardTilePreset = TILE_DIMS[boardTileSize];
   const tableHeight = Math.round(Math.min(viewportWidth * 0.88, 940) / (is2v2 ? 2.1 : 2.2));
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
@@ -1905,11 +1933,11 @@ export function GameScreen({ navigation, route }: Props) {
   const SNAKE_GAP_BASE = 5;
   const SNAKE_GAP = SNAKE_GAP_BASE;
   const snakeMaxW = feltWidth
-    ? Math.max(0, feltWidth * (is4Player ? 0.82 : 0.90))
-    : Math.max(0, viewportWidth * (is4Player ? 0.68 : 0.78));
+    ? Math.max(0, feltWidth * (is4Player ? 0.95 : 0.98))
+    : Math.max(0, viewportWidth * (is4Player ? 0.80 : 0.92));
   const SNAKE_H_PER_ROW = Math.max(
     6,
-    Math.min(is4Player ? 8 : 11, Math.floor((snakeMaxW + SNAKE_GAP) / (boardTilePreset.long + SNAKE_GAP)))
+    Math.min(14, Math.floor((snakeMaxW + SNAKE_GAP) / (boardTilePreset.long + SNAKE_GAP)))
   );
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1922,9 +1950,9 @@ export function GameScreen({ navigation, route }: Props) {
   // ── Board scale: shrink tiles so they always fit inside the oval ─────────
   const boardScale = (() => {
     if (!feltWidth || baseLayout.width === 0 || baseLayout.height === 0) return 1;
-    const boardPadBase = 8;
-    const availW = Math.max(0, feltWidth  * 0.92 - boardPadBase * 2);
-    const availH = Math.max(0, tableHeight * 0.78 - boardPadBase * 2);
+    const boardPadBase = 4;
+    const availW = Math.max(0, feltWidth  * 0.98 - boardPadBase * 2);
+    const availH = Math.max(0, tableHeight * 0.86 - boardPadBase * 2);
     const scaleW = baseLayout.width > availW ? availW / baseLayout.width : 1;
     const scaleH = baseLayout.height > availH ? availH / baseLayout.height : 1;
     return Math.max(0.52, Math.min(1, scaleW, scaleH));

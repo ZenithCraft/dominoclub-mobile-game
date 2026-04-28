@@ -144,35 +144,66 @@ class FakeSocket {
         const gameId = args[0]?.gameId ?? 'demo-1';
         const myId   = useAuthStore.getState().user?.id ?? 'p1';
         const myName = useAuthStore.getState().user?.name ?? 'Você';
-        const is2v2  = String(gameId).includes('2v2') || !!this.lastQueueMode?.includes('2V2');
+        const is2v2  = String(gameId).includes('2v2');
+        this.lastQueueMode = null;
 
         const deck = shuffle(VISIBLE_TILES);
 
+        // All 27 VISIBLE_TILES on the board (Eulerian path: leftOpen=4, rightOpen=5)
+        // Chain: [4,4]·[4,6]·[6,6]·[6,5]·[5,5]·[5,2]·[2,2]·[2,6]·[6,1]·[1,1]·[1,0]·[0,0]·[0,6]·[6,3]·[3,3]·[3,5]·[5,1]·[1,3]·[3,4]·[4,2]·[2,3]·[3,0]·[0,4]·[4,1]·[1,2]·[2,0]·[0,5]
+        const sharedBoard = [
+          { tile: [4,4] as Tile, side: 'left'  as Side, flipped: false },
+          { tile: [4,6] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [6,6] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [5,6] as Tile, side: 'right' as Side, flipped: true  },
+          { tile: [5,5] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [2,5] as Tile, side: 'right' as Side, flipped: true  },
+          { tile: [2,2] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [2,6] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [1,6] as Tile, side: 'right' as Side, flipped: true  },
+          { tile: [1,1] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [0,1] as Tile, side: 'right' as Side, flipped: true  },
+          { tile: [0,0] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [0,6] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [3,6] as Tile, side: 'right' as Side, flipped: true  },
+          { tile: [3,3] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [3,5] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [1,5] as Tile, side: 'right' as Side, flipped: true  },
+          { tile: [1,3] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [3,4] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [2,4] as Tile, side: 'right' as Side, flipped: true  },
+          { tile: [2,3] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [0,3] as Tile, side: 'right' as Side, flipped: true  },
+          { tile: [0,4] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [1,4] as Tile, side: 'right' as Side, flipped: true  },
+          { tile: [1,2] as Tile, side: 'right' as Side, flipped: false },
+          { tile: [0,2] as Tile, side: 'right' as Side, flipped: true  },
+          { tile: [0,5] as Tile, side: 'right' as Side, flipped: false },
+        ];
+
         if (is2v2) {
-          // 27 tiles available (all except [1,2]): deal 7 each, last bot gets 6
           this.state = {
             id: gameId, mode: 'RECREATIONAL_2V2', variant: 'CARROCA',
             players: [
-              { userId: myId,  name: myName,        team: 1, seat: 0, hand: deck.slice(0,  7), isBot: false, connected: true },
-              { userId: 'p2',  name: 'Adversário 1', team: 2, seat: 1, hand: deck.slice(7,  14), isBot: true,  connected: true },
-              { userId: 'p3',  name: 'Parceiro',     team: 1, seat: 2, hand: deck.slice(14, 21), isBot: true,  connected: true },
-              { userId: 'p4',  name: 'Adversário 2', team: 2, seat: 3, hand: deck.slice(21, 27), isBot: true,  connected: true },
+              { userId: myId, name: myName,   team: 1, seat: 0, hand: [], isBot: false, connected: true },
+              { userId: 'p2', name: 'Ana',    team: 2, seat: 1, hand: [], isBot: true,  connected: true },
+              { userId: 'p3', name: 'Pedro',  team: 1, seat: 2, hand: [], isBot: true,  connected: true },
+              { userId: 'p4', name: 'Carlos', team: 2, seat: 3, hand: [], isBot: true,  connected: true },
             ],
-            board: [], leftOpen: -1, rightOpen: -1,
-            currentPlayerIndex: 0, turnCount: 1,
-            status: 'playing', boneyard: [], firstPlayMade: false,
+            board: sharedBoard, leftOpen: 4, rightOpen: 5,
+            currentPlayerIndex: 0, turnCount: 28,
+            status: 'playing', boneyard: [], firstPlayMade: true,
           };
         } else {
-          // 1v1: 7 + 7 player tiles, 7 boneyard — all from visible set
           this.state = {
             id: gameId, mode: 'ARENA_1V1', variant: 'CARROCA',
             players: [
-              { userId: myId, name: myName,    team: 1, seat: 0, hand: deck.slice(0, 7), isBot: false, connected: true },
-              { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: deck.slice(7,14), isBot: true,  connected: true },
+              { userId: myId, name: myName,    team: 1, seat: 0, hand: [], isBot: false, connected: true },
+              { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: [], isBot: true,  connected: true },
             ],
-            board: [], leftOpen: -1, rightOpen: -1,
-            currentPlayerIndex: 0, turnCount: 1,
-            status: 'playing', boneyard: deck.slice(14), firstPlayMade: false,
+            board: sharedBoard, leftOpen: 4, rightOpen: 5,
+            currentPlayerIndex: 0, turnCount: 28,
+            status: 'playing', boneyard: [], firstPlayMade: true,
           };
         }
 
