@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(find /c/laragon/www/dominoclub-mobile-game -not -path */node_modules/* -not -path */.next/* -not -path */build/* -not -path */dist/* -type d)",
-      "Bash(xargs wc:*)"
+      "Bash(xargs wc:*)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__computer",
+      "mcp__Claude_in_Chrome__javascript_tool",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"try{require\\('jimp'\\);console.log\\('jimp ok'\\)}catch\\(e\\){console.log\\('no jimp: '+e.message\\)}\")",
+      "Bash(node -e \"try{require\\('pngjs'\\);console.log\\('pngjs ok'\\)}catch\\(e\\){console.log\\('no pngjs: '+e.message\\)}\")",
+      "Bash(node -e \"try{require\\('sharp'\\);console.log\\('sharp ok'\\)}catch\\(e\\){console.log\\('no sharp: '+e.message\\)}\")"
     ]
   }
 }
