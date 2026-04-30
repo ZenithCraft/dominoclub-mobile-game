@@ -418,7 +418,7 @@ function buildSnakeLayout(
   const S = Math.round(base.short * scale);
   const L = Math.round(base.long * scale);
   const GH = Math.max(1, Math.round(gap * scale));
-  const GV = Math.max(1, Math.round((gap + 2) * scale));
+  const GV = Math.max(1, Math.round((gap + 1) * scale));
 
   const placed: SnakePlaced[] = [];
   let cursorY = 0;
@@ -485,7 +485,10 @@ function buildSnakeLayout(
       const left = baseX + cellXLocal + Math.floor(GH / 2);
       const top  = cursorY + Math.floor((rowHeight - tileH) / 2);
 
-      placed.push({ tile: rtl ? ([t[1], t[0]] as Tile) : t, x: left, y: top, horizontal });
+      // In RTL rows tiles are placed right-to-left, so tile[0] ends up on the RIGHT
+      // visually. Swap pip order for non-doubles so tile[0] stays on the LEFT.
+      const displayTile: Tile = (rtl && t[0] !== t[1]) ? [t[1], t[0]] : t;
+      placed.push({ tile: displayTile, x: left, y: top, horizontal });
       minX = Math.min(minX, left);
       maxX = Math.max(maxX, left + tileW);
       maxY = Math.max(maxY, top + tileH);
@@ -558,7 +561,9 @@ function buildHorizBoardTiles(
   const padded: (Tile | null)[] = new Array(totalCells).fill(null);
   const startIndex = centerIndex - leftCount;
   for (let i = 0; i < seq.length; i++) {
-    if (startIndex + i >= 0 && startIndex + i < totalCells) padded[startIndex + i] = seq[i];
+    const idx = startIndex + i;
+    if (idx < 0 || idx >= totalCells) continue;
+    padded[idx] = seq[i];
   }
   return { padded, spinnerPaddedIdx: centerIndex };
 }
@@ -652,16 +657,37 @@ function buildFullBoardLayout(
   return { placed: allPlaced, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), horizCount };
 }
 
-// ─── Pip positions ────────────────────────────────────────────────────────────
-// [topFraction, leftFraction] within each half, matching standard domino layout.
-const PIP_POSITIONS: Record<number, [number, number][]> = {
-  0: [],
-  1: [[0.50, 0.50]],
-  2: [[0.25, 0.25], [0.75, 0.75]],
-  3: [[0.25, 0.25], [0.50, 0.50], [0.75, 0.75]],
-  4: [[0.25, 0.25], [0.25, 0.75], [0.75, 0.25], [0.75, 0.75]],
-  5: [[0.25, 0.25], [0.25, 0.75], [0.50, 0.50], [0.75, 0.25], [0.75, 0.75]],
-  6: [[0.18, 0.25], [0.50, 0.25], [0.82, 0.25], [0.18, 0.75], [0.50, 0.75], [0.82, 0.75]],
+// ─── Domino piece images ──────────────────────────────────────────────────────
+// Sorted descending: [6,6] → Frame 14164 … [0,0] → Frame 14191
+const DOMINO_IMAGES: Record<string, any> = {
+  '6,6': require('../../assets/domino-pieces/6-6.png'),
+  '6,5': require('../../assets/domino-pieces/6-5.png'),
+  '6,4': require('../../assets/domino-pieces/6-4.png'),
+  '6,3': require('../../assets/domino-pieces/6-3.png'),
+  '6,2': require('../../assets/domino-pieces/6-2.png'),
+  '6,1': require('../../assets/domino-pieces/6-1.png'),
+  '6,0': require('../../assets/domino-pieces/6-0.png'),
+  '5,5': require('../../assets/domino-pieces/5-5.png'),
+  '5,4': require('../../assets/domino-pieces/5-4.png'),
+  '5,3': require('../../assets/domino-pieces/5-3.png'),
+  '5,2': require('../../assets/domino-pieces/5-2.png'),
+  '5,1': require('../../assets/domino-pieces/5-1.png'),
+  '5,0': require('../../assets/domino-pieces/5-0.png'),
+  '4,4': require('../../assets/domino-pieces/4-4.png'),
+  '4,3': require('../../assets/domino-pieces/4-3.png'),
+  '4,2': require('../../assets/domino-pieces/4-2.png'),
+  '4,1': require('../../assets/domino-pieces/4-1.png'),
+  '4,0': require('../../assets/domino-pieces/4-0.png'),
+  '3,3': require('../../assets/domino-pieces/3-3.png'),
+  '3,2': require('../../assets/domino-pieces/3-2.png'),
+  '3,1': require('../../assets/domino-pieces/3-1.png'),
+  '3,0': require('../../assets/domino-pieces/3-0.png'),
+  '2,2': require('../../assets/domino-pieces/2-2.png'),
+  '2,1': require('../../assets/domino-pieces/2-1.png'),
+  '2,0': require('../../assets/domino-pieces/2-0.png'),
+  '1,1': require('../../assets/domino-pieces/1-1.png'),
+  '1,0': require('../../assets/domino-pieces/1-0.png'),
+  '0,0': require('../../assets/domino-pieces/0-0.png'),
 };
 
 function TileHandImage({ tile, selected, playable, onPress }: {
@@ -781,33 +807,47 @@ const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: numb
   hand: { short: 28, long: 50, pip: 4, corner: 6 },
   xxs:  { short: 19, long: 38, pip: 4, corner: 3 },
   xs:   { short: 22, long: 44, pip: 4, corner: 4 },
-  sm:   { short: 32, long: 64, pip: 5, corner: 6 },
+  sm:   { short: 26, long: 52, pip: 5, corner: 5 },
   md:   { short: 44, long: 88, pip: 7, corner: 8 },
 };
-
-// Ivory white matching the PNG tile colour
-const TILE_BG    = '#f8f6f0';
-const TILE_LINE  = '#c8c4bc';
-const TILE_PIP   = '#090909';
 
 function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, onPress, style }: DominoTileProps) {
   const base   = TILE_DIMS[size] ?? TILE_DIMS.md;
   const S      = Math.round(base.short  * tileScale);
   const L      = Math.round(base.long   * tileScale);
-  const pip    = Math.max(3, Math.round(base.pip    * tileScale));
   const corner = Math.max(2, Math.round(base.corner * tileScale));
-  const divW   = Math.max(1, Math.round(tileScale));
 
-  const tileW  = horizontal ? L : S;
-  const tileH  = horizontal ? S : L;
-  const halfW  = horizontal ? (L - divW) / 2 : S;
-  const halfH  = horizontal ? S : (L - divW) / 2;
+  const tileW = horizontal ? L : S;
+  const tileH = horizontal ? S : L;
+
+  // Canonical image: stored portrait with lower value on TOP, higher value on BOTTOM
+  const hi = Math.max(tile[0], tile[1]);
+  const lo = Math.min(tile[0], tile[1]);
+  const imgSrc = DOMINO_IMAGES[`${hi},${lo}`];
+
+  // Images stored portrait: lo (smaller value) on TOP, hi (larger value) on BOTTOM.
+  // Exception: tiles with lo=0 (blank half) store hi on TOP, lo(blank) on BOTTOM.
+  // imageTopIsHi = true means the image naturally has hi on top (needs inverted rotation).
+  //
+  // Vertical display — tile[0] must appear at TOP:
+  //   Normal  (lo-on-top): tile[0]=lo → 0deg;  tile[0]=hi → 180deg
+  //   Inverted(hi-on-top): tile[0]=hi → 0deg;  tile[0]=lo → 180deg
+  //
+  // Horizontal display — tile[0] must appear at LEFT:
+  //   Normal  (lo-on-top): tile[0]=lo → -90deg (CCW, top→left); tile[0]=hi → +90deg (CW)
+  //   Inverted(hi-on-top): tile[0]=hi → -90deg;                  tile[0]=lo → +90deg
+  const imageTopIsHi = lo === 0;
+  // "topMatchesTile0" = the natural top of the image already shows tile[0]
+  const topMatchesTile0 = imageTopIsHi ? (tile[0] === hi) : (tile[0] === lo);
+  const rotation = horizontal
+    ? (topMatchesTile0 ? '-90deg' : '90deg')
+    : (topMatchesTile0 ? '0deg'   : '180deg');
 
   const selectedStyle = selected
     ? (Platform.OS === 'web'
         ? ({ borderColor: colors.primary, boxShadow: '0 0 10px rgba(74,222,128,0.6)' } as any)
         : { borderColor: colors.primary, shadowColor: '#4ade80', shadowOpacity: 0.8, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 6 })
-    : { borderColor: TILE_LINE };
+    : {};
 
   const tileShadow = Platform.OS === 'web'
     ? ({ boxShadow: '0px 1px 2px rgba(0,0,0,0.16)' } as any)
@@ -819,27 +859,35 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
         elevation: 2,
       };
 
+  // Outer clip box is always tileW × tileH.
+  // Inner portrait image (S × L) is centered, then rotated around its own center.
+  // Because React Native rotates around the element center by default, centering
+  // the S×L image inside the tileW×tileH box (via absolute + margin) ensures the
+  // rotation pivot is exactly the tile center.
   const content = (
     <View style={[
       {
         width: tileW,
         height: tileH,
-        backgroundColor: TILE_BG,
         borderRadius: corner,
-        borderWidth: selected ? 2 : 1,
-        flexDirection: horizontal ? 'row' : 'column',
+        borderWidth: selected ? 2 : 0,
         overflow: 'hidden',
+        alignItems: 'center',
+        justifyContent: 'center',
       },
       !selected && tileShadow,
       selectedStyle,
       style,
     ]}>
-      <Pips value={tile[0]} halfW={halfW} halfH={halfH} dot={pip} rotated={horizontal} />
-      <View style={horizontal
-        ? { width: divW, height: tileH, backgroundColor: TILE_LINE }
-        : { width: tileW, height: divW, backgroundColor: TILE_LINE }
-      } />
-      <Pips value={tile[1]} halfW={halfW} halfH={halfH} dot={pip} rotated={horizontal} />
+      <Image
+        source={imgSrc}
+        style={{
+          width: S,
+          height: L,
+          transform: [{ rotate: rotation }],
+        }}
+        resizeMode="contain"
+      />
     </View>
   );
 
@@ -847,35 +895,6 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
     return <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={{ borderRadius: corner }}>{content}</TouchableOpacity>;
   }
   return content;
-}
-
-function Pips({ value, halfW, halfH, dot, rotated }: { value: number; halfW: number; halfH: number; dot: number; rotated?: boolean }) {
-  const spots = PIP_POSITIONS[value] ?? [];
-  const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-  const edge = Math.max(1, Math.floor(Math.min(halfW, halfH) * 0.12));
-  const minCenter = dot / 2 + edge;
-  return (
-    <View style={{ width: halfW, height: halfH }}>
-      {spots.map(([topFrac, leftFrac], idx) => {
-        const tF = rotated ? leftFrac : topFrac;
-        const lF = rotated ? topFrac  : leftFrac;
-        return (
-          <View
-            key={idx}
-            style={{
-              position: 'absolute',
-              width: dot,
-              height: dot,
-              borderRadius: dot / 2,
-              backgroundColor: TILE_PIP,
-              top:  clamp(tF * halfH, minCenter, halfH - minCenter) - dot / 2,
-              left: clamp(lF * halfW, minCenter, halfW - minCenter) - dot / 2,
-            }}
-          />
-        );
-      })}
-    </View>
-  );
 }
 
 // ─── Emoji panel ──────────────────────────────────────────────────────────────
@@ -1008,16 +1027,19 @@ function usePulse(active: boolean) {
   return anim;
 }
 
-function OpponentCard({ player, tileCount, isTurn, team = 0 }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number }) {
+function OpponentCard({ player, tileCount, isTurn, team = 0, isOpponent = false }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number; isOpponent?: boolean }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
   const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
   const scale = usePulse(isTurn);
+  const gradientColors: [string, string] = isOpponent
+    ? ['rgba(38,8,8,0.97)', 'rgba(100,22,22,0.93)']
+    : ['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)'];
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <LinearGradient
-        colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
+        colors={gradientColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[oppStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
@@ -1029,26 +1051,31 @@ function OpponentCard({ player, tileCount, isTurn, team = 0 }: { player: any; ti
             <Text style={oppStyles.avatarText}>{name[0]?.toUpperCase?.() ?? '?'}</Text>
           )}
         </View>
-        <Text style={oppStyles.name} numberOfLines={1}>{name}</Text>
-        <Text style={oppStyles.sub}>{tileCount} peças</Text>
+        <View style={oppStyles.textWrap}>
+          <Text style={oppStyles.name} numberOfLines={1}>{name}</Text>
+          <Text style={oppStyles.sub}>{tileCount} peças</Text>
+        </View>
       </LinearGradient>
     </Animated.View>
   );
 }
 const oppStyles = StyleSheet.create({
   card: {
-    flexDirection: 'column',
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: radius.xl,
+    borderRadius: radius.full,
     paddingVertical: 10,
-    paddingHorizontal: 14,
-    gap: 4,
+    paddingLeft: 16,
+    paddingRight: 12,
+    gap: 10,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: 80,
+    minWidth: 140,
+    minHeight: 48,
   },
-  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
-  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.xs, textAlign: 'center' },
+  textWrap: { flex: 1, justifyContent: 'center' },
+  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
+  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.xs },
   avatar: {
     width: 40,
     height: 40,
@@ -1066,16 +1093,19 @@ const oppStyles = StyleSheet.create({
 
 // ─── Side player card (4p left/right) — horizontal pill, same as OpponentCard ─
 
-function SidePlayerCard({ player, tileCount, isTurn, team = 0 }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number }) {
+function SidePlayerCard({ player, tileCount, isTurn, team = 0, isOpponent = false }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number; isOpponent?: boolean }) {
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
   const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
   const scale = usePulse(isTurn);
+  const gradientColors: [string, string] = isOpponent
+    ? ['rgba(38,8,8,0.97)', 'rgba(100,22,22,0.93)']
+    : ['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)'];
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <LinearGradient
-        colors={['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)']}
+        colors={gradientColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[sideStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
@@ -1364,12 +1394,60 @@ export function GameScreen({ navigation, route }: Props) {
     const isMockGame =
       process.env.EXPO_PUBLIC_MOCK_GAME === 'true' ||
       process.env.EXPO_PUBLIC_MOCK_MODE === 'true' ||
-      (typeof window !== 'undefined' && !!(window as any).__MOCK_GAME__);
+      (typeof window !== 'undefined' && !!(window as any).__MOCK_GAME__) ||
+      (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mockGame') === '1');
     if (!isMockGame) return;
     if (currentGame) return;
 
+    // 18-tile sequence — exact engine applyMove rules, no duplicate tiles.
+    // right/false: tile[0] connects to R, new R = tile[1]
+    // right/true:  tile[1] connects to R, new R = tile[0]
+    // left/false:  tile[1] connects to L, new L = tile[0]
+    // left/true:   tile[0] connects to L, new L = tile[1]
+    //
+    //  1. [6,3] left  false → L=6  R=3   first play, eff=[6,3]
+    //  2. [3,5] right false → L=6  R=5   tile[0]=3=R
+    //  3. [5,2] right false → L=6  R=2   tile[0]=5=R
+    //  4. [2,2] right false → L=6  R=2   double
+    //  5. [4,2] right true  → L=6  R=4   tile[1]=2=R, new R=4
+    //  6. [4,4] right false → L=6  R=4   double
+    //  7. [4,1] right false → L=6  R=1   tile[0]=4=R
+    //  8. [1,1] right false → L=6  R=1   double
+    //  9. [3,1] right true  → L=6  R=3   tile[1]=1=R, new R=3
+    // 10. [3,4] right false → L=6  R=4   tile[0]=3=R  ← replaces [3,0] to avoid dupe with step14
+    // 11. [6,6] left  false → L=6  R=4   double, tile[1]=6=L
+    // 12. [6,5] left  true  → L=5  R=4   tile[0]=6=L, new L=tile[1]=5
+    // 13. [5,3] left  true  → L=3  R=4   tile[0]=5=L, new L=tile[1]=3
+    // 14. [0,3] left  false → L=0  R=4   tile[1]=3=L, new L=tile[0]=0
+    // 15. [0,1] left  false → L=1  R=4   tile[1]=0=L, new L=tile[0]=0? No: tile=[0,1], tile[1]=1≠0, tile[0]=0=L → left/true, new L=1
+    //     → tile=[0,1] left true  → L=1  R=4
+    // 16. [1,6] left  false → tile[1]=6≠1; tile[0]=1=L → left/true, new L=tile[1]=6
+    //     → tile=[1,6] left true  → L=6  R=4
+    // 17. [2,4] right true  → tile[1]=4=R, new R=tile[0]=2 → L=6  R=2
+    // 18. [2,5] right false → tile[0]=2=R, new R=5 → L=6  R=5
+    const simpleMockBoard: PlacedTile[] = [
+      { tile: [6,3], side: 'left',  flipped: false }, //  1 → L=6 R=3
+      { tile: [3,5], side: 'right', flipped: false }, //  2 → L=6 R=5
+      { tile: [5,2], side: 'right', flipped: false }, //  3 → L=6 R=2
+      { tile: [2,2], side: 'right', flipped: false }, //  4 → L=6 R=2  double
+      { tile: [4,2], side: 'right', flipped: true  }, //  5 → L=6 R=4
+      { tile: [4,4], side: 'right', flipped: false }, //  6 → L=6 R=4  double
+      { tile: [4,1], side: 'right', flipped: false }, //  7 → L=6 R=1
+      { tile: [1,1], side: 'right', flipped: false }, //  8 → L=6 R=1  double
+      { tile: [3,1], side: 'right', flipped: true  }, //  9 → L=6 R=3
+      { tile: [3,4], side: 'right', flipped: false }, // 10 → L=6 R=4
+      { tile: [6,6], side: 'left',  flipped: false }, // 11 → L=6 R=4  double
+      { tile: [6,5], side: 'left',  flipped: true  }, // 12 → L=5 R=4
+      { tile: [5,3], side: 'left',  flipped: true  }, // 13 → L=3 R=4
+      { tile: [0,3], side: 'left',  flipped: false }, // 14 → L=0 R=4  tile[1]=3=L
+      { tile: [0,1], side: 'left',  flipped: true  }, // 15 → L=1 R=4  tile[0]=0=L
+      { tile: [1,6], side: 'left',  flipped: true  }, // 16 → L=6 R=4  tile[0]=1=L
+      { tile: [2,4], side: 'right', flipped: true  }, // 17 → L=6 R=2  tile[1]=4=R
+      { tile: [2,5], side: 'right', flipped: false }, // 18 → L=6 R=5  tile[0]=2=R
+    ];
+
     // All 27 VISIBLE_TILES on board — Eulerian path leftOpen=4, rightOpen=5
-    const mockBoard: PlacedTile[] = [
+    const fullMockBoard: PlacedTile[] = [
       { tile: [4,4], side: 'left',  flipped: false },
       { tile: [4,6], side: 'right', flipped: false },
       { tile: [6,6], side: 'right', flipped: false },
@@ -1399,6 +1477,9 @@ export function GameScreen({ navigation, route }: Props) {
       { tile: [0,5], side: 'right', flipped: false },
     ];
 
+    const isSimple = String(gameId).includes('simple');
+    const mockBoard = isSimple ? simpleMockBoard : fullMockBoard;
+
     const is2v2 = String(gameId).includes('2v2');
     const mockState = is2v2
       ? {
@@ -1407,17 +1488,20 @@ export function GameScreen({ navigation, route }: Props) {
           variant: 'CARROCA',
           status: 'playing' as const,
           currentPlayerIndex: 0,
-          turnCount: 28,
+          turnCount: 5,
           firstPlayMade: true,
           leftOpen: 4,
           rightOpen: 5,
-          boneyard: [],
+          boneyard: [] as null[],
           board: mockBoard,
+          matchScores: { 1: 2, 2: 1 },
+          roundNumber: 1,
+          targetScore: 6,
           players: [
-            { userId: String((user as any)?.id ?? 'me'), name: (user as any)?.name ?? 'Você', team: 1, seat: 0, hand: [] as Tile[], isBot: false, connected: true },
-            { userId: 'p2', name: 'Ana',    team: 2, seat: 1, hand: [] as Tile[], isBot: true,  connected: true },
-            { userId: 'p3', name: 'Pedro',  team: 1, seat: 2, hand: [] as Tile[], isBot: true,  connected: true },
-            { userId: 'p4', name: 'Carlos', team: 2, seat: 3, hand: [] as Tile[], isBot: true,  connected: true },
+            { userId: String((user as any)?.id ?? 'me'), name: (user as any)?.name ?? 'Você', team: 1, seat: 0, hand: [[3,5],[1,2],[2,6],[5,6],[0,4],[1,3]] as Tile[], isBot: false, connected: true },
+            { userId: 'p2', name: 'Ana',    team: 2, seat: 1, hand: [[0,2],[1,5],[2,4],[3,4],[0,6],[4,6]] as Tile[], isBot: true,  connected: true },
+            { userId: 'p3', name: 'Pedro',  team: 1, seat: 2, hand: [[2,3],[0,3],[1,4],[3,6],[4,5],[0,1]] as Tile[], isBot: true,  connected: true },
+            { userId: 'p4', name: 'Carlos', team: 2, seat: 3, hand: [[1,6],[0,5],[2,5],[3,3],[5,5],[6,6]] as Tile[], isBot: true,  connected: true },
           ],
         }
       : {
@@ -1426,15 +1510,18 @@ export function GameScreen({ navigation, route }: Props) {
           variant: 'CARROCA',
           status: 'playing' as const,
           currentPlayerIndex: 0,
-          turnCount: 28,
+          turnCount: 5,
           firstPlayMade: true,
-          leftOpen: 4,
-          rightOpen: 5,
-          boneyard: [],
+          leftOpen: isSimple ? 6 : 4,
+          rightOpen: isSimple ? 5 : 5,
+          boneyard: [] as null[],
           board: mockBoard,
+          matchScores: { 1: 0, 2: 0 },
+          roundNumber: 1,
+          targetScore: 6,
           players: [
-            { userId: String((user as any)?.id ?? 'me'), name: (user as any)?.name ?? 'Você', team: 1, seat: 0, hand: [] as Tile[], isBot: false, connected: true },
-            { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: [] as Tile[], isBot: true,  connected: true },
+            { userId: String((user as any)?.id ?? 'me'), name: (user as any)?.name ?? 'Você', team: 1, seat: 0, hand: [[3,5],[1,2],[2,6],[5,6],[0,4],[1,3],[4,5]] as Tile[], isBot: false, connected: true },
+            { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: [[0,2],[1,5],[2,4],[3,4],[0,6],[4,6],[3,6]] as Tile[], isBot: true,  connected: true },
           ],
         };
 
@@ -1466,7 +1553,7 @@ export function GameScreen({ navigation, route }: Props) {
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const is2v2 = currentGame?.mode?.includes('2V2') ?? false;
-  const boardTileSize: DominoTileSize = 'xxs';
+  const boardTileSize: DominoTileSize = 'sm';
   const boardTilePreset = TILE_DIMS[boardTileSize];
   const tableHeight = Math.round(Math.min(viewportWidth * 0.88, 940) / (is2v2 ? 2.1 : 2.2));
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
@@ -1930,7 +2017,7 @@ export function GameScreen({ navigation, route }: Props) {
     );
   }
 
-  const SNAKE_GAP_BASE = 5;
+  const SNAKE_GAP_BASE = 1;
   const SNAKE_GAP = SNAKE_GAP_BASE;
   const snakeMaxW = feltWidth
     ? Math.max(0, feltWidth * (is4Player ? 0.95 : 0.98))
@@ -2070,7 +2157,7 @@ export function GameScreen({ navigation, route }: Props) {
               {topOpponent && (
                 <View style={styles.oppCardOverlay}>
                   <View style={styles.playerCardFxWrap}>
-                    <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} isTurn={turnUserId === topOpponent.userId} team={topOpponent.team} matchScore={currentGame.matchScores?.[topOpponent.team] ?? 0} />
+                    <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} isTurn={turnUserId === topOpponent.userId} team={topOpponent.team} matchScore={currentGame.matchScores?.[topOpponent.team] ?? 0} isOpponent={topOpponent.team !== myTeam} />
                     {renderPlayerFx(topOpponent.userId, 'top')}
                   </View>
                 </View>
@@ -2080,7 +2167,7 @@ export function GameScreen({ navigation, route }: Props) {
               {is4Player && leftOpponent && (
                 <View style={styles.sideCardLeft}>
                   <View style={styles.playerCardFxWrap}>
-                    <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} team={leftOpponent.team} matchScore={currentGame.matchScores?.[leftOpponent.team] ?? 0} />
+                    <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} team={leftOpponent.team} matchScore={currentGame.matchScores?.[leftOpponent.team] ?? 0} isOpponent={leftOpponent.team !== myTeam} />
                     {renderPlayerFx(leftOpponent.userId, 'left')}
                   </View>
                 </View>
@@ -2088,7 +2175,7 @@ export function GameScreen({ navigation, route }: Props) {
               {is4Player && rightOpponent && (
                 <View style={styles.sideCardRight}>
                   <View style={styles.playerCardFxWrap}>
-                    <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} team={rightOpponent.team} matchScore={currentGame.matchScores?.[rightOpponent.team] ?? 0} />
+                    <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} team={rightOpponent.team} matchScore={currentGame.matchScores?.[rightOpponent.team] ?? 0} isOpponent={rightOpponent.team !== myTeam} />
                     {renderPlayerFx(rightOpponent.userId, 'right')}
                   </View>
                 </View>
@@ -2153,23 +2240,34 @@ export function GameScreen({ navigation, route }: Props) {
                   const ghostW_u = ghostHoriz ? L_u : S_u;
                   const ghostW_px = Math.round(ghostW_u * boardScale);
 
-                  // Extend board horizontally to hold ghost slots (ghost tile + small gap)
                   const gapPx = Math.round(2 * boardScale);
-                  const leftSlot_px  = leftPlay  ? ghostW_px + gapPx : 0;
-                  const rightSlot_px = rightPlay ? ghostW_px + gapPx : 0;
+
+                  // Chain endpoints: horizTiles[0] = seq[0] = left open end (always),
+                  // horizTiles[last] = seq[last] = right open end (always).
+                  // Using min/max-x is wrong when an end tile sits in an RTL snake row,
+                  // because RTL rows display right→left so the first padded index is the
+                  // rightmost screen position — not the leftmost.
+                  const horizTiles = layout.placed.slice(0, layout.horizCount > 0 ? layout.horizCount : layout.placed.length);
+                  const leftEndP  = horizTiles[0];
+                  const rightEndP = horizTiles[horizTiles.length - 1];
+
+                  // Infer row direction at each endpoint by comparing with its neighbour.
+                  // LTR row: next tile is to the right (larger x). RTL row: smaller x.
+                  const leftNextTile  = horizTiles.length > 1 ? horizTiles[1] : null;
+                  const rightPrevTile = horizTiles.length > 1 ? horizTiles[horizTiles.length - 2] : null;
+                  const leftGoesRight      = !leftNextTile  || leftEndP.x  <= leftNextTile.x;
+                  const rightComesFromLeft = !rightPrevTile || rightPrevTile.x <= rightEndP.x;
+
+                  // Ghost slots: extend the board view to fit the placeholder boxes.
+                  // leftGoesRight  → ghost is on the LEFT  side of the board (leftSlot)
+                  // !leftGoesRight → ghost is on the RIGHT side (rightSlot)
+                  const ghostExt_px = ghostW_px + gapPx;
+                  const leftSlot_px  = ((leftPlay  && leftGoesRight)        || (rightPlay && !rightComesFromLeft)) ? ghostExt_px : 0;
+                  const rightSlot_px = ((rightPlay && rightComesFromLeft)   || (leftPlay  && !leftGoesRight))      ? ghostExt_px : 0;
                   const extW = layoutW + leftSlot_px + rightSlot_px;
 
-                  const firstP = layout.placed[0];
-                  // use horizCount so branch tiles don't corrupt the right-end ghost position
-                  const lastP  = layout.horizCount > 0 ? layout.placed[layout.horizCount - 1] : layout.placed[0];
-
-                  // Y position of ghost: align with the end tile's connection center
-                  const ghostY = (endP: typeof firstP): number => {
-                    const top = Math.round(endP.y * boardScale);
-                    const centerOffset = Math.round((L_u - S_u) / 2 * boardScale);
-                    if (ghostHoriz) return endP.horizontal ? top : top + centerOffset;
-                    return endP.horizontal ? top - centerOffset : top;
-                  };
+                  // Y position: align ghost with the endpoint tile
+                  const ghostY = (endP: typeof leftEndP): number => Math.round(endP.y * boardScale);
 
                   const flippedTile = (play: { flipped: boolean }): Tile => {
                     if (!activeGhostTile) return [0, 0];
@@ -2178,11 +2276,19 @@ export function GameScreen({ navigation, route }: Props) {
                       : activeGhostTile;
                   };
 
-                  // Left ghost X: starts at 0 (the allocated left slot)
-                  const leftGhostX_px = 0;
-                  // Right ghost X: immediately after the last tile's right edge
-                  const rightEndX_px = Math.round((lastP.x + (lastP.horizontal ? L_u : S_u)) * boardScale) + leftSlot_px;
-                  const rightGhostX_px = rightEndX_px + gapPx;
+                  const leftEndTileW_px  = Math.round((leftEndP.horizontal  ? L_u : S_u) * boardScale);
+                  const rightEndTileW_px = Math.round((rightEndP.horizontal ? L_u : S_u) * boardScale);
+
+                  // Left ghost: opposite side to the chain direction at the left endpoint
+                  const leftGhostX_px = leftGoesRight
+                    ? Math.round(leftEndP.x * boardScale) + leftSlot_px - ghostW_px - gapPx   // LTR → ghost LEFT
+                    : Math.round(leftEndP.x * boardScale) + leftSlot_px + leftEndTileW_px + gapPx; // RTL → ghost RIGHT
+
+                  // Right ghost: same direction as chain at the right endpoint
+                  const rightEndRightEdge_px = Math.round((rightEndP.x + (rightEndP.horizontal ? L_u : S_u)) * boardScale) + leftSlot_px;
+                  const rightGhostX_px = rightComesFromLeft
+                    ? rightEndRightEdge_px + gapPx                                              // LTR → ghost RIGHT
+                    : Math.round(rightEndP.x * boardScale) + leftSlot_px - ghostW_px - gapPx;  // RTL → ghost LEFT
 
                   return (
                     <View style={[styles.snakeBoardFrame, { padding: boardPad }]}>
@@ -2205,15 +2311,20 @@ export function GameScreen({ navigation, route }: Props) {
                           <TouchableOpacity
                             onPress={() => handlePlayTile('left')}
                             activeOpacity={0.75}
-                            style={{ position: 'absolute', left: leftGhostX_px, top: ghostY(firstP), zIndex: 50 }}
+                            style={{ position: 'absolute', left: leftGhostX_px, top: ghostY(leftEndP), zIndex: 50 }}
                           >
-                            {/* Arrow floats above the tile without shifting it in layout */}
                             <View style={{ position: 'absolute', top: -11, left: 0, right: 0, alignItems: 'center' }}>
                               <View style={[styles.ghostArrow, dragTargetSide === 'left' && styles.ghostArrowActive]} />
                             </View>
-                            <View style={{ opacity: dragTargetSide === 'left' ? 0.7 : 0.45 }}>
-                              <DominoTile tile={flippedTile(leftPlay)} size={boardTileSize} tileScale={boardScale} horizontal={ghostHoriz} style={boardTileNoShadow} />
-                            </View>
+                            <View style={{
+                              width: ghostW_px,
+                              height: Math.round((ghostHoriz ? S_u : L_u) * boardScale),
+                              borderRadius: 4,
+                              borderWidth: 2,
+                              borderStyle: 'dashed',
+                              borderColor: dragTargetSide === 'left' ? '#f97316' : '#4ade80',
+                              backgroundColor: dragTargetSide === 'left' ? 'rgba(249,115,22,0.15)' : 'rgba(74,222,128,0.15)',
+                            }} />
                           </TouchableOpacity>
                         )}
 
@@ -2222,15 +2333,20 @@ export function GameScreen({ navigation, route }: Props) {
                           <TouchableOpacity
                             onPress={() => handlePlayTile('right')}
                             activeOpacity={0.75}
-                            style={{ position: 'absolute', left: rightGhostX_px, top: ghostY(lastP), zIndex: 50 }}
+                            style={{ position: 'absolute', left: rightGhostX_px, top: ghostY(rightEndP), zIndex: 50 }}
                           >
-                            {/* Arrow floats above the tile without shifting it in layout */}
                             <View style={{ position: 'absolute', top: -11, left: 0, right: 0, alignItems: 'center' }}>
                               <View style={[styles.ghostArrow, dragTargetSide === 'right' && styles.ghostArrowActive]} />
                             </View>
-                            <View style={{ opacity: dragTargetSide === 'right' ? 0.7 : 0.45 }}>
-                              <DominoTile tile={flippedTile(rightPlay)} size={boardTileSize} tileScale={boardScale} horizontal={ghostHoriz} style={boardTileNoShadow} />
-                            </View>
+                            <View style={{
+                              width: ghostW_px,
+                              height: Math.round((ghostHoriz ? S_u : L_u) * boardScale),
+                              borderRadius: 4,
+                              borderWidth: 2,
+                              borderStyle: 'dashed',
+                              borderColor: dragTargetSide === 'right' ? '#f97316' : '#4ade80',
+                              backgroundColor: dragTargetSide === 'right' ? 'rgba(249,115,22,0.15)' : 'rgba(74,222,128,0.15)',
+                            }} />
                           </TouchableOpacity>
                         )}
                       </View>
@@ -2254,22 +2370,10 @@ export function GameScreen({ navigation, route }: Props) {
             }}
           >
 
-            {/* ── Action bar ── */}
-            {isMyTurn && (
+            {/* ── Action bar — draw / pass only ── */}
+            {isMyTurn && !selectedTile && (
               <View style={styles.actionBar}>
-                {selectedTile && uniqueSides.length === 1 && (
-                  <TouchableOpacity style={styles.jogarBtn} onPress={handlePlayImmediate} activeOpacity={0.85}>
-                    <Text style={styles.jogarBtnText}>Jogar</Text>
-                  </TouchableOpacity>
-                )}
-                {selectedTile && uniqueSides.length > 1 && uniqueSides.map((side) => (
-                  <TouchableOpacity key={side} style={styles.sideBtn} onPress={() => handlePlayTile(side)} activeOpacity={0.8}>
-                    <Text style={styles.sideBtnText}>
-                      {side === 'left' ? '← Esquerda' : side === 'right' ? 'Direita →' : side === 'top' ? '↑ Cima' : '↓ Baixo'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                {!selectedTile && hasBoneyard && (
+                {hasBoneyard && !is2v2 && (
                   <Animated.View style={{ transform: [{ scale: drawPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }] }}>
                     <LinearGradient
                       colors={['#4ade80', '#22c55e']}
@@ -2283,14 +2387,9 @@ export function GameScreen({ navigation, route }: Props) {
                     </LinearGradient>
                   </Animated.View>
                 )}
-                {!selectedTile && !hasValidMoves && !hasBoneyard && (
+                {!hasValidMoves && !hasBoneyard && (
                   <TouchableOpacity style={styles.passBtn} onPress={handlePass} activeOpacity={0.8}>
                     <Text style={styles.passBtnText}>Passar vez</Text>
-                  </TouchableOpacity>
-                )}
-                {selectedTile && (
-                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setSelectedTile(null)}>
-                    <IconX size={14} color="#fff" accessibilityLabel="Cancelar" />
                   </TouchableOpacity>
                 )}
               </View>
@@ -2416,7 +2515,29 @@ export function GameScreen({ navigation, route }: Props) {
                     </View>
                   );
                 })}
+
+                {/* ── Inline play / cancel buttons — inside the scroll, always right after the last tile ── */}
+                {isMyTurn && selectedTile && (
+                  <View style={styles.inlineActions}>
+                    {uniqueSides.length === 1 && (
+                      <TouchableOpacity style={styles.jogarBtn} onPress={handlePlayImmediate} activeOpacity={0.85}>
+                        <Text style={styles.jogarBtnText}>Jogar</Text>
+                      </TouchableOpacity>
+                    )}
+                    {uniqueSides.length > 1 && uniqueSides.map((side) => (
+                      <TouchableOpacity key={side} style={styles.sideBtn} onPress={() => handlePlayTile(side)} activeOpacity={0.8}>
+                        <Text style={styles.sideBtnText}>
+                          {side === 'left' ? '←' : side === 'right' ? '→' : side === 'top' ? '↑' : '↓'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity style={styles.cancelBtn} onPress={() => setSelectedTile(null)}>
+                      <IconX size={16} color="#fff" accessibilityLabel="Cancelar" />
+                    </TouchableOpacity>
+                  </View>
+                )}
               </ScrollView>
+
               <View style={styles.playerCardWithTimer}>
                 {currentGame?.status === 'playing' && (
                   <View style={[styles.timerBadge, turnTimer <= 10 && styles.timerBadgeUrgent]}>
@@ -2829,7 +2950,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 10,
-    transform: [{ translateY: -24 }],
+    transform: [{ translateY: -18 }],
   },
   tableSideBadgeLeft: {
     position: 'absolute',
@@ -2911,7 +3032,7 @@ const styles = StyleSheet.create({
   },
   snakeRow: { alignItems: 'center', gap: 0 },
   snakeCorner: { borderRadius: 4, backgroundColor: '#d4cfc6' },
-  playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: 16 },
   playerCardFxWrap: { position: 'relative', alignSelf: 'center' },
   playerFxLayer: { ...StyleSheet.absoluteFillObject, zIndex: 50 },
   emojiBubble: {
@@ -2944,22 +3065,24 @@ const styles = StyleSheet.create({
     zIndex: 200,
   },
   actionBar: {
+    position: 'absolute',
+    top: -28,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.xs,
-    minHeight: 48,
+    zIndex: 300,
   },
   jogarBtn: {
-    backgroundColor: '#4ade80',
+    backgroundColor: '#0f2d17',
     borderRadius: radius.full,
-    paddingVertical: 11, paddingHorizontal: 32,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 0 14px rgba(74,222,128,0.65)' } as any)
-      : { shadowColor: '#4ade80', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.65, shadowRadius: 12, elevation: 10 }),
+    paddingVertical: 11, paddingHorizontal: 28,
+    borderWidth: 2,
+    borderColor: '#4ade80',
   },
-  jogarBtnText: { color: '#000', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.4 },
+  jogarBtnText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.4 },
   sideBtn: {
     backgroundColor: '#16a34a',
     borderRadius: radius.full,
@@ -2991,10 +3114,18 @@ const styles = StyleSheet.create({
   },
   passBtnText: { color: '#fca5a5', fontWeight: '700', fontSize: fonts.sizes.sm },
   cancelBtn: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: '#3d0a0a',
+    borderWidth: 2, borderColor: '#8b1a1a',
     alignItems: 'center', justifyContent: 'center',
+  },
+  inlineActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 8,
+    paddingBottom: 4,
+    paddingLeft: 6,
   },
   handRow: {
     flexDirection: 'row',
