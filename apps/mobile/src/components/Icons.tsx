@@ -35,6 +35,7 @@ import {
   Apple,
   ShieldAlert,
   ChevronLeft,
+  ChevronRight,
   X,
   Info,
   QrCode,
@@ -57,6 +58,7 @@ export const IconSmartphone = (props: Omit<IconProps, 'icon'>) => <Icon icon={Sm
 export const IconStar = (props: Omit<IconProps, 'icon'>) => <Icon icon={Star} {...props} />;
 export const IconApple = (props: Omit<IconProps, 'icon'>) => <Icon icon={Apple} {...props} />;
 export const IconChevronLeft = (props: Omit<IconProps, 'icon'>) => <Icon icon={ChevronLeft} {...props} />;
+export const IconChevronRight = (props: Omit<IconProps, 'icon'>) => <Icon icon={ChevronRight} {...props} />;
 export const IconX = (props: Omit<IconProps, 'icon'>) => <Icon icon={X} {...props} />;
 export const IconInfo = (props: Omit<IconProps, 'icon'>) => <Icon icon={Info} {...props} />;
 export const IconQrCode = (props: Omit<IconProps, 'icon'>) => <Icon icon={QrCode} {...props} />;
