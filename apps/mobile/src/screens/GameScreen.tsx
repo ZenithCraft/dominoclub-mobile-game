@@ -11,7 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Rect } from 'react-native-svg';
 import {
   IconTrophy, IconSettings, IconAlert, IconX, IconFrown,
-  IconVolumeUp, IconMusic,
+  IconVolumeUp, IconMusic, IconChevronLeft, IconChevronRight,
 } from '../components/Icons';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
 import { ScreenBackground } from '../components/ScreenBackground';
@@ -417,8 +417,8 @@ function buildSnakeLayout(
 
   const S = Math.round(base.short * scale);
   const L = Math.round(base.long * scale);
-  const GH = Math.max(1, Math.round(gap * scale));
-  const GV = Math.max(1, Math.round((gap + 1) * scale));
+  const GH = Math.round(gap * scale);
+  const GV = Math.max(1, Math.round((gap + 4) * scale));
 
   const placed: SnakePlaced[] = [];
   let cursorY = 0;
@@ -506,16 +506,16 @@ function buildSnakeLayout(
       if (rtl) {
         // Left-side corner: aligned with left edge of the last (leftmost) tile
         const leftCellStart = last >= 0 ? (totalRowWidth - cumSteps[last + 1]) : 0;
-        cornerLeft = baseX + leftCellStart + Math.floor(GH / 2);
+        cornerLeft = baseX + leftCellStart + GH;
       } else {
         // Right-side corner: aligned with right edge of the last tile minus cornerW
-        cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + Math.floor(GH / 2) + lastTileW - S;
+        cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + GH + lastTileW - S;
       }
       // Corner must start below the last tile's actual bottom (doubles extend to cursorY+L,
       // horizontal tiles only to cursorY+(L+S)/2). Then cursorY advances just past corner bottom.
       const lastBottom = cursorY + (lastIsDouble ? L : Math.floor((L + S) / 2));
       cornerTop = Math.max(cursorY + Math.floor((L + S) / 2) + GH, lastBottom + GH);
-      cursorY = cornerTop + L + 1;
+      cursorY = cornerTop + Math.floor((L + S) / 2) + GH;
 
       placed.push({ tile: cornerTile, x: cornerLeft, y: cornerTop, horizontal: false });
       minX = Math.min(minX, cornerLeft);
@@ -2017,7 +2017,7 @@ export function GameScreen({ navigation, route }: Props) {
     );
   }
 
-  const SNAKE_GAP_BASE = 1;
+  const SNAKE_GAP_BASE = -8;
   const SNAKE_GAP = SNAKE_GAP_BASE;
   const snakeMaxW = feltWidth
     ? Math.max(0, feltWidth * (is4Player ? 0.95 : 0.98))
@@ -2526,9 +2526,10 @@ export function GameScreen({ navigation, route }: Props) {
                     )}
                     {uniqueSides.length > 1 && uniqueSides.map((side) => (
                       <TouchableOpacity key={side} style={styles.sideBtn} onPress={() => handlePlayTile(side)} activeOpacity={0.8}>
-                        <Text style={styles.sideBtnText}>
-                          {side === 'left' ? '←' : side === 'right' ? '→' : side === 'top' ? '↑' : '↓'}
-                        </Text>
+                        {side === 'left'  ? <IconChevronLeft  size={20} color="#fff" /> :
+                         side === 'right' ? <IconChevronRight size={20} color="#fff" /> :
+                         side === 'top'   ? <IconChevronLeft  size={20} color="#fff" /> :
+                                            <IconChevronRight size={20} color="#fff" />}
                       </TouchableOpacity>
                     ))}
                     <TouchableOpacity style={styles.cancelBtn} onPress={() => setSelectedTile(null)}>
@@ -3084,11 +3085,11 @@ const styles = StyleSheet.create({
   },
   jogarBtnText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.4 },
   sideBtn: {
-    backgroundColor: '#16a34a',
-    borderRadius: radius.full,
-    paddingVertical: 11, paddingHorizontal: 18,
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: '#0f2d17',
+    borderWidth: 2, borderColor: '#4ade80',
+    alignItems: 'center', justifyContent: 'center',
   },
-  sideBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
   drawBtn: {
     borderRadius: radius.full,
     padding: 2,
