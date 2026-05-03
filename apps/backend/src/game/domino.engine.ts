@@ -100,7 +100,7 @@ export function initGame(
   players: { userId: string; team: number; seat: number; isBot: boolean }[]
 ): GameState {
   const allTiles = shuffle(generateTiles());
-  const tilesPerPlayer = 7;
+  const tilesPerPlayer = players.length >= 4 ? 6 : 7;
   const playerStates: PlayerState[] = players.map((p, i) => ({
     ...p,
     hand: allTiles.slice(i * tilesPerPlayer, (i + 1) * tilesPerPlayer),
@@ -169,7 +169,7 @@ function findFirstPlayer(players: PlayerState[]): { index: number; tile: Tile } 
  */
 export function initNextRound(state: GameState): GameState {
   const allTiles = shuffle(generateTiles());
-  const tilesPerPlayer = 7;
+  const tilesPerPlayer = state.players.length >= 4 ? 6 : 7;
 
   const players: PlayerState[] = state.players.map((p, i) => ({
     ...p,
@@ -178,7 +178,7 @@ export function initNextRound(state: GameState): GameState {
     passedLastTurn: false,
   }));
 
-  const boneyard = allTiles.slice(players.length * tilesPerPlayer);
+  const boneyard = allTiles.slice(state.players.length * tilesPerPlayer);
   const firstPlayInfo = findFirstPlayer(players);
 
   return {
