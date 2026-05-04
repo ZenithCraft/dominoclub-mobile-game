@@ -469,6 +469,8 @@ function buildSnakeLayout(
     const baseX = rowBaseX[rowNum];
     if (first === -1 && !cornerTile) continue;
 
+    // Row height é baseado na peça horizontal (L = altura da peça vertical/double)
+    // As peças horizontais têm altura S, então precisamos alinhar pelo topo com offset
     const rowHeight = L;
 
     for (let i = 0; i < rowTiles.length; i++) {
@@ -483,7 +485,9 @@ function buildSnakeLayout(
       // Steps are variable (doubles use S, others use L), so no centering offset needed
       const cellXLocal = rtl ? (totalRowWidth - cumSteps[i + 1]) : cumSteps[i];
       const left = baseX + cellXLocal + Math.floor(GH / 2);
-      const top  = cursorY + Math.floor((rowHeight - tileH) / 2);
+      // Alinhamento: todas as peças alinhadas pelo topo da linha
+      // Peças horizontais (altura S) e doubles (altura L) compartilham o mesmo topo base
+      const top = cursorY + Math.floor((rowHeight - tileH) / 2);
 
       // In RTL rows tiles are placed right-to-left, so tile[0] ends up on the RIGHT
       // visually. Swap pip order for non-doubles so tile[0] stays on the LEFT.
@@ -511,8 +515,7 @@ function buildSnakeLayout(
         // Right-side corner: aligned with right edge of the last tile minus cornerW
         cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + GH + lastTileW - S;
       }
-      // Corner must start below the last tile's actual bottom (doubles extend to cursorY+L,
-      // horizontal tiles only to cursorY+(L+S)/2). Then cursorY advances just past corner bottom.
+      // Corner must start just below the last horizontal tile's centre line.
       const lastBottom = cursorY + (lastIsDouble ? L : Math.floor((L + S) / 2));
       cornerTop = Math.max(cursorY + Math.floor((L + S) / 2) + GH, lastBottom + GH);
       cursorY = cornerTop + Math.floor((L + S) / 2) + GH;
@@ -690,6 +693,16 @@ const DOMINO_IMAGES: Record<string, any> = {
   '0,0': require('../../assets/domino-pieces/0-0.png'),
 };
 
+function DominoImagePreloader() {
+  return (
+    <View style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+      {Object.values(DOMINO_IMAGES).map((src, i) => (
+        <Image key={i} source={src} style={{ width: 1, height: 1 }} fadeDuration={0} />
+      ))}
+    </View>
+  );
+}
+
 function TileHandImage({ tile, selected, playable, onPress }: {
   tile: Tile; selected?: boolean; playable?: boolean; onPress?: () => void;
 }) {
@@ -803,12 +816,12 @@ type DominoTileProps = {
 };
 
 const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
-  icon: { short: 16, long: 28, pip: 2, corner: 2 },
-  hand: { short: 28, long: 50, pip: 4, corner: 6 },
-  xxs:  { short: 19, long: 38, pip: 4, corner: 3 },
-  xs:   { short: 22, long: 44, pip: 4, corner: 4 },
-  sm:   { short: 26, long: 52, pip: 5, corner: 5 },
-  md:   { short: 44, long: 88, pip: 7, corner: 8 },
+  icon: { short: 16, long: 25, pip: 2, corner: 2 },
+  hand: { short: 28, long: 44, pip: 4, corner: 6 },
+  xxs:  { short: 19, long: 30, pip: 4, corner: 3 },
+  xs:   { short: 22, long: 35, pip: 4, corner: 4 },
+  sm:   { short: 40, long: 63, pip: 6, corner: 6 },
+  md:   { short: 44, long: 70, pip: 7, corner: 8 },
 };
 
 function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, onPress, style }: DominoTileProps) {
@@ -886,7 +899,8 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
           height: L,
           transform: [{ rotate: rotation }],
         }}
-        resizeMode="contain"
+        resizeMode="stretch"
+        fadeDuration={0}
       />
     </View>
   );
@@ -1260,19 +1274,20 @@ function ResultCard({
   const prizePerWinner = typeof result?.prizePerWinner === 'number' ? result.prizePerWinner : Number(result?.prizePerWinner ?? 0);
   const net = winnerId ? (isWinner ? (prizePerWinner - betAmount) : -betAmount) : 0;
   const netAbs = Math.abs(net);
+  const fmtBRL = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
   return (
     <View style={styles.resultCard}>
       {isWinner ? (
-        <IconTrophy size={48} color={colors.gold} accessibilityLabel="Troféu" />
+        <IconTrophy size={72} color={colors.gold} accessibilityLabel="Troféu" />
       ) : (
-        <IconFrown size={48} color={colors.textSecondary} accessibilityLabel="Rosto triste" />
+        <IconFrown size={72} color={colors.textSecondary} accessibilityLabel="Rosto triste" />
       )}
-      <Text style={styles.resultTitle}>
-        {!winnerId ? 'Fim de jogo' : isWinner ? 'Você ganhou!' : 'Você perdeu!'}
+      <Text style={[styles.resultTitle, isWinner && styles.resultTitleWinner]}>
+        {!winnerId ? 'Fim de jogo' : isWinner ? 'Ganhador' : 'Você perdeu!'}
       </Text>
       {winnerId ? (
-        <Text style={styles.resultPrize}>
-          {net >= 0 ? 'Você ganhou' : 'Você perdeu'}: R$ {netAbs.toFixed(2)}
+        <Text style={[styles.resultPrize, !isWinner && styles.resultPrizeLoss]}>
+          {isWinner ? fmtBRL(prizePerWinner) : fmtBRL(netAbs)}
         </Text>
       ) : null}
       <TouchableOpacity
@@ -1282,6 +1297,7 @@ function ResultCard({
       >
         <Text style={styles.resultBtnText}>{playAgainLoading ? 'Procurando...' : 'Jogar novamente'}</Text>
       </TouchableOpacity>
+      <Text style={styles.resultOrText}>ou</Text>
       <TouchableOpacity style={styles.resultSecondaryBtn} onPress={onExit} disabled={playAgainLoading}>
         <Text style={styles.resultSecondaryText}>Voltar ao menu</Text>
       </TouchableOpacity>
@@ -1378,10 +1394,11 @@ export function GameScreen({ navigation, route }: Props) {
   const [emojiByUser, setEmojiByUser] = useState<Record<string, { char: string; nonce: number }>>({});
   const [drawByUser, setDrawByUser] = useState<Record<string, { nonce: number }>>({});
 
-  const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
-  const socketRef      = useRef<Socket | null>(null);
-  const errorFadeAnim  = useRef(new Animated.Value(0)).current;
-  const joinPulseAnim  = useRef(new Animated.Value(0)).current;
+  const timerRef        = useRef<ReturnType<typeof setInterval> | null>(null);
+  const socketRef       = useRef<Socket | null>(null);
+  const errorFadeAnim   = useRef(new Animated.Value(0)).current;
+  const joinPulseAnim   = useRef(new Animated.Value(0)).current;
+  const timerPulseAnim  = useRef(new Animated.Value(1)).current;
   const prevStateRef   = useRef<GameState | null>(null);
   const emojiAnimRef   = useRef<Map<string, Animated.Value>>(new Map());
   const bounceAnimRef  = useRef<Map<string, Animated.Value>>(new Map());
@@ -1488,20 +1505,20 @@ export function GameScreen({ navigation, route }: Props) {
           variant: 'CARROCA',
           status: 'playing' as const,
           currentPlayerIndex: 0,
-          turnCount: 5,
+          turnCount: 18,
           firstPlayMade: true,
-          leftOpen: 4,
-          rightOpen: 5,
+          leftOpen: isSimple ? 6 : 4,
+          rightOpen: isSimple ? 5 : 5,
           boneyard: [] as null[],
           board: mockBoard,
-          matchScores: { 1: 2, 2: 1 },
-          roundNumber: 1,
+          matchScores: { 1: 1, 2: 0 },
+          roundNumber: 2,
           targetScore: 6,
           players: [
-            { userId: String((user as any)?.id ?? 'me'), name: (user as any)?.name ?? 'Você', team: 1, seat: 0, hand: [[3,5],[1,2],[2,6],[5,6],[0,4],[1,3]] as Tile[], isBot: false, connected: true },
-            { userId: 'p2', name: 'Ana',    team: 2, seat: 1, hand: [[0,2],[1,5],[2,4],[3,4],[0,6],[4,6]] as Tile[], isBot: true,  connected: true },
-            { userId: 'p3', name: 'Pedro',  team: 1, seat: 2, hand: [[2,3],[0,3],[1,4],[3,6],[4,5],[0,1]] as Tile[], isBot: true,  connected: true },
-            { userId: 'p4', name: 'Carlos', team: 2, seat: 3, hand: [[1,6],[0,5],[2,5],[3,3],[5,5],[6,6]] as Tile[], isBot: true,  connected: true },
+            { userId: String((user as any)?.id ?? 'me'), name: (user as any)?.name ?? 'Você', team: 1, seat: 0, hand: [[3,5],[1,2],[2,6]] as Tile[], isBot: false, connected: true },
+            { userId: 'p2', name: 'Ana',    team: 2, seat: 1, hand: [[0,2],[1,5],[2,4]] as Tile[], isBot: true,  connected: true },
+            { userId: 'p3', name: 'Pedro',  team: 1, seat: 2, hand: [[5,6],[0,4],[1,3]] as Tile[], isBot: true,  connected: true },
+            { userId: 'p4', name: 'Carlos', team: 2, seat: 3, hand: [[3,4],[0,6],[4,6]] as Tile[], isBot: true,  connected: true },
           ],
         }
       : {
@@ -1555,7 +1572,7 @@ export function GameScreen({ navigation, route }: Props) {
   const is2v2 = currentGame?.mode?.includes('2V2') ?? false;
   const boardTileSize: DominoTileSize = 'sm';
   const boardTilePreset = TILE_DIMS[boardTileSize];
-  const tableHeight = Math.round(Math.min(viewportWidth * 0.88, 940) / (is2v2 ? 2.1 : 2.2));
+  const tableHeight = Math.round(Math.min(viewportWidth * 0.88, 940) / 2.2);
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
   const myPlayerIndex = (() => {
     const players = currentGame?.players ?? [];
@@ -1621,6 +1638,25 @@ export function GameScreen({ navigation, route }: Props) {
 
   // Removed frontend auto-pass on timer=0. Backend will now auto-play a valid piece on timeout.
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  // Heartbeat animation when ≤ 10 seconds remain
+  useEffect(() => {
+    if (!isMyTurn || turnTimer > 10) {
+      timerPulseAnim.stopAnimation();
+      timerPulseAnim.setValue(1);
+      return;
+    }
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(timerPulseAnim, { toValue: 1.18, duration: 250, useNativeDriver: true, easing: Easing.out(Easing.quad) }),
+        Animated.timing(timerPulseAnim, { toValue: 0.97, duration: 200, useNativeDriver: true }),
+        Animated.timing(timerPulseAnim, { toValue: 1.1,  duration: 180, useNativeDriver: true }),
+        Animated.timing(timerPulseAnim, { toValue: 1,    duration: 870, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => { anim.stop(); timerPulseAnim.setValue(1); };
+  }, [turnTimer <= 10, isMyTurn]);
 
   // ── Error toast ────────────────────────────────────────────────────────────
   const showError = useCallback((msg: string) => {
@@ -2017,7 +2053,9 @@ export function GameScreen({ navigation, route }: Props) {
     );
   }
 
-  const SNAKE_GAP_BASE = -8;
+  // Gap negativo para compensar a sombra embutida nas imagens das peças
+  // Valor ajustado para manter peças próximas mas com espaçamento visual mínimo
+  const SNAKE_GAP_BASE = -1;
   const SNAKE_GAP = SNAKE_GAP_BASE;
   const snakeMaxW = feltWidth
     ? Math.max(0, feltWidth * (is4Player ? 0.95 : 0.98))
@@ -2039,15 +2077,19 @@ export function GameScreen({ navigation, route }: Props) {
     if (!feltWidth || baseLayout.width === 0 || baseLayout.height === 0) return 1;
     const boardPadBase = 4;
     const availW = Math.max(0, feltWidth  * 0.98 - boardPadBase * 2);
-    const availH = Math.max(0, tableHeight * 0.86 - boardPadBase * 2);
+    const availH = Math.max(0, tableHeight * (is4Player ? 0.76 : 0.86) - boardPadBase * 2);
     const scaleW = baseLayout.width > availW ? availW / baseLayout.width : 1;
     const scaleH = baseLayout.height > availH ? availH / baseLayout.height : 1;
-    return Math.max(0.52, Math.min(1, scaleW, scaleH));
+    return Math.max(is4Player ? 0.40 : 0.52, Math.min(1, scaleW, scaleH));
   })();
-  const layout = baseLayout;
-  const boardPad         = Math.round(10 * boardScale);
-  const layoutW = Math.round(layout.width * boardScale);
-  const layoutH = Math.round(layout.height * boardScale);
+  // Recompute layout at the actual boardScale so positions are integers — no
+  // further multiplication in render, which avoids cumulative rounding drift.
+  const layout = boardScale < 1
+    ? buildFullBoardLayout(currentGame.board ?? [], SNAKE_H_PER_ROW, boardTilePreset, SNAKE_GAP, boardScale)
+    : baseLayout;
+  const boardPad = Math.round(10 * boardScale);
+  const layoutW = layout.width;
+  const layoutH = layout.height;
 
   const renderPlayerFx = (userId: string, placement: 'top' | 'bottom' | 'left' | 'right') => {
     const emoji = emojiByUser[userId];
@@ -2119,6 +2161,7 @@ export function GameScreen({ navigation, route }: Props) {
 
   return (
     <ScreenBackground style={styles.bg}>
+      <DominoImagePreloader />
       <SafeAreaView style={styles.container}>
 
       {/* Disconnect banner */}
@@ -2251,23 +2294,35 @@ export function GameScreen({ navigation, route }: Props) {
                   const leftEndP  = horizTiles[0];
                   const rightEndP = horizTiles[horizTiles.length - 1];
 
-                  // Infer row direction at each endpoint by comparing with its neighbour.
-                  // LTR row: next tile is to the right (larger x). RTL row: smaller x.
-                  const leftNextTile  = horizTiles.length > 1 ? horizTiles[1] : null;
-                  const rightPrevTile = horizTiles.length > 1 ? horizTiles[horizTiles.length - 2] : null;
-                  const leftGoesRight      = !leftNextTile  || leftEndP.x  <= leftNextTile.x;
-                  const rightComesFromLeft = !rightPrevTile || rightPrevTile.x <= rightEndP.x;
+                  // Determine row direction using row parity (row 0=LTR, row 1=RTL, …).
+                  // hPerRow+1 cells per row (hPerRow horizontal + 1 corner).
+                  const cellsPerRow = SNAKE_H_PER_ROW + 1;
+                  const leftRowNum  = 0; // left end is always in row 0 (LTR)
+                  const rightRowNum = Math.floor((horizTiles.length - 1) / cellsPerRow);
+                  const leftGoesRight      = leftRowNum  % 2 === 0; // LTR row → chain goes right
+                  const rightComesFromLeft = rightRowNum % 2 === 0; // LTR row → chain arrives from left
 
-                  // Ghost slots: extend the board view to fit the placeholder boxes.
-                  // leftGoesRight  → ghost is on the LEFT  side of the board (leftSlot)
-                  // !leftGoesRight → ghost is on the RIGHT side (rightSlot)
+                  // Determine which physical side (left/right of the container) each ghost occupies.
+                  // Left chain end is always in LTR row 0 → ghost goes to the LEFT.
+                  // Right chain end: LTR row → ghost goes RIGHT; RTL row → ghost goes LEFT.
+                  const leftGhostOnLeft  = true;           // left ghost always extends leftward
+                  const rightGhostOnLeft = !rightComesFromLeft; // RTL row → right ghost on LEFT too
+
                   const ghostExt_px = ghostW_px + gapPx;
-                  const leftSlot_px  = ((leftPlay  && leftGoesRight)        || (rightPlay && !rightComesFromLeft)) ? ghostExt_px : 0;
-                  const rightSlot_px = ((rightPlay && rightComesFromLeft)   || (leftPlay  && !leftGoesRight))      ? ghostExt_px : 0;
+                  // Accumulate how much extra space is needed on each physical side
+                  let leftSlot_px  = 0;
+                  let rightSlot_px = 0;
+                  if (leftPlay)  { if (leftGhostOnLeft)  leftSlot_px  += ghostExt_px; else rightSlot_px += ghostExt_px; }
+                  if (rightPlay) { if (rightGhostOnLeft) leftSlot_px  += ghostExt_px; else rightSlot_px += ghostExt_px; }
                   const extW = layoutW + leftSlot_px + rightSlot_px;
 
-                  // Y position: align ghost with the endpoint tile
-                  const ghostY = (endP: typeof leftEndP): number => Math.round(endP.y * boardScale);
+                  // Y position: center ghost on the endpoint tile vertically.
+                  const ghostH_u = ghostHoriz ? S_u : L_u;
+                  const ghostY = (endP: typeof leftEndP): number => {
+                    const endTileH_u = endP.horizontal ? S_u : L_u;
+                    const centerOffset = Math.round(((endTileH_u - ghostH_u) / 2) * boardScale);
+                    return endP.y + centerOffset;
+                  };
 
                   const flippedTile = (play: { flipped: boolean }): Tile => {
                     if (!activeGhostTile) return [0, 0];
@@ -2279,23 +2334,22 @@ export function GameScreen({ navigation, route }: Props) {
                   const leftEndTileW_px  = Math.round((leftEndP.horizontal  ? L_u : S_u) * boardScale);
                   const rightEndTileW_px = Math.round((rightEndP.horizontal ? L_u : S_u) * boardScale);
 
-                  // Left ghost: opposite side to the chain direction at the left endpoint
-                  const leftGhostX_px = leftGoesRight
-                    ? Math.round(leftEndP.x * boardScale) + leftSlot_px - ghostW_px - gapPx   // LTR → ghost LEFT
-                    : Math.round(leftEndP.x * boardScale) + leftSlot_px + leftEndTileW_px + gapPx; // RTL → ghost RIGHT
+                  // Ghost X positions (all coords are within the extW container, tiles shifted right by leftSlot_px)
+                  // Left chain end is in LTR row → ghost sits immediately to the LEFT of the end tile
+                  const leftGhostX_px = leftEndP.x + leftSlot_px - ghostW_px - gapPx;
 
-                  // Right ghost: same direction as chain at the right endpoint
-                  const rightEndRightEdge_px = Math.round((rightEndP.x + (rightEndP.horizontal ? L_u : S_u)) * boardScale) + leftSlot_px;
+                  // Right chain end: LTR row → ghost to the RIGHT; RTL row → ghost to the LEFT
+                  const rightEndTileLeft_px = rightEndP.x + leftSlot_px;
                   const rightGhostX_px = rightComesFromLeft
-                    ? rightEndRightEdge_px + gapPx                                              // LTR → ghost RIGHT
-                    : Math.round(rightEndP.x * boardScale) + leftSlot_px - ghostW_px - gapPx;  // RTL → ghost LEFT
+                    ? rightEndTileLeft_px + rightEndTileW_px + gapPx          // LTR → ghost RIGHT of tile
+                    : rightEndTileLeft_px - ghostW_px - gapPx;                // RTL → ghost LEFT of tile
 
                   return (
                     <View style={[styles.snakeBoardFrame, { padding: boardPad }]}>
                       <View style={[styles.snakeBoard, { width: extW, height: layoutH }]}>
                         {/* Board tiles (shifted right by leftSlot_px) */}
                         {layout.placed.map((p, i) => (
-                          <View key={i} style={{ position: 'absolute', left: Math.round(p.x * boardScale) + leftSlot_px, top: Math.round(p.y * boardScale) }}>
+                          <View key={i} style={{ position: 'absolute', left: p.x + leftSlot_px, top: p.y }}>
                             <DominoTile
                               tile={p.tile}
                               size={boardTileSize}
@@ -2386,11 +2440,6 @@ export function GameScreen({ navigation, route }: Props) {
                       </TouchableOpacity>
                     </LinearGradient>
                   </Animated.View>
-                )}
-                {!hasValidMoves && !hasBoneyard && (
-                  <TouchableOpacity style={styles.passBtn} onPress={handlePass} activeOpacity={0.8}>
-                    <Text style={styles.passBtnText}>Passar vez</Text>
-                  </TouchableOpacity>
                 )}
               </View>
             )}
@@ -2516,6 +2565,15 @@ export function GameScreen({ navigation, route }: Props) {
                   );
                 })}
 
+                {/* ── Pass button — inline, same position as Jogar, only when no valid moves ── */}
+                {isMyTurn && !selectedTile && !hasValidMoves && !hasBoneyard && (
+                  <View style={styles.inlineActions}>
+                    <TouchableOpacity style={styles.passBtn} onPress={handlePass} activeOpacity={0.8}>
+                      <Text style={styles.passBtnText}>Passar</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {/* ── Inline play / cancel buttons — inside the scroll, always right after the last tile ── */}
                 {isMyTurn && selectedTile && (
                   <View style={styles.inlineActions}>
@@ -2541,11 +2599,15 @@ export function GameScreen({ navigation, route }: Props) {
 
               <View style={styles.playerCardWithTimer}>
                 {currentGame?.status === 'playing' && (
-                  <View style={[styles.timerBadge, turnTimer <= 10 && styles.timerBadgeUrgent]}>
-                    <Text style={[styles.timerText, turnTimer <= 10 && styles.timerTextUrgent]}>
-                      {turnTimer}
-                    </Text>
-                  </View>
+                  <Animated.View style={[
+                    styles.timerBadge,
+                    turnTimer > 10 ? styles.timerBadgeGreen
+                      : turnTimer > 5 ? styles.timerBadgeGold
+                      : styles.timerBadgeRed,
+                    { transform: [{ scale: timerPulseAnim }], alignSelf: 'center' },
+                  ]}>
+                    <Text style={styles.timerText}>{turnTimer}</Text>
+                  </Animated.View>
                 )}
                 <View style={styles.playerCardFxWrap}>
                   <MyPlayerCard
@@ -2905,19 +2967,25 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   timerBadge: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderWidth: 2, borderColor: 'rgba(74,222,128,0.5)',
+    width: 60, height: 60, borderRadius: 30,
+    borderWidth: 2.5,
     alignItems: 'center', justifyContent: 'center',
   },
-  timerBadgeUrgent: {
-    borderColor: colors.error,
-    backgroundColor: 'rgba(248,113,113,0.15)',
+  timerBadgeGreen: {
+    backgroundColor: '#0f2d17',
+    borderColor: '#4ade80',
+  },
+  timerBadgeGold: {
+    backgroundColor: '#1c1000',
+    borderColor: '#b45309',
+  },
+  timerBadgeRed: {
+    backgroundColor: '#3d0a0a',
+    borderColor: '#991b1b',
   },
   timerText: {
     color: '#fff', fontWeight: '900', fontSize: fonts.sizes.lg,
   },
-  timerTextUrgent: { color: colors.error },
 
   // ── Middle ──
   middle: {
@@ -2951,7 +3019,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 10,
-    transform: [{ translateY: -18 }],
+    transform: [{ translateY: -30 }],
   },
   tableSideBadgeLeft: {
     position: 'absolute',
@@ -3033,7 +3101,7 @@ const styles = StyleSheet.create({
   },
   snakeRow: { alignItems: 'center', gap: 0 },
   snakeCorner: { borderRadius: 4, backgroundColor: '#d4cfc6' },
-  playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: 16 },
+  playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 16 },
   playerCardFxWrap: { position: 'relative', alignSelf: 'center' },
   playerFxLayer: { ...StyleSheet.absoluteFillObject, zIndex: 50 },
   emojiBubble: {
@@ -3108,12 +3176,12 @@ const styles = StyleSheet.create({
   },
   drawBtnText: { color: '#052e16', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.3 },
   passBtn: {
-    backgroundColor: 'rgba(239,68,68,0.12)',
+    backgroundColor: '#1c1000',
     borderRadius: radius.full,
-    paddingVertical: 11, paddingHorizontal: 22,
-    borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)',
+    paddingVertical: 11, paddingHorizontal: 28,
+    borderWidth: 2, borderColor: '#b45309',
   },
-  passBtnText: { color: '#fca5a5', fontWeight: '700', fontSize: fonts.sizes.sm },
+  passBtnText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.4 },
   cancelBtn: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: '#3d0a0a',
@@ -3269,26 +3337,40 @@ const styles = StyleSheet.create({
 
   // Result modal
   resultCard: {
-    backgroundColor: '#0f2e0f', borderRadius: radius.xl, padding: spacing.xxxl,
-    alignItems: 'center', gap: spacing.lg,
-    borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)', minWidth: 280,
+    backgroundColor: '#0a2010',
+    borderRadius: radius.xl,
+    paddingVertical: spacing.xxxl,
+    paddingHorizontal: spacing.xxl,
+    alignItems: 'center',
+    gap: spacing.md,
+    borderWidth: 2,
+    borderColor: 'rgba(74,222,128,0.45)',
+    minWidth: 300,
   },
-  resultTitle: { fontSize: fonts.sizes.xxl, fontWeight: '800', color: '#fff' },
-  resultPrize: { fontSize: fonts.sizes.xl, fontWeight: '700', color: '#facc15' },
+  resultTitle: { fontSize: fonts.sizes.xxl, fontWeight: '900', color: '#fff', textAlign: 'center' },
+  resultTitleWinner: { color: '#facc15' },
+  resultPrize: { fontSize: fonts.sizes.xxxl ?? 36, fontWeight: '900', color: '#facc15', textAlign: 'center' },
+  resultPrizeLoss: { color: 'rgba(255,255,255,0.6)' },
   resultBtn: {
-    backgroundColor: '#4ade80', borderRadius: radius.lg,
-    paddingVertical: 14, paddingHorizontal: 32, marginTop: spacing.md,
+    backgroundColor: '#1c3a1c',
+    borderRadius: radius.full,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    width: 230,
+    alignItems: 'center',
   },
-  resultBtnDisabled: {
-    opacity: 0.75,
-  },
-  resultBtnText: { color: '#000', fontWeight: '800', fontSize: fonts.sizes.md },
+  resultBtnDisabled: { opacity: 0.75 },
+  resultBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md },
+  resultOrText: { color: 'rgba(255,255,255,0.5)', fontSize: fonts.sizes.sm, fontWeight: '600' },
   resultSecondaryBtn: {
-    marginTop: spacing.xs,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    backgroundColor: '#3a3a3a',
+    borderRadius: radius.full,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    width: 230,
+    alignItems: 'center',
   },
-  resultSecondaryText: { color: 'rgba(255,255,255,0.85)', fontWeight: '700', fontSize: fonts.sizes.sm },
+  resultSecondaryText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
 
   // Round banner overlay
   roundBannerOverlay: {

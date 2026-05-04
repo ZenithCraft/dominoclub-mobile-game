@@ -11,7 +11,16 @@
       "Bash(node -e ' *)",
       "Bash(node -e \"try{require\\('jimp'\\);console.log\\('jimp ok'\\)}catch\\(e\\){console.log\\('no jimp: '+e.message\\)}\")",
       "Bash(node -e \"try{require\\('pngjs'\\);console.log\\('pngjs ok'\\)}catch\\(e\\){console.log\\('no pngjs: '+e.message\\)}\")",
-      "Bash(node -e \"try{require\\('sharp'\\);console.log\\('sharp ok'\\)}catch\\(e\\){console.log\\('no sharp: '+e.message\\)}\")"
+      "Bash(node -e \"try{require\\('sharp'\\);console.log\\('sharp ok'\\)}catch\\(e\\){console.log\\('no sharp: '+e.message\\)}\")",
+      "Bash(npx expo *)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(curl -s http://localhost:8082 -o /dev/null -w \"%{http_code}\")",
+      "Bash(git fetch *)",
+      "Bash(git stash *)",
+      "Bash(git pull *)",
+      "Bash(git add *)",
+      "Bash(python3 -c ' *)",
+      "Bash(python -c ' *)"
     ]
   }
 }

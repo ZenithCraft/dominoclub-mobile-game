@@ -22,8 +22,17 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function firstPlay(tile: Tile): { side: Side; flipped: boolean } {
-  return { side: 'left', flipped: false };
+// Find highest double across all hands; returns { tile, playerIdx } or null
+function findHighestDouble(players: any[]): { tile: Tile; playerIdx: number } | null {
+  for (let pip = 6; pip >= 0; pip--) {
+    for (let pi = 0; pi < players.length; pi++) {
+      const hand: Tile[] = players[pi].hand ?? [];
+      if (hand.some((t) => t && t[0] === pip && t[1] === pip)) {
+        return { tile: [pip, pip], playerIdx: pi };
+      }
+    }
+  }
+  return null;
 }
 
 function findPlay(
@@ -31,8 +40,13 @@ function findPlay(
   leftOpen: number,
   rightOpen: number,
   firstPlayMade: boolean,
+  requiredFirstTile?: Tile | null,
 ): { side: Side; flipped: boolean } | null {
-  if (!firstPlayMade) return firstPlay(tile);
+  if (!firstPlayMade) {
+    // Must play the required opening tile
+    if (requiredFirstTile && (tile[0] !== requiredFirstTile[0] || tile[1] !== requiredFirstTile[1])) return null;
+    return { side: 'left', flipped: false };
+  }
   if (leftOpen !== -1) {
     if (tile[1] === leftOpen) return { side: 'left', flipped: false };
     if (tile[0] === leftOpen && tile[0] !== tile[1]) return { side: 'left', flipped: true };
@@ -85,6 +99,7 @@ function applyMove(state: any, playerIdx: number, tile: Tile, side: Side, flippe
     leftOpen,
     rightOpen,
     firstPlayMade,
+    requiredFirstTile: null,
     currentPlayerIndex: nextIdx,
     turnCount: state.turnCount + 1,
     status,
@@ -129,15 +144,22 @@ class FakeSocket {
 
       case 'queue:join': {
         this.lastQueueMode = args[0]?.mode ?? null;
-        const gameId = this.lastQueueMode?.includes('2V2') ? 'demo-2v2' : 'demo-1';
+        const gameId = this.lastQueueMode?.includes('1V1') ? 'demo-1' : 'demo-2v2';
         setTimeout(() => this._trigger('game:found', { gameId }), 800);
         break;
       }
 
       case 'game:join': {
-        // If state was pre-seeded (e.g. by the dev mock useEffect), just re-emit it
+        // If state was pre-seeded (e.g. by the dev mock useEffect), always use it
         if (this.state !== null) {
-          setTimeout(() => this._trigger('game:state', this.state), 200);
+          const s = this.state;
+          setTimeout(() => this._trigger('game:state', s), 200);
+          // If it's a bot's turn (e.g. bot holds the highest double), kick off immediately
+          setTimeout(() => {
+            if (this.state?.players?.[this.state.currentPlayerIndex]?.isBot) {
+              this._botTurn();
+            }
+          }, 600);
           break;
         }
 
@@ -265,12 +287,12 @@ class FakeSocket {
     const player = this.state.players[idx];
     if (!player?.isBot) return;
 
-    const { leftOpen, rightOpen, firstPlayMade, boneyard } = this.state;
+    const { leftOpen, rightOpen, firstPlayMade, boneyard, requiredFirstTile } = this.state;
 
     // Try to play a tile
     for (const tile of player.hand as Tile[]) {
       if (!tile) continue;
-      const play = findPlay(tile, leftOpen, rightOpen, firstPlayMade);
+      const play = findPlay(tile, leftOpen, rightOpen, firstPlayMade, requiredFirstTile);
       if (play) {
         this.state = applyMove(this.state, idx, tile, play.side, play.flipped);
         this._trigger('game:state', this.state);
@@ -327,7 +349,25 @@ class FakeSocket {
   }
 
   setInitialState(state: any) {
-    this.state = state;
+    // If it's a fresh game with no board, re-deal shuffled hands so bots get a proper mix
+    if (state && (!state.board || state.board.length === 0) && !state.firstPlayMade) {
+      const deck = shuffle([...VISIBLE_TILES]);
+      const perPlayer = Math.floor(deck.length / state.players.length);
+      const players = state.players.map((p: any, i: number) => ({
+        ...p,
+        hand: deck.slice(i * perPlayer, (i + 1) * perPlayer),
+      }));
+      // Determine who holds the highest double — they go first and must play it
+      const opener = findHighestDouble(players);
+      this.state = {
+        ...state,
+        players,
+        currentPlayerIndex: opener ? opener.playerIdx : 0,
+        requiredFirstTile: opener ? opener.tile : null,
+      };
+    } else {
+      this.state = state;
+    }
   }
 
   disconnect() {}
