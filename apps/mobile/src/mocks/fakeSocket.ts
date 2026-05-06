@@ -22,8 +22,17 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function firstPlay(tile: Tile): { side: Side; flipped: boolean } {
-  return { side: 'left', flipped: false };
+// Find highest double across all hands; returns { tile, playerIdx } or null
+function findHighestDouble(players: any[]): { tile: Tile; playerIdx: number } | null {
+  for (let pip = 6; pip >= 0; pip--) {
+    for (let pi = 0; pi < players.length; pi++) {
+      const hand: Tile[] = players[pi].hand ?? [];
+      if (hand.some((t) => t && t[0] === pip && t[1] === pip)) {
+        return { tile: [pip, pip], playerIdx: pi };
+      }
+    }
+  }
+  return null;
 }
 
 function findPlay(
@@ -31,8 +40,13 @@ function findPlay(
   leftOpen: number,
   rightOpen: number,
   firstPlayMade: boolean,
+  requiredFirstTile?: Tile | null,
 ): { side: Side; flipped: boolean } | null {
-  if (!firstPlayMade) return firstPlay(tile);
+  if (!firstPlayMade) {
+    // Must play the required opening tile
+    if (requiredFirstTile && (tile[0] !== requiredFirstTile[0] || tile[1] !== requiredFirstTile[1])) return null;
+    return { side: 'left', flipped: false };
+  }
   if (leftOpen !== -1) {
     if (tile[1] === leftOpen) return { side: 'left', flipped: false };
     if (tile[0] === leftOpen && tile[0] !== tile[1]) return { side: 'left', flipped: true };
@@ -85,6 +99,7 @@ function applyMove(state: any, playerIdx: number, tile: Tile, side: Side, flippe
     leftOpen,
     rightOpen,
     firstPlayMade,
+    requiredFirstTile: null,
     currentPlayerIndex: nextIdx,
     turnCount: state.turnCount + 1,
     status,
@@ -129,15 +144,23 @@ class FakeSocket {
 
       case 'queue:join': {
         this.lastQueueMode = args[0]?.mode ?? null;
-        const gameId = this.lastQueueMode?.includes('2V2') ? 'demo-2v2' : 'demo-1';
+        this.state = null; // always start fresh when going through matchmaking
+        const gameId = this.lastQueueMode?.includes('1V1') ? 'demo-1' : 'demo-2v2';
         setTimeout(() => this._trigger('game:found', { gameId }), 800);
         break;
       }
 
       case 'game:join': {
-        // If state was pre-seeded (e.g. by the dev mock useEffect), just re-emit it
+        // If state was pre-seeded (e.g. by the dev mock useEffect), always use it
         if (this.state !== null) {
-          setTimeout(() => this._trigger('game:state', this.state), 200);
+          const s = this.state;
+          setTimeout(() => this._trigger('game:state', s), 10000);
+          // If it's a bot's turn (e.g. bot holds the highest double), kick off immediately
+          setTimeout(() => {
+            if (this.state?.players?.[this.state.currentPlayerIndex]?.isBot) {
+              this._botTurn();
+            }
+          }, 11200);
           break;
         }
 
@@ -182,17 +205,21 @@ class FakeSocket {
         ];
 
         if (is2v2) {
+          const players2v2 = [
+            { userId: myId, name: myName,   team: 1, seat: 0, hand: deck.slice(0,  7) as Tile[], isBot: false, connected: true },
+            { userId: 'p2', name: 'Ana',    team: 2, seat: 1, hand: deck.slice(7,  14) as Tile[], isBot: true,  connected: true },
+            { userId: 'p3', name: 'Pedro',  team: 1, seat: 2, hand: deck.slice(14, 21) as Tile[], isBot: true,  connected: true },
+            { userId: 'p4', name: 'Carlos', team: 2, seat: 3, hand: deck.slice(21, 27) as Tile[], isBot: true,  connected: true },
+          ];
+          const firstDouble2v2 = findHighestDouble(players2v2);
           this.state = {
             id: gameId, mode: 'RECREATIONAL_2V2', variant: 'CARROCA',
-            players: [
-              { userId: myId, name: myName,   team: 1, seat: 0, hand: [], isBot: false, connected: true },
-              { userId: 'p2', name: 'Ana',    team: 2, seat: 1, hand: [], isBot: true,  connected: true },
-              { userId: 'p3', name: 'Pedro',  team: 1, seat: 2, hand: [], isBot: true,  connected: true },
-              { userId: 'p4', name: 'Carlos', team: 2, seat: 3, hand: [], isBot: true,  connected: true },
-            ],
-            board: sharedBoard, leftOpen: 4, rightOpen: 5,
-            currentPlayerIndex: 0, turnCount: 28,
-            status: 'playing', boneyard: [], firstPlayMade: true,
+            players: players2v2,
+            board: [], leftOpen: -1, rightOpen: -1,
+            currentPlayerIndex: firstDouble2v2?.playerIdx ?? 0, turnCount: 0,
+            status: 'playing', boneyard: [], firstPlayMade: false,
+            requiredFirstTile: firstDouble2v2?.tile ?? null,
+            matchScores: { 1: 0, 2: 0 }, roundNumber: 1, targetScore: 6,
           };
         } else {
           this.state = {
@@ -207,7 +234,11 @@ class FakeSocket {
           };
         }
 
-        setTimeout(() => this._trigger('game:state', this.state), 200);
+        setTimeout(() => this._trigger('game:state', this.state), 10000);
+        // If the opening player is a bot, kick off their turn after state is delivered
+        if (this.state.players[this.state.currentPlayerIndex]?.isBot) {
+          setTimeout(() => this._botTurn(), 11200);
+        }
         break;
       }
 
@@ -220,7 +251,7 @@ class FakeSocket {
         if (this.state.status === 'finished') {
           setTimeout(() => this._triggerEnd(), 600);
         } else {
-          setTimeout(() => this._botTurn(), 900);
+          setTimeout(() => this._botTurn(), 5000);
         }
         break;
       }
@@ -248,7 +279,7 @@ class FakeSocket {
           turnCount: this.state.turnCount + 1,
         };
         this._trigger('game:state', this.state);
-        setTimeout(() => this._botTurn(), 900);
+        setTimeout(() => this._botTurn(), 5000);
         break;
       }
 
@@ -265,12 +296,12 @@ class FakeSocket {
     const player = this.state.players[idx];
     if (!player?.isBot) return;
 
-    const { leftOpen, rightOpen, firstPlayMade, boneyard } = this.state;
+    const { leftOpen, rightOpen, firstPlayMade, boneyard, requiredFirstTile } = this.state;
 
     // Try to play a tile
     for (const tile of player.hand as Tile[]) {
       if (!tile) continue;
-      const play = findPlay(tile, leftOpen, rightOpen, firstPlayMade);
+      const play = findPlay(tile, leftOpen, rightOpen, firstPlayMade, requiredFirstTile);
       if (play) {
         this.state = applyMove(this.state, idx, tile, play.side, play.flipped);
         this._trigger('game:state', this.state);
@@ -278,7 +309,7 @@ class FakeSocket {
           setTimeout(() => this._triggerEnd(), 600);
         } else {
           const next = this.state.players[this.state.currentPlayerIndex];
-          if (next?.isBot) setTimeout(() => this._botTurn(), 900);
+          if (next?.isBot) setTimeout(() => this._botTurn(), 5000);
         }
         return;
       }
@@ -295,7 +326,7 @@ class FakeSocket {
         ),
       };
       this._trigger('game:state', this.state);
-      setTimeout(() => this._botTurn(), 600);
+      setTimeout(() => this._botTurn(), 5000);
       return;
     }
 
@@ -307,17 +338,76 @@ class FakeSocket {
     };
     this._trigger('game:state', this.state);
     const next = this.state.players[this.state.currentPlayerIndex];
-    if (next?.isBot) setTimeout(() => this._botTurn(), 900);
+    if (next?.isBot) setTimeout(() => this._botTurn(), 5000);
   }
 
   private _triggerEnd() {
-    const winner = this.state?.players.find((p: any) => p.hand.length === 0);
-    this._trigger('game:ended', {
-      winnerId:      winner?.userId ?? null,
-      winnerTeam:    winner?.team ?? null,
-      prizePool:     0,
-      prizePerWinner: 0,
+    if (!this.state) return;
+
+    const winner = this.state.players.find((p: any) => p.hand.length === 0);
+    const lastBoardTile = this.state.board[this.state.board.length - 1];
+    const lastTile = lastBoardTile?.tile as [number, number] | undefined;
+    const winType: string = lastTile && lastTile[0] === lastTile[1] ? 'carroca' : 'simples';
+    const points: number = winType === 'carroca' ? 2 : 1;
+
+    const winnerTeam: number | null = winner?.team ?? null;
+    const prevScores = this.state.matchScores ?? { 1: 0, 2: 0 };
+    const newScores: Record<number, number> = { ...prevScores };
+    if (winnerTeam !== null) newScores[winnerTeam] = (newScores[winnerTeam] ?? 0) + points;
+
+    const targetScore: number = this.state.targetScore ?? 6;
+    const roundNumber: number = this.state.roundNumber ?? 1;
+    const matchOver = (newScores[1] ?? 0) >= targetScore || (newScores[2] ?? 0) >= targetScore;
+    const matchWinnerTeam = matchOver ? ((newScores[1] ?? 0) >= targetScore ? 1 : 2) : null;
+
+    this._trigger('game:round_ended', {
+      roundNumber,
+      winnerTeam,
+      winType,
+      points,
+      matchScores: newScores,
+      targetScore,
+      matchOver,
+      matchWinnerTeam,
     });
+
+    if (matchOver) {
+      setTimeout(() => {
+        this._trigger('game:ended', {
+          winnerId:       winner?.userId ?? null,
+          winnerTeam:     matchWinnerTeam,
+          prizePool:      0,
+          prizePerWinner: 0,
+        });
+      }, 3500);
+      return;
+    }
+
+    // Restart next round after 4 s (banner shows for 3.5 s)
+    setTimeout(() => {
+      const deck = shuffle([...VISIBLE_TILES]);
+      const perPlayer = Math.floor(deck.length / this.state.players.length);
+      const players = this.state.players.map((p: any, i: number) => ({
+        ...p,
+        hand: deck.slice(i * perPlayer, (i + 1) * perPlayer),
+      }));
+      const opener = findHighestDouble(players);
+      this.state = {
+        ...this.state,
+        players,
+        board: [], leftOpen: -1, rightOpen: -1,
+        firstPlayMade: false, status: 'playing',
+        turnCount: 0,
+        currentPlayerIndex: opener?.playerIdx ?? 0,
+        requiredFirstTile: opener?.tile ?? null,
+        matchScores: newScores,
+        roundNumber: roundNumber + 1,
+      };
+      this._trigger('game:state', this.state);
+      if (this.state.players[this.state.currentPlayerIndex]?.isBot) {
+        setTimeout(() => this._botTurn(), 5000);
+      }
+    }, 4000);
   }
 
   _trigger(event: string, ...args: any[]) {
@@ -327,7 +417,25 @@ class FakeSocket {
   }
 
   setInitialState(state: any) {
-    this.state = state;
+    // If it's a fresh game with no board, re-deal shuffled hands so bots get a proper mix
+    if (state && (!state.board || state.board.length === 0) && !state.firstPlayMade) {
+      const deck = shuffle([...VISIBLE_TILES]);
+      const perPlayer = Math.floor(deck.length / state.players.length);
+      const players = state.players.map((p: any, i: number) => ({
+        ...p,
+        hand: deck.slice(i * perPlayer, (i + 1) * perPlayer),
+      }));
+      // Determine who holds the highest double — they go first and must play it
+      const opener = findHighestDouble(players);
+      this.state = {
+        ...state,
+        players,
+        currentPlayerIndex: opener ? opener.playerIdx : 0,
+        requiredFirstTile: opener ? opener.tile : null,
+      };
+    } else {
+      this.state = state;
+    }
   }
 
   disconnect() {}
