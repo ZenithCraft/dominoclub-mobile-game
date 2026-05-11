@@ -82,7 +82,7 @@ function MiniPips({ value }: { value: number }) {
     3: [0, 4, 8],
     4: [0, 2, 6, 8],
     5: [0, 2, 4, 6, 8],
-    6: [0, 2, 3, 5, 6, 8],
+    6: [0, 3, 6, 2, 5, 8],
   };
 
   const ids = map[Math.max(0, Math.min(6, value))] ?? [];
@@ -1308,6 +1308,27 @@ export function GameScreen({ navigation, route }: Props) {
   const handSectionTopRef = useRef<number>(Dimensions.get('window').height * 0.72);
   const handScrollRef = useRef<ScrollView>(null);
 
+  // ── Opponent play animation ─────────────────────────────────────────────────
+  type OpponentPlayAnim = { tile: Tile; horizontal: boolean; playerId: string };
+  const [opponentPlayAnim, setOpponentPlayAnim] = useState<OpponentPlayAnim | null>(null);
+  const oppPlayTranslate = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const oppPlayOpacity   = useRef(new Animated.Value(0)).current;
+  const oppPlayScale     = useRef(new Animated.Value(0.6)).current;
+  // Always-current seat index — avoids stale closure in triggerOpponentPlayAnim
+  const mySeatRef = useRef(0);
+  // View refs for opponent cards — used with measureInWindow for screen-absolute positions
+  const oppCardTopViewRef   = useRef<View>(null);
+  const oppCardLeftViewRef  = useRef<View>(null);
+  const oppCardRightViewRef = useRef<View>(null);
+  // Cached screen-absolute centres of each opponent card
+  const oppCardTopRef   = useRef<{ x: number; y: number } | null>(null);
+  const oppCardLeftRef  = useRef<{ x: number; y: number } | null>(null);
+  const oppCardRightRef = useRef<{ x: number; y: number } | null>(null);
+  const tableCenterRef  = useRef<{ x: number; y: number }>({
+    x: typeof window !== 'undefined' ? window.innerWidth / 2 : Dimensions.get('window').width / 2,
+    y: typeof window !== 'undefined' ? window.innerHeight * 0.38 : Dimensions.get('window').height * 0.38,
+  });
+
   const startWebDrag = useCallback((tile: Tile, clientX: number, clientY: number, onDrop: (dropX: number) => void) => {
     if (Platform.OS !== 'web') return;
     webDragDropRef.current = onDrop;
@@ -1417,6 +1438,7 @@ export function GameScreen({ navigation, route }: Props) {
   })();
   const myEffectiveUserId = currentGame?.players[myPlayerIndex]?.userId ?? myUserId;
   const mySeat = myPlayerIndex >= 0 ? (currentGame?.players[myPlayerIndex]?.seat ?? 0) : 0;
+  mySeatRef.current = mySeat;
   const isMyTurn      = currentGame?.currentPlayerIndex === myPlayerIndex && currentGame?.status === 'playing';
   const turnUserId    = currentGame?.players[currentGame?.currentPlayerIndex ?? 0]?.userId ?? '';
   const myHand        = (currentGame?.players[myPlayerIndex]?.hand || []) as (Tile | null)[];
@@ -1565,6 +1587,39 @@ export function GameScreen({ navigation, route }: Props) {
     return () => clearInterval(timer);
   }, [currentGame, loadingTimer]);
 
+  const triggerOpponentPlayAnim = useCallback((
+    tile: Tile,
+    horizontal: boolean,
+    playerId: string,
+    seat: number,
+  ) => {
+    if (process.env.NODE_ENV === 'test') return;
+    // Determine which card ref to use as origin based on seat relative to mySeat
+    const curMySeat = mySeatRef.current;
+    let fromRef = oppCardTopRef;
+    if (seat === (curMySeat + 1) % 4) fromRef = oppCardRightRef;
+    else if (seat === (curMySeat + 3) % 4) fromRef = oppCardLeftRef;
+
+    const fromPos = fromRef.current ?? { x: tableCenterRef.current.x, y: 60 };
+    const toPos   = tableCenterRef.current;
+
+    oppPlayTranslate.setValue({ x: fromPos.x - toPos.x, y: fromPos.y - toPos.y });
+    oppPlayOpacity.setValue(0);
+    oppPlayScale.setValue(0.55);
+
+    setOpponentPlayAnim({ tile, horizontal, playerId });
+
+    Animated.parallel([
+      Animated.timing(oppPlayOpacity, { toValue: 1, duration: 120, useNativeDriver: true }),
+      Animated.timing(oppPlayScale,   { toValue: 1, duration: 300, useNativeDriver: true, easing: Easing.out(Easing.back(1.5)) }),
+      Animated.timing(oppPlayTranslate, { toValue: { x: 0, y: 0 }, duration: 420, useNativeDriver: true, easing: Easing.out(Easing.quad) }),
+    ]).start(() => {
+      Animated.timing(oppPlayOpacity, { toValue: 0, duration: 200, delay: 120, useNativeDriver: true }).start(() => {
+        setOpponentPlayAnim(null);
+      });
+    });
+  }, [oppPlayTranslate, oppPlayOpacity, oppPlayScale]);
+
   const triggerDrawFx = useCallback((userId: string) => {
     setDrawByUser((s) => ({ ...s, [userId]: { nonce: Date.now() } }));
     const v = ensureAnim(drawAnimRef, userId);
@@ -1623,6 +1678,24 @@ export function GameScreen({ navigation, route }: Props) {
               const prevLen = new Map(prev.players.map((p) => [p.userId, p.hand?.length ?? 0]));
               const drew = normalized.players.find((p) => (p.hand?.length ?? 0) === (prevLen.get(p.userId) ?? 0) + 1);
               if (drew) triggerDrawFx(drew.userId);
+            }
+
+            // Detect opponent tile play: board grew by 1 and an opponent hand shrunk by 1
+            const prevBoard = prev.board ?? [];
+            const nextBoard = normalized.board ?? [];
+            if (nextBoard.length === prevBoard.length + 1) {
+              const prevHandLen = new Map(prev.players.map((p) => [p.userId, p.hand?.length ?? 0]));
+              const myUId = String((useAuthStore.getState().user as any)?.id ?? (useAuthStore.getState().user as any)?.userId ?? '');
+              const playedBy = normalized.players.find(
+                (p) => p.userId !== myUId && (p.hand?.length ?? 0) === (prevHandLen.get(p.userId) ?? 0) - 1
+              );
+              if (playedBy) {
+                const newPt = nextBoard[nextBoard.length - 1];
+                const effective: Tile = newPt.flipped ? [newPt.tile[1], newPt.tile[0]] : newPt.tile;
+                const isDouble = effective[0] === effective[1];
+                const horizontal = !isDouble;
+                triggerOpponentPlayAnim(effective, horizontal, playedBy.userId, playedBy.seat);
+              }
             }
           }
           prevStateRef.current = normalized;
@@ -1863,13 +1936,13 @@ export function GameScreen({ navigation, route }: Props) {
               <Text style={styles.joinSubtitle}>Conectando e preparando a mesa</Text>
               <View style={styles.joinMiniRow}>
                 <Animated.View style={{ transform: [{ translateY: tileLift }, { rotate: '-10deg' }] }}>
-                  <MiniDomino left={6} right={6} />
+                  <Image source={DOMINO_IMAGES['6,6']} style={styles.joinMiniDomino} fadeDuration={0} />
                 </Animated.View>
                 <Animated.View style={{ transform: [{ translateY: tileLift }, { rotate: '0deg' }] }}>
-                  <MiniDomino left={5} right={3} />
+                  <Image source={DOMINO_IMAGES['5,3']} style={styles.joinMiniDomino} fadeDuration={0} />
                 </Animated.View>
                 <Animated.View style={{ transform: [{ translateY: tileLift }, { rotate: '10deg' }] }}>
-                  <MiniDomino left={2} right={1} />
+                  <Image source={DOMINO_IMAGES['2,1']} style={styles.joinMiniDomino} fadeDuration={0} />
                 </Animated.View>
               </View>
             </LinearGradient>
@@ -2055,7 +2128,15 @@ export function GameScreen({ navigation, route }: Props) {
             <View style={[styles.tableFrame, { height: tableHeight, width: is4Player ? '85%' : '90%' }]}>
               {topOpponent && (
                 <View style={styles.oppCardOverlay}>
-                  <View style={styles.playerCardFxWrap}>
+                  <View
+                    ref={oppCardTopViewRef}
+                    style={styles.playerCardFxWrap}
+                    onLayout={() => {
+                      (oppCardTopViewRef.current as any)?.measureInWindow?.((x: number, y: number, w: number, h: number) => {
+                        oppCardTopRef.current = { x: x + w / 2, y: y + h / 2 };
+                      });
+                    }}
+                  >
                     <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} isTurn={turnUserId === topOpponent.userId} team={topOpponent.team} matchScore={currentGame.matchScores?.[topOpponent.team] ?? 0} isOpponent={topOpponent.team !== myTeam} />
                     {renderPlayerFx(topOpponent.userId, 'top')}
                   </View>
@@ -2065,7 +2146,15 @@ export function GameScreen({ navigation, route }: Props) {
               {/* Side players anchored to table edges */}
               {is4Player && leftOpponent && (
                 <View style={styles.sideCardLeft}>
-                  <View style={styles.playerCardFxWrap}>
+                  <View
+                    ref={oppCardLeftViewRef}
+                    style={styles.playerCardFxWrap}
+                    onLayout={() => {
+                      (oppCardLeftViewRef.current as any)?.measureInWindow?.((x: number, y: number, w: number, h: number) => {
+                        oppCardLeftRef.current = { x: x + w / 2, y: y + h / 2 };
+                      });
+                    }}
+                  >
                     <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} team={leftOpponent.team} matchScore={currentGame.matchScores?.[leftOpponent.team] ?? 0} isOpponent={leftOpponent.team !== myTeam} />
                     {renderPlayerFx(leftOpponent.userId, 'left')}
                   </View>
@@ -2073,7 +2162,15 @@ export function GameScreen({ navigation, route }: Props) {
               )}
               {is4Player && rightOpponent && (
                 <View style={styles.sideCardRight}>
-                  <View style={styles.playerCardFxWrap}>
+                  <View
+                    ref={oppCardRightViewRef}
+                    style={styles.playerCardFxWrap}
+                    onLayout={() => {
+                      (oppCardRightViewRef.current as any)?.measureInWindow?.((x: number, y: number, w: number, h: number) => {
+                        oppCardRightRef.current = { x: x + w / 2, y: y + h / 2 };
+                      });
+                    }}
+                  >
                     <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} team={rightOpponent.team} matchScore={currentGame.matchScores?.[rightOpponent.team] ?? 0} isOpponent={rightOpponent.team !== myTeam} />
                     {renderPlayerFx(rightOpponent.userId, 'right')}
                   </View>
@@ -2087,8 +2184,9 @@ export function GameScreen({ navigation, route }: Props) {
                   const { width, height } = e.nativeEvent.layout;
                   setTableBgSize({ width: Math.round(width), height: Math.round(height) });
                   // Measure absolute screen position for accurate left/right side detection
-                  (tableBgRef.current as any)?.measureInWindow?.((x: number, _y: number, w: number) => {
+                  (tableBgRef.current as any)?.measureInWindow?.((x: number, y: number, w: number, h: number) => {
                     boardScreenCenterXRef.current = x + w / 2;
+                    tableCenterRef.current = { x: x + w / 2, y: y + h * 0.45 };
                   });
                 }}
               >
@@ -2776,6 +2874,42 @@ export function GameScreen({ navigation, route }: Props) {
         );
       })()}
 
+      {/* ── Opponent play fly animation overlay ── */}
+      {opponentPlayAnim && (() => {
+        const oppTile = opponentPlayAnim.tile;
+        const isHoriz = opponentPlayAnim.horizontal;
+        const tileW = Math.round(isHoriz ? TILE_DIMS.hand.long : TILE_DIMS.hand.short);
+        const tileH = Math.round(isHoriz ? TILE_DIMS.hand.short : TILE_DIMS.hand.long);
+        // tableCenterRef stores screen-absolute coords (from measureInWindow).
+        // The overlay is inside SafeAreaView so subtract its insets.
+        const centerLeft = tableCenterRef.current.x - tileW / 2 - safeInsets.left;
+        const centerTop  = tableCenterRef.current.y - tileH / 2 - safeInsets.top;
+        return (
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: centerLeft,
+              top:  centerTop,
+              zIndex: 99998,
+              opacity: oppPlayOpacity,
+              transform: [
+                { translateX: oppPlayTranslate.x },
+                { translateY: oppPlayTranslate.y },
+                { scale: oppPlayScale },
+              ],
+            }}
+          >
+            <DominoTile
+              tile={oppTile}
+              size="hand"
+              horizontal={isHoriz}
+              selected
+            />
+          </Animated.View>
+        );
+      })()}
+
       {/* ── Round banner overlay ── */}
       {roundBanner && (
         <View style={styles.roundBannerOverlay} pointerEvents="none">
@@ -2842,6 +2976,7 @@ const styles = StyleSheet.create({
   joinTitle: { color: '#fff', fontSize: fonts.sizes.xl, fontWeight: '900', textAlign: 'center' },
   joinSubtitle: { color: 'rgba(255,255,255,0.72)', fontSize: fonts.sizes.sm, fontWeight: '700', textAlign: 'center', marginTop: 6 },
   joinMiniRow: { flexDirection: 'row', gap: 10, justifyContent: 'center', marginTop: 16 },
+  joinMiniDomino: { width: 48, height: 72, resizeMode: 'contain' },
   miniDomino: {
     width: 64,
     height: 44,
