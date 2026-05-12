@@ -94,7 +94,7 @@ export interface CpfVerificationResult {
 }
 
 export async function verifyCpf(cpf: string): Promise<CpfVerificationResult> {
-  if (config.serpro.mockMode || config.env !== 'production') {
+  if (config.serpro.mockMode) {
     // Mock mode: accept any valid CPF checksum without API call
     logger.info('[CPF MOCK] Accepted CPF (mock mode)', { cpf: cpf.slice(0, 3) + '***' });
     return { verified: true, name: null, situacao: 'Regular (mock)' };

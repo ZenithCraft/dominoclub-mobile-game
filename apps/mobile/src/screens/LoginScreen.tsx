@@ -28,9 +28,7 @@ export function LoginScreen({ navigation }: Props) {
   const { setTokens, setUser } = useAuthStore();
 
   const isEmail = /[a-zA-Z@]/.test(identifier);
-  const DEV_AUTH_BYPASS =
-    process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS === 'true' ||
-    (typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1'));
+  const DEV_AUTH_BYPASS = process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS === 'true';
 
   const formatPhone = (text: string) => {
     const d = text.replace(/\D/g, '').slice(0, 11);
