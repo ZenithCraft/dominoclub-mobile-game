@@ -185,8 +185,9 @@ export async function createPixCharge(userId: string, amountBRL: number, couponC
     },
   });
 
-  // Dev mode: auto-confirm after 3 seconds (simulates PIX payment)
-  if (config.env !== 'production') {
+  // Dev mode: auto-confirm after 3 seconds (simulates PIX payment).
+  // Only active when PIX_MOCK_AUTO_CONFIRM=true is explicitly set.
+  if (process.env.PIX_MOCK_AUTO_CONFIRM === 'true') {
     setTimeout(() => {
       confirmPixDeposit(txid).catch((err) =>
         logger.error('[PIX MOCK] Auto-confirm failed', { txid, err: err.message })

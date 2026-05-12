@@ -134,7 +134,7 @@ export function AppNavigator() {
     (window as any).__MOCK_GAME__ = true;
   }
 
-  const allowDirect = process.env.NODE_ENV !== 'production' || process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS === 'true';
+  const allowDirect = process.env.NODE_ENV !== 'production';
   const initialRouteName: keyof RootStackParamList =
     allowDirect && (process.env.EXPO_PUBLIC_MOCK_GAME === 'true' || directGame || mockGame)
       ? 'Game'

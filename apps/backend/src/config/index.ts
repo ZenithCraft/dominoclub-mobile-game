@@ -81,7 +81,7 @@ export const config = {
 
   integrity: {
     // Set to true in dev to accept any token without hitting Google/Apple APIs
-    mockMode: process.env.INTEGRITY_MOCK_MODE === 'true' || process.env.NODE_ENV !== 'production',
+    mockMode: process.env.INTEGRITY_MOCK_MODE === 'true',
     // Token value accepted in mock mode — must match what the mobile sends
     mockToken: process.env.INTEGRITY_MOCK_TOKEN || 'dev-integrity-token',
     // Whether a valid token is required before entering a paid queue

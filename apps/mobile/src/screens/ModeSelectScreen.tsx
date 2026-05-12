@@ -336,26 +336,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
     setQueueStatus('queuing');
     const gameMode = section === '2v2' ? 'RECREATIONAL_2V2' : 'ARENA_1V1';
     try {
-      const forceDevLogin = process.env.EXPO_PUBLIC_FORCE_DEV_LOGIN === 'true';
-      const canAutoDevLogin = (() => {
-        if (forceDevLogin) return true;
-        try {
-          const base = String((api.defaults.baseURL || '')).trim();
-          if (!base) return false;
-          const url = new URL(base);
-          const host = url.hostname;
-          if (host === 'localhost' || host === '127.0.0.1') return true;
-          if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
-            const [a, b] = host.split('.').map((x) => Number(x));
-            if (a === 10) return true;
-            if (a === 192 && b === 168) return true;
-            if (a === 172 && b >= 16 && b <= 31) return true;
-          }
-          return false;
-        } catch {
-          return false;
-        }
-      })();
+      const canAutoDevLogin = process.env.EXPO_PUBLIC_FORCE_DEV_LOGIN === 'true';
 
       if (!user && canAutoDevLogin) {
         try {

@@ -51,7 +51,7 @@ export interface IntegrityPayload {
 }
 
 const MOCK_TOKEN = process.env.EXPO_PUBLIC_INTEGRITY_MOCK_TOKEN || 'dev-integrity-token';
-const IS_MOCK    = __DEV__ ||
+const IS_MOCK    = process.env.EXPO_PUBLIC_INTEGRITY_MOCK_MODE === 'true' ||
                    (process.env.EXPO_PUBLIC_INTEGRITY_MOCK_MODE !== 'false' &&
                     process.env.EXPO_PUBLIC_MOCK_MODE === 'true');
 
