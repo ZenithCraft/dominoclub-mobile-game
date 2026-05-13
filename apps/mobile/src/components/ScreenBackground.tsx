@@ -30,6 +30,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a', overflow: 'hidden' },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.84)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
 });
