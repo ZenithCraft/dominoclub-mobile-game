@@ -102,7 +102,9 @@ class ErrorBoundary extends React.Component<
             alignItems: 'center',
           }}
           onPress={() => {
-            if (typeof window !== 'undefined') window.location.reload();
+            if (typeof window !== 'undefined' && window.location?.reload) {
+              window.location.reload();
+            }
           }}
           activeOpacity={0.85}
         >

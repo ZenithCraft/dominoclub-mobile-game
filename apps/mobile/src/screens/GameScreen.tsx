@@ -823,7 +823,7 @@ function DraggableTile({ tile, isPlayable, isSelected, onPress, onDragUp, onWebD
 }
 
 // ─── Tile size presets ────────────────────────────────────────────────────────
-type DominoTileSize = 'icon' | 'hand' | 'xxs' | 'xs' | 'sm' | 'md';
+type DominoTileSize = 'icon' | 'hand' | 'xxs' | 'xs' | 'sm' | 'md' | 'board';
 type DominoTileProps = {
   tile: Tile;
   size?: DominoTileSize;
@@ -841,6 +841,7 @@ const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: numb
   xs:   { short: 22, long: 35, pip: 4, corner: 4 },
   sm:   { short: 34, long: 54, pip: 5, corner: 5 },
   md:   { short: 44, long: 70, pip: 7, corner: 8 },
+  board: { short: 28, long: 44, pip: 4, corner: 5 }, // Tamanho intermediário para o tabuleiro
 };
 
 function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, onPress, style }: DominoTileProps) {
@@ -1251,17 +1252,19 @@ function ResultCard({
   const netAbs = Math.abs(net);
   const fmtBRL = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
   return (
-    <View style={styles.resultCard}>
-      {isWinner ? (
-        <IconTrophy size={72} color={colors.gold} accessibilityLabel="Troféu" />
-      ) : (
-        <IconFrown size={72} color={colors.textSecondary} accessibilityLabel="Rosto triste" />
-      )}
-      <Text style={[styles.resultTitle, isWinner && styles.resultTitleWinner]}>
+    <View style={[styles.resultCard, isWinner ? styles.resultCardWinner : styles.resultCardLoser]}>
+      <View style={styles.resultIcon}>
+        {isWinner ? (
+          <IconTrophy size={64} color={colors.gold} accessibilityLabel="Troféu" />
+        ) : (
+          <IconFrown size={64} color={colors.textSecondary} accessibilityLabel="Rosto triste" />
+        )}
+      </View>
+      <Text style={[styles.resultTitle, isWinner ? styles.resultTitleWinner : styles.resultTitleLoser]}>
         {!winnerId ? 'Fim de jogo' : isWinner ? 'Ganhador' : 'Você perdeu!'}
       </Text>
       {winnerId ? (
-        <Text style={[styles.resultPrize, !isWinner && styles.resultPrizeLoss]}>
+        <Text style={[styles.resultPrize, isWinner ? styles.resultPrizeWinner : styles.resultPrizeLoser]}>
           {isWinner ? fmtBRL(prizePerWinner) : fmtBRL(netAbs)}
         </Text>
       ) : null}
@@ -1427,7 +1430,7 @@ export function GameScreen({ navigation, route }: Props) {
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const is2v2 = currentGame?.mode?.includes('2V2') ?? false;
-  const boardTileSize: DominoTileSize = 'sm';
+  const boardTileSize: DominoTileSize = 'board';
   const boardTilePreset = TILE_DIMS[boardTileSize];
   const tableHeight = Math.round(Math.min(viewportWidth * 0.88, 940) / 2.2);
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
@@ -1722,8 +1725,15 @@ export function GameScreen({ navigation, route }: Props) {
         const onGameError = ({ message }: { message: string }) => showError(message);
         const onTimeout = ({ userId }: { userId: string }) => { if (String(userId) === myUserId) showError('Tempo esgotado — sua vez foi pulada'); };
         const onEmoji = ({ userId, emoji }: { userId: string; emoji: string }) => triggerEmojiFx(String(userId), String(emoji));
-        const onDisconnect = () => setDisconnected(true);
-        const onConnect = () => setDisconnected(false);
+        let disconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+        const onDisconnect = () => {
+          // Só mostra o banner após 1.5s de desconexão (evita flicker em reconexões rápidas)
+          disconnectTimeout = setTimeout(() => setDisconnected(true), 1500);
+        };
+        const onConnect = () => {
+          if (disconnectTimeout) clearTimeout(disconnectTimeout);
+          setDisconnected(false);
+        };
 
         socket.on('game:state', onGameState);
         socket.on('game:ended', onEnded);
@@ -1742,6 +1752,7 @@ export function GameScreen({ navigation, route }: Props) {
         }, 9000);
 
         cleanup = () => {
+          if (disconnectTimeout) clearTimeout(disconnectTimeout);
           socket.off('game:state', onGameState);
           socket.off('game:ended', onEnded);
           socket.off('game:round_ended', onRoundEnded);
@@ -1975,7 +1986,7 @@ export function GameScreen({ navigation, route }: Props) {
   const SNAKE_GAP_BASE = -1;
   const SNAKE_GAP = SNAKE_GAP_BASE;
   const snakeMaxW = feltWidth
-    ? Math.max(0, feltWidth * (is4Player ? 0.95 : 0.98))
+    ? Math.max(0, feltWidth * (is4Player ? 0.92 : 0.94))
     : Math.max(0, viewportWidth * (is4Player ? 0.80 : 0.92));
   const SNAKE_H_PER_ROW = Math.max(
     6,
@@ -1993,7 +2004,7 @@ export function GameScreen({ navigation, route }: Props) {
   const boardScale = (() => {
     if (!feltWidth || baseLayout.width === 0 || baseLayout.height === 0) return 1;
     const boardPadBase = 4;
-    const availW = Math.max(0, feltWidth  * 0.98 - boardPadBase * 2);
+    const availW = Math.max(0, feltWidth  * 0.94 - boardPadBase * 2);
     const availH = Math.max(0, tableHeight * (is4Player ? 0.76 : 0.86) - boardPadBase * 2);
     const scaleW = baseLayout.width > availW ? availW / baseLayout.width : 1;
     const scaleH = baseLayout.height > availH ? availH / baseLayout.height : 1;
@@ -2773,8 +2784,14 @@ export function GameScreen({ navigation, route }: Props) {
             onStartShouldSetResponder={() => true}
             testID="leave-confirm-card"
           >
+            <View style={styles.confirmIcon}>
+              <IconAlert size={40} color="#ef4444" />
+            </View>
             <Text style={styles.confirmTitle}>Abandonar partida</Text>
-            <Text style={styles.confirmText}>Tem certeza? Você perderá a aposta.</Text>
+            <Text style={styles.confirmText}>Tem certeza que deseja sair?</Text>
+            <View style={styles.confirmWarningBox}>
+              <Text style={styles.confirmWarningText}>⚠️ Você perderá a aposta!</Text>
+            </View>
             <View style={styles.confirmActions}>
               <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => setLeaveConfirmVisible(false)}>
                 <Text style={styles.confirmCancelText}>Cancelar</Text>
@@ -3041,7 +3058,7 @@ const styles = StyleSheet.create({
   },
   backBtnText: { color: '#e2e8f0', fontWeight: '800', fontSize: fonts.sizes.sm },
 
-  disconnectBanner: { backgroundColor: colors.warning, paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  disconnectBanner: { backgroundColor: colors.warning, paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', zIndex: 9999 },
   disconnectText:   { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
 
   errorToast: {
@@ -3412,72 +3429,105 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   leaveBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md },
+  // Leave confirm modal - Estilo KYC
   confirmCard: {
-    width: Platform.OS === 'web' ? 480 : 340,
-    backgroundColor: colors.bgCard,
+    width: Platform.OS === 'web' ? 400 : 320,
+    backgroundColor: '#082006',
     borderRadius: radius.xl,
     padding: spacing.xl,
     borderWidth: 2,
-    borderColor: 'rgba(239, 68, 68, 0.55)',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.55)' } as any) : shadows.card),
+    borderColor: '#0F400B',
+    alignItems: 'center',
+    gap: spacing.md,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' } as any)
+      : {
+          elevation: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.5,
+          shadowRadius: 16,
+        }),
   },
-  confirmTitle: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.xxl, textAlign: 'center' },
-  confirmText: { color: 'rgba(255,255,255,0.75)', fontWeight: '600', fontSize: fonts.sizes.md, textAlign: 'center', marginTop: spacing.sm },
-  confirmActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  confirmIcon: { marginBottom: spacing.sm },
+  confirmTitle: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.xl, textAlign: 'center' },
+  confirmText: { color: '#a3c4a3', fontWeight: '600', fontSize: fonts.sizes.sm, textAlign: 'center', marginTop: spacing.xs },
+  confirmWarningBox: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    width: '100%',
+    marginTop: spacing.sm,
+  },
+  confirmWarningText: { color: '#ef4444', fontWeight: '700', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  confirmActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg, width: '100%' },
   confirmCancelBtn: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    borderRadius: radius.lg,
+    backgroundColor: '#4F4E47',
+    borderWidth: 2,
+    borderColor: '#4F4E47',
+    borderRadius: radius.full,
     paddingVertical: 12,
     alignItems: 'center',
   },
   confirmCancelText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md },
   confirmLeaveBtn: {
     flex: 1,
-    backgroundColor: '#7f1d1d',
-    borderWidth: 1,
-    borderColor: '#ef4444',
-    borderRadius: radius.lg,
+    backgroundColor: '#1F5D18',
+    borderWidth: 2,
+    borderColor: '#1F5D18',
+    borderRadius: radius.full,
     paddingVertical: 12,
     alignItems: 'center',
   },
   confirmLeaveText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md },
 
-  // Result modal
+  // Result modal - Estilo baseado nas imagens
   resultCard: {
-    backgroundColor: '#0a2010',
+    width: Platform.OS === 'web' ? 320 : 280,
     borderRadius: radius.xl,
-    paddingVertical: spacing.xxxl,
-    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.xl,
     alignItems: 'center',
     gap: spacing.md,
-    borderWidth: 2,
-    borderColor: 'rgba(74,222,128,0.45)',
-    minWidth: 300,
+    minWidth: 280,
   },
-  resultTitle: { fontSize: fonts.sizes.xxl, fontWeight: '900', color: '#fff', textAlign: 'center' },
+  resultCardWinner: {
+    backgroundColor: '#082006',
+    borderWidth: 2,
+    borderColor: '#0F400B',
+  },
+  resultCardLoser: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 2,
+    borderColor: '#4F4E47',
+  },
+  resultIcon: { marginBottom: spacing.sm },
+  resultTitle: { fontSize: fonts.sizes.xl, fontWeight: '900', textAlign: 'center' },
   resultTitleWinner: { color: '#facc15' },
-  resultPrize: { fontSize: fonts.sizes.xxxl ?? 36, fontWeight: '900', color: '#facc15', textAlign: 'center' },
-  resultPrizeLoss: { color: 'rgba(255,255,255,0.6)' },
+  resultTitleLoser: { color: 'rgba(255,255,255,0.7)' },
+  resultPrize: { fontSize: fonts.sizes.xxl, fontWeight: '900', textAlign: 'center' },
+  resultPrizeWinner: { color: '#facc15' },
+  resultPrizeLoser: { color: 'rgba(255,255,255,0.6)' },
   resultBtn: {
-    backgroundColor: '#1c3a1c',
+    backgroundColor: '#1F5D18',
     borderRadius: radius.full,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    width: 230,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    width: 200,
     alignItems: 'center',
   },
   resultBtnDisabled: { opacity: 0.75 },
   resultBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md },
   resultOrText: { color: 'rgba(255,255,255,0.5)', fontSize: fonts.sizes.sm, fontWeight: '600' },
   resultSecondaryBtn: {
-    backgroundColor: '#3a3a3a',
+    backgroundColor: '#4F4E47',
     borderRadius: radius.full,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    width: 230,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    width: 200,
     alignItems: 'center',
   },
   resultSecondaryText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
