@@ -687,7 +687,7 @@ const styles = StyleSheet.create({
   modeRow: {
     flexDirection: 'row',
     gap: spacing.xl,
-    marginTop: spacing.lg,
+    marginTop: spacing.xs,
   },
 
   modeBtn: {

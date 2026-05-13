@@ -1,15 +1,37 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { toast } from '../store/toast.store';
+import { Platform } from 'react-native';
 
 const envBaseUrl = process.env.EXPO_PUBLIC_API_URL;
+
+// Detectar IP da máquina para desenvolvimento mobile
+// No Android/iOS, localhost não funciona - precisa do IP real da máquina
+const getLocalIp = () => {
+  // Se estiver rodando no Expo Go ou emulador, usa o IP da máquina de desenvolvimento
+  // Você pode substituir pelo seu IP local: EXPO_PUBLIC_API_URL=http://192.168.1.X:3001/api/v1
+  return '192.168.1.1'; // Fallback - será substituído pelo env ou detectado
+};
+
 const isLocalhostWeb =
   typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-const BASE_URL =
-  envBaseUrl ||
-  (typeof location !== 'undefined'
-    ? (isLocalhostWeb ? 'http://localhost:3001/api/v1' : `${location.origin}/api/v1`)
-    : 'http://localhost:3001/api/v1');
+
+// Para mobile (React Native), não usar localhost
+const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
+
+let BASE_URL: string;
+if (envBaseUrl) {
+  BASE_URL = envBaseUrl;
+} else if (typeof location !== 'undefined') {
+  // Web
+  BASE_URL = isLocalhostWeb ? 'http://localhost:3001/api/v1' : `${location.origin}/api/v1`;
+} else {
+  // Mobile - precisa de IP real da máquina ou ngrok
+  // Use: EXPO_PUBLIC_API_URL=http://SEU_IP:3001/api/v1
+  // IP detectado: 192.168.0.83
+  BASE_URL = 'http://192.168.0.83:3001/api/v1';
+}
+
 const IS_MOCK  = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
 
 // Errors from these URLs are surfaced directly to the caller — don't double-toast
