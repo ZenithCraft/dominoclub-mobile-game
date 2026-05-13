@@ -12,21 +12,30 @@ import { IconTrophy, IconSettings, IconX } from '../components/Icons';
 import { GradientToggle } from './HomeScreen';
 import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { useTournamentStore } from '../store/tournament.store';
 import { toast } from '../store/toast.store';
 
+const isExpoGo = Constants.appOwnership === 'expo';
+
+type NotificationsModule = typeof import('expo-notifications');
+const Notifications: NotificationsModule | null = isExpoGo
+  ? null
+  : (require('expo-notifications') as NotificationsModule);
+
 // ─── Push notification setup ─────────────────────────────────────────────────
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+if (Notifications) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 
 async function scheduleTournamentNotification(startsAt: Date, tournamentName: string) {
   try {
@@ -50,6 +59,7 @@ async function scheduleTournamentNotification(startsAt: Date, tournamentName: st
       return;
     }
 
+    if (!Notifications) return;
     const { status } = await Notifications.requestPermissionsAsync();
     if (status !== 'granted') return;
     await Notifications.scheduleNotificationAsync({

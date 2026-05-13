@@ -6,6 +6,7 @@ import {
   Animated,
   TouchableOpacity,
   Platform,
+  PanResponder,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToastStore, ToastType } from '../store/toast.store';
@@ -19,35 +20,62 @@ const TYPE_CONFIG: Record<ToastType, { bg: string; border: string; Icon: React.C
   info:    { bg: '#0a1a2d', border: colors.info,    Icon: IconInfo },
 };
 
+const useNative = Platform.OS !== 'web';
+
 function ToastItem({ id, message, type }: { id: string; message: string; type: ToastType }) {
-  const opacity = useRef(new Animated.Value(0)).current;
+  const opacity    = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-12)).current;
-  const dismiss = useToastStore((s) => s.dismiss);
-  const cfg = TYPE_CONFIG[type];
+  const translateX = useRef(new Animated.Value(0)).current;
+  const dismiss    = useToastStore((s) => s.dismiss);
+  const cfg        = TYPE_CONFIG[type];
   const IconComponent = cfg.Icon;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: (Platform as any).OS !== 'web' }),
-      Animated.timing(translateY, { toValue: 0, duration: 200, useNativeDriver: (Platform as any).OS !== 'web' }),
+      Animated.timing(opacity,     { toValue: 1, duration: 200, useNativeDriver: useNative }),
+      Animated.timing(translateY,  { toValue: 0, duration: 200, useNativeDriver: useNative }),
     ]).start();
   }, []);
 
   const handleDismiss = () => {
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 0, duration: 150, useNativeDriver: (Platform as any).OS !== 'web' }),
-      Animated.timing(translateY, { toValue: -8, duration: 150, useNativeDriver: (Platform as any).OS !== 'web' }),
+      Animated.timing(opacity,    { toValue: 0, duration: 150, useNativeDriver: useNative }),
+      Animated.timing(translateY, { toValue: -8, duration: 150, useNativeDriver: useNative }),
     ]).start(() => dismiss(id));
   };
 
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, { dx, dy }) => Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8,
+      onPanResponderMove: (_, { dx }) => translateX.setValue(dx),
+      onPanResponderRelease: (_, { dx, vx }) => {
+        if (Math.abs(dx) > 80 || Math.abs(vx) > 0.8) {
+          Animated.parallel([
+            Animated.timing(translateX, { toValue: dx > 0 ? 400 : -400, duration: 180, useNativeDriver: useNative }),
+            Animated.timing(opacity,    { toValue: 0, duration: 180, useNativeDriver: useNative }),
+          ]).start(() => dismiss(id));
+        } else {
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: useNative, bounciness: 6 }).start();
+        }
+      },
+    })
+  ).current;
+
   return (
-    <Animated.View style={[styles.toast, { backgroundColor: cfg.bg, borderColor: cfg.border, opacity, transform: [{ translateY }] }]}>
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[
+        styles.toast,
+        { backgroundColor: cfg.bg, borderColor: cfg.border, opacity, transform: [{ translateY }, { translateX }] },
+      ]}
+    >
       <View style={[styles.iconBadge, { backgroundColor: cfg.border + '33' }]}>
         <IconComponent size={14} color={cfg.border} accessibilityLabel={type} />
       </View>
       <Text style={styles.message} numberOfLines={3}>{message}</Text>
-      <TouchableOpacity onPress={handleDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <IconX size={14} color={colors.textMuted} accessibilityLabel="Fechar" />
+      <TouchableOpacity onPress={handleDismiss} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.closeBtn}>
+        <IconX size={20} color={cfg.border} accessibilityLabel="Fechar" />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -71,8 +99,8 @@ export function ToastContainer() {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
+    left: '15%',
+    right: '15%',
     zIndex: 9999,
     gap: spacing.sm,
   },
