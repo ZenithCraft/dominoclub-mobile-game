@@ -68,17 +68,17 @@ const fourPlayers = [
 ];
 
 describe('initGame', () => {
-  it('gives 7 tiles to each of 2 players and leaves 14 in boneyard', () => {
+  it('gives 6 tiles to each of 2 players and leaves 16 in boneyard', () => {
     const state = initGame('g1', 'CARROCA', twoPlayers);
-    expect(state.players[0].hand).toHaveLength(7);
-    expect(state.players[1].hand).toHaveLength(7);
-    expect(state.boneyard).toHaveLength(14);
+    expect(state.players[0].hand).toHaveLength(6);
+    expect(state.players[1].hand).toHaveLength(6);
+    expect(state.boneyard).toHaveLength(16);
   });
 
-  it('gives 7 tiles to each of 4 players and leaves 0 in boneyard', () => {
+  it('gives 6 tiles to each of 4 players and leaves 4 in boneyard', () => {
     const state = initGame('g1', 'CARROCA', fourPlayers);
-    state.players.forEach((p) => expect(p.hand).toHaveLength(7));
-    expect(state.boneyard).toHaveLength(0);
+    state.players.forEach((p) => expect(p.hand).toHaveLength(6));
+    expect(state.boneyard).toHaveLength(4);
   });
 
   it('all 28 tiles are accounted for across hands and boneyard', () => {

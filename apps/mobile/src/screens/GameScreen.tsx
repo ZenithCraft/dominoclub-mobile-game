@@ -1597,18 +1597,11 @@ export function GameScreen({ navigation, route }: Props) {
     seat: number,
   ) => {
     if (process.env.NODE_ENV === 'test') return;
-    // Determine which card ref to use as origin based on seat
-    let fromRef: { current: { x: number; y: number } | null };
-    if (seat === -1) {
-      // I played the tile - use my own card position
-      fromRef = myCardRef;
-    } else {
-      // Opponent played the tile - use their card position
-      const curMySeat = mySeatRef.current;
-      fromRef = oppCardTopRef;
-      if (seat === (curMySeat + 1) % 4) fromRef = oppCardRightRef;
-      else if (seat === (curMySeat + 3) % 4) fromRef = oppCardLeftRef;
-    }
+    // Determine which opponent card ref to use as origin based on seat relative to mySeat
+    const curMySeat = mySeatRef.current;
+    let fromRef = oppCardTopRef;
+    if (seat === (curMySeat + 1) % 4) fromRef = oppCardRightRef;
+    else if (seat === (curMySeat + 3) % 4) fromRef = oppCardLeftRef;
 
     const fromPos = fromRef.current ?? { x: tableCenterRef.current.x, y: 60 };
     const toPos   = tableCenterRef.current;
@@ -1628,7 +1621,7 @@ export function GameScreen({ navigation, route }: Props) {
         setOpponentPlayAnim(null);
       });
     });
-  }, [oppPlayTranslate, oppPlayOpacity, oppPlayScale, myCardRef]);
+  }, [oppPlayTranslate, oppPlayOpacity, oppPlayScale]);
 
   const triggerDrawFx = useCallback((userId: string) => {
     setDrawByUser((s) => ({ ...s, [userId]: { nonce: Date.now() } }));
@@ -1690,26 +1683,21 @@ export function GameScreen({ navigation, route }: Props) {
               if (drew) triggerDrawFx(drew.userId);
             }
 
-            // Detect tile play: board grew by 1 and someone's hand shrunk by 1
+            // Detect opponent tile play: board grew by 1 and an opponent hand shrunk by 1
             const prevBoard = prev.board ?? [];
             const nextBoard = normalized.board ?? [];
             if (nextBoard.length === prevBoard.length + 1) {
               const prevHandLen = new Map(prev.players.map((p) => [p.userId, p.hand?.length ?? 0]));
               const myUId = String((useAuthStore.getState().user as any)?.id ?? (useAuthStore.getState().user as any)?.userId ?? '');
               const playedBy = normalized.players.find(
-                (p) => (p.hand?.length ?? 0) === (prevHandLen.get(p.userId) ?? 0) - 1
+                (p) => p.userId !== myUId && (p.hand?.length ?? 0) === (prevHandLen.get(p.userId) ?? 0) - 1
               );
               if (playedBy) {
                 const newPt = nextBoard[nextBoard.length - 1];
                 const effective: Tile = newPt.flipped ? [newPt.tile[1], newPt.tile[0]] : newPt.tile;
                 const isDouble = effective[0] === effective[1];
                 const horizontal = !isDouble;
-                // If I played the tile, use my card position; otherwise use opponent card position
-                if (playedBy.userId === myUId) {
-                  triggerOpponentPlayAnim(effective, horizontal, playedBy.userId, -1); // -1 indicates "my card"
-                } else {
-                  triggerOpponentPlayAnim(effective, horizontal, playedBy.userId, playedBy.seat);
-                }
+                triggerOpponentPlayAnim(effective, horizontal, playedBy.userId, playedBy.seat);
               }
             }
           }
