@@ -529,6 +529,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           <>
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
+              <Text style={styles.scrollHint}>← Deslize para ver mais jogos →</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
                 {LIVRE_1V1.map((r) => {
                   const betAmount = r.buyIn ?? 0;
@@ -551,6 +552,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
+              <Text style={styles.scrollHint}>← Deslize para ver mais jogos →</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
                 {LIVRE_2V2.map((r) => {
                   const betAmount = r.buyIn ?? 0;
@@ -669,29 +671,34 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             {confirmTour && (
               <>
+                <View style={styles.modalHeaderIcon}>
+                  <Text style={styles.modalIcon}>🏆</Text>
+                </View>
                 <Text style={styles.modalTitle}>Comprar entrada por R$ {Number(confirmTour.entry_fee).toFixed(2)}?</Text>
                 <Text style={styles.modalTourName}>{confirmTour.name}</Text>
-                <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Prêmio total</Text>
-                  <Text style={[styles.modalValue, { color: '#fbbf24' }]}>R$ {confirmTour.prize_pool.toLocaleString('pt-BR')}</Text>
-                </View>
-                <View style={styles.modalDivider} />
-                <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Saldo atual</Text>
-                  <Text style={styles.modalValue}>R$ {Number(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
-                </View>
-                <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Saldo após entrar</Text>
-                  <Text style={[styles.modalValue, { color: '#4ade80' }]}>
-                    R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) - Number(confirmTour.entry_fee)).toFixed(2)}
-                  </Text>
+                <View style={styles.modalInfoBox}>
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Prêmio total</Text>
+                    <Text style={[styles.modalValue, { color: '#fbbf24' }]}>R$ {confirmTour.prize_pool.toLocaleString('pt-BR')}</Text>
+                  </View>
+                  <View style={styles.modalDivider} />
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Saldo atual</Text>
+                    <Text style={styles.modalValue}>R$ {Number(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Saldo após entrar</Text>
+                    <Text style={[styles.modalValue, { color: '#4ade80' }]}>
+                      R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) - Number(confirmTour.entry_fee)).toFixed(2)}
+                    </Text>
+                  </View>
                 </View>
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={[styles.modalBtnCancel, joining && styles.modalBtnDisabled]}
                     onPress={() => setConfirmTour(null)}
                     disabled={joining}
-                    activeOpacity={0.85}
+                    activeOpacity={0.8}
                   >
                     <Text style={styles.modalBtnCancelText}>Cancelar</Text>
                   </TouchableOpacity>
@@ -699,7 +706,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                     style={[styles.modalBtnConfirm, joining && styles.modalBtnDisabled]}
                     onPress={handleJoinTournament}
                     disabled={joining}
-                    activeOpacity={0.85}
+                    activeOpacity={0.8}
                   >
                     <Text style={styles.modalBtnConfirmText}>{joining ? 'Confirmando...' : 'Confirmar'}</Text>
                   </TouchableOpacity>
@@ -716,40 +723,45 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             {confirmRoom && (
               <>
+                <View style={styles.modalHeaderIcon}>
+                  <Text style={styles.modalIcon}>🎮</Text>
+                </View>
                 <Text style={styles.modalTitle}>
                   {confirmRoom.room.buyIn === null
                     ? `Entrar na partida ${confirmRoom.section === '2v2' ? '(2x2)' : '(1x1)'}?`
                     : `Comprar entrada por R$ ${Number(confirmRoom.room.buyIn).toFixed(2)}?`}
                 </Text>
-                <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Buy in</Text>
-                  <Text style={styles.modalValue}>{confirmRoom.room.buyIn === null ? 'Grátis' : `R$ ${confirmRoom.room.buyIn}`}</Text>
+                <View style={styles.modalInfoBox}>
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Buy in</Text>
+                    <Text style={styles.modalValue}>{confirmRoom.room.buyIn === null ? 'Grátis' : `R$ ${confirmRoom.room.buyIn}`}</Text>
+                  </View>
+                  <View style={styles.modalRow}>
+                    <Text style={styles.modalLabel}>Prêmio</Text>
+                    <Text style={[styles.modalValue, { color: '#fbbf24' }]}>{fmtBrl(confirmRoom.room.prize)}</Text>
+                  </View>
+                  {confirmRoom.room.buyIn !== null && (
+                    <>
+                      <View style={styles.modalDivider} />
+                      <View style={styles.modalRow}>
+                        <Text style={styles.modalLabel}>Saldo atual</Text>
+                        <Text style={styles.modalValue}>R$ {Number(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
+                      </View>
+                      <View style={styles.modalRow}>
+                        <Text style={styles.modalLabel}>Saldo após entrar</Text>
+                        <Text style={[styles.modalValue, { color: '#4ade80' }]}>
+                          R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) - Number(confirmRoom.room.buyIn)).toFixed(2)}
+                        </Text>
+                      </View>
+                    </>
+                  )}
                 </View>
-                <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Prêmio</Text>
-                  <Text style={[styles.modalValue, { color: '#fbbf24' }]}>{fmtBrl(confirmRoom.room.prize)}</Text>
-                </View>
-                {confirmRoom.room.buyIn !== null && (
-                  <>
-                    <View style={styles.modalDivider} />
-                    <View style={styles.modalRow}>
-                      <Text style={styles.modalLabel}>Saldo atual</Text>
-                      <Text style={styles.modalValue}>R$ {Number(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
-                    </View>
-                    <View style={styles.modalRow}>
-                      <Text style={styles.modalLabel}>Saldo após entrar</Text>
-                      <Text style={[styles.modalValue, { color: '#4ade80' }]}>
-                        R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) - Number(confirmRoom.room.buyIn)).toFixed(2)}
-                      </Text>
-                    </View>
-                  </>
-                )}
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={[styles.modalBtnCancel, searching && styles.modalBtnDisabled]}
                     onPress={() => setConfirmRoom(null)}
                     disabled={searching}
-                    activeOpacity={0.85}
+                    activeOpacity={0.8}
                   >
                     <Text style={styles.modalBtnCancelText}>Cancelar</Text>
                   </TouchableOpacity>
@@ -762,7 +774,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                       await handleJoinRoom(r.room, r.section);
                     }}
                     disabled={searching}
-                    activeOpacity={0.85}
+                    activeOpacity={0.8}
                   >
                     <Text style={styles.modalBtnConfirmText}>Confirmar</Text>
                   </TouchableOpacity>
@@ -992,6 +1004,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '900',
     fontSize: fonts.sizes.xl,
+  },
+  scrollHint: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: fonts.sizes.sm,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: -spacing.xs,
+    marginBottom: spacing.sm,
   },
   cardsRow: {
     flexDirection: 'row',
@@ -1240,53 +1260,73 @@ const styles = StyleSheet.create({
   },
   cancelBtnText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
 
-  // Modal
+  // Modal - Estilo KYC
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center' },
   modalCard: {
     width: 320,
-    backgroundColor: 'rgba(8,30,8,0.98)',
+    backgroundColor: '#082006',
     borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.3)',
+    borderWidth: 2,
+    borderColor: '#0F400B',
     padding: spacing.xl,
     gap: spacing.md,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' } as any)
+      : {
+          elevation: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.5,
+          shadowRadius: 16,
+        }),
   },
-  modalTitle: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.xl, textAlign: 'center' },
-  modalTourName: { color: colors.textMuted, fontSize: fonts.sizes.sm, textAlign: 'center' },
-  modalRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  modalHeaderIcon: { alignItems: 'center', marginBottom: spacing.sm },
+  modalIcon: { fontSize: 32 },
+  modalTitle: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.lg, textAlign: 'center', marginBottom: spacing.sm },
+  modalTourName: { color: '#a3c4a3', fontSize: fonts.sizes.sm, textAlign: 'center', marginBottom: spacing.sm },
+  modalInfoBox: {
+    backgroundColor: 'rgba(14, 41, 15, 0.6)',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(31, 93, 24, 0.3)',
+  },
+  modalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalLabel: {
-    color: colors.textMuted,
+    color: '#a3c4a3',
     fontSize: fonts.sizes.sm,
-    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
+    fontWeight: '600',
   },
   modalValue: {
     color: '#fff',
     fontWeight: '700',
     fontSize: fonts.sizes.sm,
-    fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
   },
-  modalDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: spacing.xs },
-  modalActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
+  modalDivider: { height: 1, backgroundColor: 'rgba(31, 93, 24, 0.5)', marginVertical: spacing.sm },
+  modalActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
 
-  modalBtnDisabled: { opacity: 0.6 },
+  modalBtnDisabled: { opacity: 0.5 },
   modalBtnCancel: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: radius.sm,
-    paddingVertical: 10,
+    borderWidth: 2,
+    borderColor: '#4F4E47',
+    backgroundColor: '#4F4E47',
+    borderRadius: radius.full,
+    paddingVertical: 12,
     alignItems: 'center',
   },
   modalBtnCancelText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
   modalBtnConfirm: {
     flex: 1,
-    backgroundColor: '#4ade80',
-    borderRadius: radius.sm,
-    paddingVertical: 10,
+    backgroundColor: '#0F400B',
+    borderWidth: 2,
+    borderColor: '#1F5D18',
+    borderRadius: radius.full,
+    paddingVertical: 12,
     alignItems: 'center',
   },
-  modalBtnConfirmText: { color: '#000', fontWeight: '800', fontSize: fonts.sizes.sm },
+  modalBtnConfirmText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
 });
 
 const inPersonStyles = StyleSheet.create({
