@@ -102,6 +102,7 @@ function applyMove(state: any, playerIdx: number, tile: Tile, side: Side, flippe
     requiredFirstTile: null,
     currentPlayerIndex: nextIdx,
     turnCount: state.turnCount + 1,
+    consecutivePasses: 0,
     status,
   };
 }
@@ -154,13 +155,12 @@ class FakeSocket {
         // If state was pre-seeded (e.g. by the dev mock useEffect), always use it
         if (this.state !== null) {
           const s = this.state;
-          setTimeout(() => this._trigger('game:state', s), 10000);
-          // If it's a bot's turn (e.g. bot holds the highest double), kick off immediately
+          setTimeout(() => this._trigger('game:state', s), 800);
           setTimeout(() => {
             if (this.state?.players?.[this.state.currentPlayerIndex]?.isBot) {
               this._botTurn();
             }
-          }, 11200);
+          }, 2000);
           break;
         }
 
@@ -171,38 +171,6 @@ class FakeSocket {
         this.lastQueueMode = null;
 
         const deck = shuffle(VISIBLE_TILES);
-
-        // All 27 VISIBLE_TILES on the board (Eulerian path: leftOpen=4, rightOpen=5)
-        // Chain: [4,4]·[4,6]·[6,6]·[6,5]·[5,5]·[5,2]·[2,2]·[2,6]·[6,1]·[1,1]·[1,0]·[0,0]·[0,6]·[6,3]·[3,3]·[3,5]·[5,1]·[1,3]·[3,4]·[4,2]·[2,3]·[3,0]·[0,4]·[4,1]·[1,2]·[2,0]·[0,5]
-        const sharedBoard = [
-          { tile: [4,4] as Tile, side: 'left'  as Side, flipped: false },
-          { tile: [4,6] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [6,6] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [5,6] as Tile, side: 'right' as Side, flipped: true  },
-          { tile: [5,5] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [2,5] as Tile, side: 'right' as Side, flipped: true  },
-          { tile: [2,2] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [2,6] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [1,6] as Tile, side: 'right' as Side, flipped: true  },
-          { tile: [1,1] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [0,1] as Tile, side: 'right' as Side, flipped: true  },
-          { tile: [0,0] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [0,6] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [3,6] as Tile, side: 'right' as Side, flipped: true  },
-          { tile: [3,3] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [3,5] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [1,5] as Tile, side: 'right' as Side, flipped: true  },
-          { tile: [1,3] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [3,4] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [2,4] as Tile, side: 'right' as Side, flipped: true  },
-          { tile: [2,3] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [0,3] as Tile, side: 'right' as Side, flipped: true  },
-          { tile: [0,4] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [1,4] as Tile, side: 'right' as Side, flipped: true  },
-          { tile: [1,2] as Tile, side: 'right' as Side, flipped: false },
-          { tile: [0,2] as Tile, side: 'right' as Side, flipped: true  },
-          { tile: [0,5] as Tile, side: 'right' as Side, flipped: false },
-        ];
 
         if (is2v2) {
           const players2v2 = [
@@ -217,27 +185,32 @@ class FakeSocket {
             players: players2v2,
             board: [], leftOpen: -1, rightOpen: -1,
             currentPlayerIndex: firstDouble2v2?.playerIdx ?? 0, turnCount: 0,
-            status: 'playing', boneyard: [], firstPlayMade: false,
+            status: 'playing', boneyard: [] as Tile[], firstPlayMade: false,
             requiredFirstTile: firstDouble2v2?.tile ?? null,
             matchScores: { 1: 0, 2: 0 }, roundNumber: 1, targetScore: 6,
+            consecutivePasses: 0,
           };
         } else {
+          const players1v1 = [
+            { userId: myId, name: myName,     team: 1, seat: 0, hand: deck.slice(0, 7) as Tile[], isBot: false, connected: true },
+            { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: deck.slice(7, 14) as Tile[], isBot: true,  connected: true },
+          ];
+          const firstDouble1v1 = findHighestDouble(players1v1);
           this.state = {
             id: gameId, mode: 'ARENA_1V1', variant: 'CARROCA',
-            players: [
-              { userId: myId, name: myName,    team: 1, seat: 0, hand: [], isBot: false, connected: true },
-              { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: [], isBot: true,  connected: true },
-            ],
-            board: sharedBoard, leftOpen: 4, rightOpen: 5,
-            currentPlayerIndex: 0, turnCount: 28,
-            status: 'playing', boneyard: [], firstPlayMade: true,
+            players: players1v1,
+            board: [], leftOpen: -1, rightOpen: -1,
+            currentPlayerIndex: firstDouble1v1?.playerIdx ?? 0, turnCount: 0,
+            status: 'playing', boneyard: deck.slice(14) as Tile[], firstPlayMade: false,
+            requiredFirstTile: firstDouble1v1?.tile ?? null,
+            matchScores: { 1: 0, 2: 0 }, roundNumber: 1, targetScore: 6,
+            consecutivePasses: 0,
           };
         }
 
-        setTimeout(() => this._trigger('game:state', this.state), 10000);
-        // If the opening player is a bot, kick off their turn after state is delivered
+        setTimeout(() => this._trigger('game:state', this.state), 800);
         if (this.state.players[this.state.currentPlayerIndex]?.isBot) {
-          setTimeout(() => this._botTurn(), 11200);
+          setTimeout(() => this._botTurn(), 2000);
         }
         break;
       }
@@ -251,7 +224,7 @@ class FakeSocket {
         if (this.state.status === 'finished') {
           setTimeout(() => this._triggerEnd(), 600);
         } else {
-          setTimeout(() => this._botTurn(), 5000);
+          setTimeout(() => this._botTurn(), 1200);
         }
         break;
       }
@@ -273,13 +246,29 @@ class FakeSocket {
 
       case 'game:pass': {
         if (!this.state) break;
+        const consecutivePasses = (this.state.consecutivePasses ?? 0) + 1;
+        const numPlayers = this.state.players.length;
+        if (consecutivePasses >= numPlayers) {
+          this.state = { ...this.state, status: 'finished', consecutivePasses };
+          this._trigger('game:state', this.state);
+          setTimeout(() => this._triggerEnd(), 600);
+          break;
+        }
         this.state = {
           ...this.state,
-          currentPlayerIndex: (this.state.currentPlayerIndex + 1) % this.state.players.length,
+          currentPlayerIndex: (this.state.currentPlayerIndex + 1) % numPlayers,
           turnCount: this.state.turnCount + 1,
+          consecutivePasses,
         };
         this._trigger('game:state', this.state);
-        setTimeout(() => this._botTurn(), 5000);
+        setTimeout(() => this._botTurn(), 1200);
+        break;
+      }
+
+      case 'game:sync_request': {
+        if (this.state) {
+          setTimeout(() => this._trigger('game:state', this.state), 80);
+        }
         break;
       }
 
@@ -309,7 +298,7 @@ class FakeSocket {
           setTimeout(() => this._triggerEnd(), 600);
         } else {
           const next = this.state.players[this.state.currentPlayerIndex];
-          if (next?.isBot) setTimeout(() => this._botTurn(), 5000);
+          if (next?.isBot) setTimeout(() => this._botTurn(), 1200);
         }
         return;
       }
@@ -326,24 +315,35 @@ class FakeSocket {
         ),
       };
       this._trigger('game:state', this.state);
-      setTimeout(() => this._botTurn(), 5000);
+      setTimeout(() => this._botTurn(), 1200);
       return;
     }
 
     // Pass
+    const consecutivePasses = (this.state.consecutivePasses ?? 0) + 1;
+    const numPlayers = this.state.players.length;
+    if (consecutivePasses >= numPlayers) {
+      // All players passed with empty boneyard — blocked game, trigger end
+      this.state = { ...this.state, status: 'finished', consecutivePasses };
+      this._trigger('game:state', this.state);
+      setTimeout(() => this._triggerEnd(), 600);
+      return;
+    }
     this.state = {
       ...this.state,
-      currentPlayerIndex: (this.state.currentPlayerIndex + 1) % this.state.players.length,
+      currentPlayerIndex: (this.state.currentPlayerIndex + 1) % numPlayers,
       turnCount: this.state.turnCount + 1,
+      consecutivePasses,
     };
     this._trigger('game:state', this.state);
     const next = this.state.players[this.state.currentPlayerIndex];
-    if (next?.isBot) setTimeout(() => this._botTurn(), 5000);
+    if (next?.isBot) setTimeout(() => this._botTurn(), 1200);
   }
 
   private _triggerEnd() {
     if (!this.state) return;
 
+    // Reset consecutivePasses for next round
     const winner = this.state.players.find((p: any) => p.hand.length === 0);
     const lastBoardTile = this.state.board[this.state.board.length - 1];
     const lastTile = lastBoardTile?.tile as [number, number] | undefined;
@@ -405,7 +405,7 @@ class FakeSocket {
       };
       this._trigger('game:state', this.state);
       if (this.state.players[this.state.currentPlayerIndex]?.isBot) {
-        setTimeout(() => this._botTurn(), 5000);
+        setTimeout(() => this._botTurn(), 1200);
       }
     }, 4000);
   }

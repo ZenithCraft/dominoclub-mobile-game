@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "a1bd4eff-ab83-4101-825d-1972317f28c9"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.jojoyoro.dominoclub",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

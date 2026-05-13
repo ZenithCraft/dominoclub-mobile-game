@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, Image,
   TouchableOpacity, Modal, Alert, Animated, Pressable, ActivityIndicator,
-  Platform, useWindowDimensions, Easing, PanResponder, Dimensions,
+  Platform, useWindowDimensions, Easing, PanResponder, Dimensions, AppState,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
@@ -765,13 +765,14 @@ function DraggableTile({ tile, isPlayable, isSelected, onPress, onDragUp, onWebD
     PanResponder.create({
       // Native only — on web we use pointer events to escape the ScrollView overflow clip
       onStartShouldSetPanResponder: () => Platform.OS !== 'web' && isPlayableRef.current,
-      // No onMoveShouldSetPanResponder — we never want to steal a gesture from another element.
-      // The gesture is claimed on touch-start; terminationRequest keeps it locked after that.
+      onMoveShouldSetPanResponder:  (_, gs) => Platform.OS !== 'web' && isPlayableRef.current && Math.abs(gs.dy) > Math.abs(gs.dx) && Math.abs(gs.dy) > 6,
       onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e) => {
+      onPanResponderGrant: (e, gs) => {
         setIsDragging(true);
         pan.setValue({ x: 0, y: 0 });
-        onNativeDragStartRef.current?.(e.nativeEvent.pageX, e.nativeEvent.pageY);
+        const pageX = gs.moveX || e.nativeEvent.pageX;
+        const pageY = gs.moveY || e.nativeEvent.pageY;
+        onNativeDragStartRef.current?.(pageX, pageY);
       },
       onPanResponderMove: (_, gs) => {
         // Ghost tile tracks finger at root level — don't move the local tile
@@ -1319,6 +1320,7 @@ export function GameScreen({ navigation, route }: Props) {
   const oppPlayScale     = useRef(new Animated.Value(0.6)).current;
   // Always-current seat index — avoids stale closure in triggerOpponentPlayAnim
   const mySeatRef = useRef(0);
+  const myEffectiveUserIdRef = useRef('');
   // View refs for opponent cards — used with measureInWindow for screen-absolute positions
   const oppCardTopViewRef   = useRef<View>(null);
   const oppCardLeftViewRef  = useRef<View>(null);
@@ -1383,6 +1385,10 @@ export function GameScreen({ navigation, route }: Props) {
     }
   }, []);
 
+  useEffect(() => {
+    clearGame();
+  }, []);
+
   const [turnTimer, setTurnTimer]       = useState(15);
   const [resultModal, setResultModal]   = useState(false);
   const [playAgainSearching, setPlayAgainSearching] = useState(false);
@@ -1445,6 +1451,7 @@ export function GameScreen({ navigation, route }: Props) {
   const myEffectiveUserId = currentGame?.players[myPlayerIndex]?.userId ?? myUserId;
   const mySeat = myPlayerIndex >= 0 ? (currentGame?.players[myPlayerIndex]?.seat ?? 0) : 0;
   mySeatRef.current = mySeat;
+  myEffectiveUserIdRef.current = myEffectiveUserId;
   const isMyTurn      = currentGame?.currentPlayerIndex === myPlayerIndex && currentGame?.status === 'playing';
   const turnUserId    = currentGame?.players[currentGame?.currentPlayerIndex ?? 0]?.userId ?? '';
   const myHand        = (currentGame?.players[myPlayerIndex]?.hand || []) as (Tile | null)[];
@@ -1691,7 +1698,7 @@ export function GameScreen({ navigation, route }: Props) {
             const nextBoard = normalized.board ?? [];
             if (nextBoard.length === prevBoard.length + 1) {
               const prevHandLen = new Map(prev.players.map((p) => [p.userId, p.hand?.length ?? 0]));
-              const myUId = String((useAuthStore.getState().user as any)?.id ?? (useAuthStore.getState().user as any)?.userId ?? '');
+              const myUId = myEffectiveUserIdRef.current || String((useAuthStore.getState().user as any)?.id ?? (useAuthStore.getState().user as any)?.userId ?? '');
               const playedBy = normalized.players.find(
                 (p) => p.userId !== myUId && (p.hand?.length ?? 0) === (prevHandLen.get(p.userId) ?? 0) - 1
               );
@@ -1786,6 +1793,20 @@ export function GameScreen({ navigation, route }: Props) {
     setJoinAttempt((n) => n + 1);
   }, []);
 
+  // ── AppState: reconnect when coming back from background ───────────────────
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') return;
+      const sock = socketRef.current;
+      if (!sock || !sock.connected) {
+        handleRetryJoin();
+      } else {
+        sock.emit('game:sync_request', { gameId });
+      }
+    });
+    return () => sub.remove();
+  }, [gameId, handleRetryJoin]);
+
   // ── Actions ────────────────────────────────────────────────────────────────
   const handleTileSelect = (tile: Tile, handIndex: number) => {
     if (!isMyTurn) return;
@@ -1796,6 +1817,7 @@ export function GameScreen({ navigation, route }: Props) {
 
   const handlePlayTile = useCallback(async (side: PlaySide) => {
     if (!selectedTile) return;
+    if (turnTimer === 0) { showError('Tempo esgotado'); return; }
     const plays = validPlaysForSelected.filter((p) => p.side === side);
     if (!plays.length) return;
     try {
@@ -1809,6 +1831,7 @@ export function GameScreen({ navigation, route }: Props) {
 
   const handlePlayImmediate = useCallback(async () => {
     if (!selectedTile || validPlaysForSelected.length !== 1) return;
+    if (turnTimer === 0) { showError('Tempo esgotado'); return; }
     const { side, flipped } = validPlaysForSelected[0];
     try {
       const socket = socketRef.current ?? await connectSocket();
@@ -2503,7 +2526,7 @@ export function GameScreen({ navigation, route }: Props) {
             {/* ── Action bar — draw / pass only ── */}
             {isMyTurn && !selectedTile && (
               <View style={styles.actionBar}>
-                {hasBoneyard && !is2v2 && (
+                {hasBoneyard && !is2v2 && !hasValidMoves && (
                   <Animated.View style={{ transform: [{ scale: drawPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }] }}>
                     <LinearGradient
                       colors={['#4ade80', '#22c55e']}
@@ -2558,6 +2581,7 @@ export function GameScreen({ navigation, route }: Props) {
                         onDragUp={(moveX?: number) => {
                           const plays = validMovesMap.get(tileKey(tile)) || [];
                           if (!plays.length) return;
+                          if (turnTimer === 0) { showError('Tempo esgotado'); return; }
                           const emptyBoard = (currentGame?.board?.length ?? 0) === 0;
                           if (emptyBoard || plays.length === 1) {
                             const play = plays[0];
@@ -2580,7 +2604,7 @@ export function GameScreen({ navigation, route }: Props) {
                             }
                           }
                         }}
-                        onWebDragStart={isPlayable ? (clientX, clientY) => {
+                        onWebDragStart={isPlayable && turnTimer > 0 ? (clientX, clientY) => {
                           const plays = validMovesMap.get(tileKey(tile)) || [];
                           startWebDrag(tile, clientX, clientY, (dropX: number) => {
                             if (!plays.length) return;
@@ -2607,7 +2631,7 @@ export function GameScreen({ navigation, route }: Props) {
                             }
                           });
                         } : undefined}
-                        onNativeDragStart={isPlayable && Platform.OS !== 'web' ? (pageX, pageY) => {
+                        onNativeDragStart={isPlayable && Platform.OS !== 'web' && turnTimer > 0 ? (pageX, pageY) => {
                           const plays = validMovesMap.get(tileKey(tile)) || [];
                           startNativeDrag(tile, pageX, pageY, (dropX: number) => {
                             if (!plays.length) return;
@@ -2856,7 +2880,7 @@ export function GameScreen({ navigation, route }: Props) {
             style={{
               position: 'absolute',
               left: Animated.subtract(nativeDragPos.x, ghostW / 2 + offsetLeft),
-              top:  Animated.subtract(nativeDragPos.y, ghostH * 1.2 + offsetTop),
+              top:  Animated.subtract(nativeDragPos.y, ghostH * 0.7 + offsetTop),
               zIndex: 99999,
               opacity: 0.88,
               transform: [{ rotate: rot }, { scale: scl }],
