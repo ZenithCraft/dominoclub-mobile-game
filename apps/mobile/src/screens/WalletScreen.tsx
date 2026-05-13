@@ -365,32 +365,23 @@ export function WalletScreen() {
           <BalanceRow label="Saldo de bônus" value={bonusBalance} />
           <BalanceRow label="Saldo disponível para saque" value={canWithdraw ? realBalance : 0} />
 
-          <View style={styles.actionsCol}>
-            <TouchableOpacity
-              style={styles.withdrawBtn}
-              activeOpacity={0.85}
-              onPress={() => {
-                if (!firstWithdrawalDone && kycStatus !== 'APPROVED') {
-                  navigation.navigate('KYC');
-                  return;
-                }
-                if (!canWithdraw) {
-                  Alert.alert('Saque bloqueado',
-                    rolloverRemaining > 0
-                      ? `Complete o rollover de R$ ${rolloverRemaining.toFixed(2)}`
-                      : 'Saldo mínimo para saque é R$ 20,00');
-                } else {
-                  setWithdrawModal(true);
-                }
-              }}
-            >
-              <LinearGradient
-                colors={['#34d399', '#059669']}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                style={styles.withdrawBtnGrad}
+          {kycChecked && (kycStatus === 'APPROVED' || firstWithdrawalDone) && (
+            <View style={styles.actionsCol}>
+              <TouchableOpacity
+                style={styles.withdrawBtn}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (!canWithdraw) {
+                    Alert.alert('Saque bloqueado',
+                      rolloverRemaining > 0
+                        ? `Complete o rollover de R$ ${rolloverRemaining.toFixed(2)}`
+                        : 'Saldo mínimo para saque é R$ 20,00');
+                  } else {
+                    setWithdrawModal(true);
+                  }
+                }}
               >
                 <Text style={styles.withdrawBtnText}>Sacar</Text>
-              </LinearGradient>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.depositBtn} onPress={() => setDepositModal(true)}>
@@ -715,11 +706,12 @@ const styles = StyleSheet.create({
   },
   actionsCol: { gap: spacing.sm, marginTop: spacing.lg },
   withdrawBtn: {
-    borderRadius: radius.md,
-    overflow: 'hidden',
+    backgroundColor: '#0F400B',
+    borderRadius: radius.full,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
-  withdrawBtnGrad: { paddingVertical: 12, alignItems: 'center' },
-  withdrawBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
+  withdrawBtnText: { color: '#ffffff', fontWeight: '700', fontSize: fonts.sizes.sm },
   depositBtn: { borderRadius: radius.md, overflow: 'hidden' },
   depositBtnGrad: { paddingVertical: 12, alignItems: 'center' },
   depositBtnText: { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },

@@ -23,8 +23,11 @@ export function ConsentModal({ onAccepted }: Props) {
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState<'age' | 'terms'>('age');
   const [scrolledToEnd, setScrolledToEnd] = useState(false);
+  const [ageScrolledToEnd, setAgeScrolledToEnd] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scrollIndicatorAnim = useRef(new Animated.Value(0)).current;
+  const termsIndicatorAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     AsyncStorage.getItem(CONSENT_KEY).then((raw) => {
@@ -39,12 +42,34 @@ export function ConsentModal({ onAccepted }: Props) {
 
   const handleScroll = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+    const progress = contentSize.height > layoutMeasurement.height
+      ? contentOffset.y / (contentSize.height - layoutMeasurement.height)
+      : 1;
+    Animated.timing(termsIndicatorAnim, {
+      toValue: progress,
+      duration: 80,
+      useNativeDriver: false,
+    }).start();
     const isAtEnd = layoutMeasurement.height + contentOffset.y >= contentSize.height - 40;
     if (isAtEnd) setScrolledToEnd(true);
   };
 
+  const handleAgeScroll = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+    const progress = contentSize.height > layoutMeasurement.height
+      ? contentOffset.y / (contentSize.height - layoutMeasurement.height)
+      : 1;
+    Animated.timing(scrollIndicatorAnim, {
+      toValue: progress,
+      duration: 80,
+      useNativeDriver: false,
+    }).start();
+    const isAtEnd = layoutMeasurement.height + contentOffset.y >= contentSize.height - 40;
+    if (isAtEnd) setAgeScrolledToEnd(true);
+  };
+
   const handleAgeConfirm = (confirmed: boolean) => {
-    if (!confirmed) return; // do nothing — can't proceed without confirming age
+    if (!confirmed) return;
     setAgeConfirmed(true);
     setStep('terms');
     setScrolledToEnd(false);
@@ -72,53 +97,86 @@ export function ConsentModal({ onAccepted }: Props) {
 
           {/* Age verification step */}
           {step === 'age' && (
-            <>
-              <View style={styles.iconContainer}>
-                <IconShieldAlert size={48} color={colors.primary} accessibilityLabel="Aviso de idade" />
-              </View>
-              <Text style={styles.cardTitle}>Verificação de Idade</Text>
-              <Text style={styles.cardBody}>
-                O DominoClub é uma plataforma de jogos com apostas em dinheiro real.{'\n\n'}
-                O acesso é <Text style={styles.bold}>exclusivo para maiores de 18 anos</Text> residentes no Brasil,
-                conforme exigido pela Lei nº 14.790/2023.
-              </Text>
+            <View style={styles.scrollWrapper}>
+              <ScrollView
+                style={styles.ageScroll}
+                contentContainerStyle={styles.ageScrollContent}
+                showsVerticalScrollIndicator={false}
+                onScroll={handleAgeScroll}
+                scrollEventThrottle={16}
+              >
+                <View style={styles.iconContainer}>
+                  <IconShieldAlert size={56} color="#1F5D18" accessibilityLabel="Aviso de idade" />
+                </View>
+                <Text style={styles.cardTitle}>Verificação de Idade</Text>
+                <Text style={styles.cardBody}>
+                  O DominoClub é uma plataforma de jogos com apostas em dinheiro real.{'\n\n'}
+                  O acesso é <Text style={styles.bold}>exclusivo para maiores de 18 anos</Text> residentes no Brasil,
+                  conforme exigido pela Lei nº 14.790/2023.{'\n\n'}
+                  Esta plataforma opera em conformidade com a Lei nº 14.790/2023, que regulamenta jogos de apostas de
+                  valor fixo no Brasil. O uso por menores de 18 anos é estritamente proibido e sujeito a penalidades legais.
+                </Text>
 
-              <View style={styles.ageButtons}>
-                <TouchableOpacity
-                  style={styles.ageBtn}
-                  onPress={() => handleAgeConfirm(true)}
-                >
-                  <Text style={styles.ageBtnText}>Tenho 18 anos ou mais</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.ageBtn, styles.ageBtnSecondary]}
-                  onPress={() => {
-                    // Cannot proceed — just ignore. In production, this would close the app.
-                  }}
-                >
-                  <Text style={[styles.ageBtnText, styles.ageBtnTextSecondary]}>Não tenho 18 anos</Text>
-                </TouchableOpacity>
-              </View>
+                <View style={styles.ageButtons}>
+                  {!ageScrolledToEnd && (
+                    <Text style={styles.scrollHint}>Role para baixo para continuar</Text>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.ageBtn, !ageScrolledToEnd && styles.ageBtnDisabled]}
+                    onPress={() => handleAgeConfirm(true)}
+                    disabled={!ageScrolledToEnd}
+                  >
+                    <Text style={styles.ageBtnText}>Tenho 18 anos ou mais</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.ageBtn, styles.ageBtnSecondary]}
+                    onPress={() => {
+                      // Cannot proceed — just ignore. In production, this would close the app.
+                    }}
+                  >
+                    <Text style={[styles.ageBtnText, styles.ageBtnTextSecondary]}>Não tenho 18 anos</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.legalNote}>
+                    Ao continuar, você declara sob responsabilidade legal ter 18 anos ou mais.
+                  </Text>
+                </View>
+              </ScrollView>
 
-              <Text style={styles.legalNote}>
-                Ao continuar, você declara sob responsabilidade legal ter 18 anos ou mais.
-              </Text>
-            </>
+              <View style={styles.customScrollTrack}>
+                <Animated.View
+                  style={[
+                    styles.customScrollThumb,
+                    {
+                      height: scrollIndicatorAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['10%', '100%'],
+                      }),
+                      top: scrollIndicatorAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0%', '90%'],
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+            </View>
           )}
 
           {/* Terms step */}
           {step === 'terms' && (
-            <>
-              <Text style={styles.cardTitle}>Termos de Uso</Text>
-              <Text style={styles.scrollHint}>Role até o final para continuar</Text>
-
+            <View style={styles.scrollWrapper}>
               <ScrollView
-                style={styles.termsScroll}
-                contentContainerStyle={styles.termsContent}
+                style={styles.ageScroll}
+                contentContainerStyle={styles.ageScrollContent}
+                showsVerticalScrollIndicator={false}
                 onScroll={handleScroll}
-                scrollEventThrottle={200}
-                showsVerticalScrollIndicator
+                scrollEventThrottle={16}
               >
+                <Text style={styles.cardTitle}>Termos de Uso</Text>
+                {!scrolledToEnd && (
+                  <Text style={styles.scrollHint}>Role até o final para continuar</Text>
+                )}
+
                 <TermsSummarySection title="1. Natureza do Serviço">
                   O DominoClub é uma plataforma de dominó com apostas em dinheiro real via PIX. Perdas financeiras são possíveis.
                 </TermsSummarySection>
@@ -147,16 +205,36 @@ export function ConsentModal({ onAccepted }: Props) {
                   Ao aceitar, você confirma que leu e concorda com os Termos de Uso e a Política de Privacidade completos,
                   disponíveis no menu Configurações do aplicativo.
                 </Text>
+
+                <View style={styles.ageButtons}>
+                  <TouchableOpacity
+                    style={[styles.ageBtn, !scrolledToEnd && styles.ageBtnDisabled]}
+                    onPress={handleAccept}
+                    disabled={!scrolledToEnd}
+                  >
+                    <Text style={styles.ageBtnText}>Li e aceito os Termos</Text>
+                  </TouchableOpacity>
+                </View>
               </ScrollView>
 
-              <TouchableOpacity
-                style={[styles.acceptBtn, !scrolledToEnd && styles.acceptBtnDisabled]}
-                onPress={handleAccept}
-                disabled={!scrolledToEnd}
-              >
-                <Text style={styles.acceptBtnText}>Li e aceito os Termos</Text>
-              </TouchableOpacity>
-            </>
+              <View style={styles.customScrollTrack}>
+                <Animated.View
+                  style={[
+                    styles.customScrollThumb,
+                    {
+                      height: termsIndicatorAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['10%', '100%'],
+                      }),
+                      top: termsIndicatorAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0%', '90%'],
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+            </View>
           )}
         </View>
       </Animated.View>
@@ -185,40 +263,62 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: 48,
   },
   card: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: '#082006',
     borderRadius: radius.xl,
     padding: spacing.xl,
     width: '100%',
     maxWidth: 420,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 2,
+    borderColor: '#0F400B',
+  },
+  ageStep: {
     gap: spacing.lg,
   },
   iconContainer: {
-    marginBottom: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cardTitle: { fontSize: fonts.sizes.xl, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
-  cardBody: { fontSize: fonts.sizes.sm, color: colors.textSecondary, lineHeight: 22, textAlign: 'center' },
+  cardBody: { fontSize: fonts.sizes.md, color: colors.textPrimary, lineHeight: 24, textAlign: 'center' },
   bold: { fontWeight: '700', color: colors.textPrimary },
-  ageButtons: { gap: spacing.sm },
+  ageButtons: { gap: spacing.md, marginTop: spacing.xl },
   ageBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.lg,
+    backgroundColor: '#0F400B',
+    borderRadius: radius.full,
     paddingVertical: spacing.lg,
     alignItems: 'center',
   },
-  ageBtnSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
-  ageBtnText: { fontSize: fonts.sizes.md, fontWeight: '700', color: colors.textOnPrimary },
-  ageBtnTextSecondary: { color: colors.textMuted },
+  ageBtnSecondary: { backgroundColor: '#4F4E47', borderWidth: 0 },
+  ageBtnText: { fontSize: fonts.sizes.md, fontWeight: '700', color: '#ffffff' },
+  ageBtnTextSecondary: { color: '#ffffff' },
   legalNote: { fontSize: fonts.sizes.xs, color: colors.textMuted, textAlign: 'center', lineHeight: 16 },
+  scrollWrapper: {
+    maxHeight: 420,
+    flexDirection: 'row',
+  },
+  ageScroll: { flex: 1 },
+  ageScrollContent: { gap: spacing.md, paddingBottom: spacing.sm, paddingRight: spacing.sm },
+  customScrollTrack: {
+    width: 4,
+    backgroundColor: '#0F400B',
+    borderRadius: 2,
+    marginLeft: spacing.xs,
+    overflow: 'hidden',
+  },
+  customScrollThumb: {
+    width: 4,
+    backgroundColor: '#1F5D18',
+    borderRadius: 2,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
+  ageBtnDisabled: { opacity: 0.35 },
   scrollHint: { fontSize: fonts.sizes.xs, color: colors.textMuted, textAlign: 'center' },
-  termsScroll: { maxHeight: 280, borderRadius: radius.md, backgroundColor: colors.bgOverlay },
-  termsContent: { padding: spacing.lg },
   termsFooter: {
     fontSize: fonts.sizes.xs,
     color: colors.textMuted,
@@ -226,12 +326,4 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     textAlign: 'center',
   },
-  acceptBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.lg,
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-  },
-  acceptBtnDisabled: { opacity: 0.4 },
-  acceptBtnText: { fontSize: fonts.sizes.md, fontWeight: '700', color: colors.textOnPrimary },
 });
