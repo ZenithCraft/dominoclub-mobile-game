@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Alert, ActivityIndicator,
+  Image, Alert, ActivityIndicator, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { Button } from '../components/Button';
@@ -27,6 +26,18 @@ const DOC_LABELS: Record<DocType, string> = {
 
 const STEPS = ['Tipo de Documento', 'Frente & Verso', 'Selfie', 'Enviando'];
 
+// Cores do tema KYC conforme especificação
+const KYC_COLORS = {
+  modalBackground: '#082006',
+  modalBorder: '#0F400B',
+  progressCompleted: '#1F5D18',
+  progressNotCompleted: '#0E290F',
+  buttonChoice: '#0E290F',
+  buttonChoiceBorder: '#1F5D18',
+  buttonSelected: '#1F5D18',
+  buttonNext: '#0F400B',
+};
+
 export function KYCScreen({ navigation }: Props) {
   const { user } = useAuthStore();
   const [step, setStep] = useState(0);
@@ -36,6 +47,8 @@ export function KYCScreen({ navigation }: Props) {
   const [selfieUri, setSelfieUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [choiceModal, setChoiceModal] = useState<{ visible: boolean; type: 'front' | 'back' | null }>({ visible: false, type: null });
 
   const pickImage = async (camera = false) => {
     const { status } = camera
@@ -46,8 +59,18 @@ export function KYCScreen({ navigation }: Props) {
       return null;
     }
     const result = camera
-      ? await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.85 })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.85 });
+      ? await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          quality: 0.6,
+          allowsEditing: true,
+          aspect: [4, 3],
+        })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          quality: 0.6,
+          allowsEditing: true,
+          aspect: [4, 3],
+        });
     if (result.canceled) return null;
     return result.assets[0].uri;
   };
@@ -85,6 +108,7 @@ export function KYCScreen({ navigation }: Props) {
 
       const response = await api.post('/kyc/documents', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000, // 60 segundos para upload de arquivos
       });
 
       console.log('Upload success:', response.data);
@@ -119,26 +143,30 @@ export function KYCScreen({ navigation }: Props) {
           <Text style={styles.title}>Verificação de Identidade</Text>
           <Text style={styles.subtitle}>Para liberar saques, precisamos confirmar sua identidade.</Text>
 
-          {/* Step indicator with background line */}
+          {/* Step indicator - Estilo da imagem */}
           <View style={styles.stepRow}>
-            {/* Background line that goes across all steps */}
+            {/* Background line */}
             <View style={styles.stepBackgroundLine}>
-              <View style={[styles.stepBackgroundLineFill, step >= 1 && styles.stepBackgroundLineFillHalf, step >= 2 && styles.stepBackgroundLineFillFull]} />
+              <View style={[
+                styles.stepBackgroundLineFill,
+                { width: step >= 1 ? '50%' : '0%' },
+                step >= 2 && { width: '100%' }
+              ]} />
             </View>
 
-            {/* Step items positioned over the line */}
+            {/* Step items */}
             <View style={styles.stepItemsContainer}>
-              {STEPS.slice(0, 3).map((s, i) => (
+              {[1, 2, 3].map((num, i) => (
                 <View key={i} style={styles.stepItem}>
-                  <LinearGradient
-                    colors={i <= step ? ['#1CBB3D', '#4ade80'] : ['rgba(255,255,255,0.15)', 'rgba(255,255,255,0.1)']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[styles.stepDot, i <= step && styles.stepDotActive]}
-                  >
-                    <Text style={[styles.stepNum, i <= step && styles.stepNumActive]}>{i + 1}</Text>
-                  </LinearGradient>
-                  <Text style={[styles.stepLabel, i <= step && styles.stepLabelActive]}>{s}</Text>
+                  <View style={[
+                    styles.stepDot,
+                    i <= step && { backgroundColor: KYC_COLORS.progressCompleted }
+                  ]}>
+                    <Text style={[
+                      styles.stepNum,
+                      i <= step && { color: '#fff', fontWeight: '800' }
+                    ]}>{num}</Text>
+                  </View>
                 </View>
               ))}
             </View>
@@ -148,143 +176,195 @@ export function KYCScreen({ navigation }: Props) {
             {/* Step 0: Choose document type */}
             {step === 0 && (
               <View style={styles.cardInner}>
-                <Text style={styles.cardTitle}>Qual documento você vai usar?</Text>
-                {(['RG', 'CNH', 'PASSPORT'] as DocType[]).map((type) => (
+                <Text style={styles.cardTitle}>Escolha o documento que você vai usar</Text>
+                {(['PASSPORT', 'CNH', 'RG'] as DocType[]).map((type) => (
                   <TouchableOpacity
                     key={type}
-                    style={[styles.docOption, docType === type && styles.docOptionSelected]}
+                    style={[
+                      styles.docOption,
+                      docType === type && styles.docOptionSelected
+                    ]}
                     onPress={() => setDocType(type)}
                     activeOpacity={0.8}
                   >
-                    <LinearGradient
-                      colors={docType === type ? ['rgba(28,187,61,0.3)', 'rgba(74,222,128,0.15)'] : ['transparent', 'transparent']}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    <Text style={[styles.docOptionText, docType === type && styles.docOptionTextSelected]}>
+                    <Text style={[
+                      styles.docOptionText,
+                      docType === type && styles.docOptionTextSelected
+                    ]}>
                       {DOC_LABELS[type]}
                     </Text>
                   </TouchableOpacity>
                 ))}
-                <Button
-                  title="Próximo"
+                <TouchableOpacity
+                  style={[
+                    styles.nextButton,
+                    !docType && styles.nextButtonDisabled
+                  ]}
                   onPress={() => { if (docType) setStep(1); }}
                   disabled={!docType}
-                  style={styles.btn}
-                />
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.nextButtonText}>Próximo</Text>
+                </TouchableOpacity>
               </View>
             )}
 
-            {/* Step 1: Document photos - Side by side layout */}
+            {/* Step 1: Document photos - Novo layout */}
             {step === 1 && (
               <View style={styles.cardInner}>
-                <Text style={styles.cardTitle}>Foto do documento</Text>
+                <Text style={styles.cardTitle}>Tire ou anexe uma foto do documento</Text>
 
-                {/* Photos side by side when both exist */}
-                {(frontUri || backUri) ? (
-                  <View style={styles.photosRow}>
-                    {/* Frente Preview */}
-                    {frontUri && (
-                      <View style={styles.photoSideContainer}>
-                        <Text style={styles.photoSideLabel}>Frente</Text>
-                        <View style={styles.photoPreviewWrapper}>
-                          <Image source={{ uri: frontUri }} style={styles.photoPreviewFull} />
-                          <TouchableOpacity
-                            style={styles.removePhotoBtnSide}
-                            onPress={() => setFrontUri(null)}
-                            activeOpacity={0.8}
-                          >
-                            <IconX size={14} color="#fff" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
-                    {/* Verso Preview */}
-                    {backUri && (
-                      <View style={styles.photoSideContainer}>
-                        <Text style={styles.photoSideLabel}>Verso</Text>
-                        <View style={styles.photoPreviewWrapper}>
-                          <Image source={{ uri: backUri }} style={styles.photoPreviewFull} />
-                          <TouchableOpacity
-                            style={styles.removePhotoBtnSide}
-                            onPress={() => setBackUri(null)}
-                            activeOpacity={0.8}
-                          >
-                            <IconX size={14} color="#fff" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                ) : null}
-
-                {/* Add buttons when photos are missing */}
-                <View style={styles.photosAddRow}>
-                  {/* Frente Add */}
-                  {!frontUri && (
-                    <View style={styles.photoAddContainer}>
-                      <Text style={styles.photoAddLabel}>Frente (obrigatório)</Text>
-                      <View style={styles.photoButtonsContainer}>
-                        <TouchableOpacity style={styles.photoBtnGallery} onPress={async () => { const uri = await pickImage(); if (uri) setFrontUri(uri); }} activeOpacity={0.8}>
-                          <IconUpload size={28} color="#4ade80" />
-                          <Text style={styles.photoBtnGalleryText}>Galeria</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.photoBtnCamera} onPress={async () => { const uri = await pickImage(true); if (uri) setFrontUri(uri); }} activeOpacity={0.8}>
-                          <Text style={styles.cameraIconBig}>📷</Text>
-                          <Text style={styles.photoBtnCameraText}>Câmera</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                  {/* Verso Add */}
-                  {!backUri && (
-                    <View style={styles.photoAddContainer}>
-                      <Text style={styles.photoAddLabel}>Verso (opcional)</Text>
-                      <View style={styles.photoButtonsContainer}>
-                        <TouchableOpacity style={styles.photoBtnGallery} onPress={async () => { const uri = await pickImage(); if (uri) setBackUri(uri); }} activeOpacity={0.8}>
-                          <IconUpload size={28} color="#4ade80" />
-                          <Text style={styles.photoBtnGalleryText}>Galeria</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.photoBtnCamera} onPress={async () => { const uri = await pickImage(true); if (uri) setBackUri(uri); }} activeOpacity={0.8}>
-                          <Text style={styles.cameraIconBig}>📷</Text>
-                          <Text style={styles.photoBtnCameraText}>Câmera</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.btnRow}>
-                  <Button title="Voltar" onPress={() => setStep(0)} variant="secondary" style={styles.btn} />
-                  <Button title="Próximo" onPress={() => { if (frontUri) setStep(2); }} disabled={!frontUri} style={styles.btn} />
-                </View>
-              </View>
-            )}
-
-            {/* Step 2: Selfie - Camera only */}
-            {step === 2 && (
-              <View style={styles.cardInner}>
-                <Text style={styles.cardTitle}>Selfie</Text>
-                <Text style={styles.hint}>Rosto visível, boa luz, sem óculos escuros.</Text>
-
-                <View style={styles.selfieSection}>
-                  {selfieUri ? (
-                    <View style={styles.selfiePreviewContainer}>
-                      <Image source={{ uri: selfieUri }} style={styles.selfiePreviewLarge} />
+                {/* Frente Section */}
+                <View style={styles.photoSectionNew}>
+                  <Text style={styles.photoSectionLabel}>Frente</Text>
+                  {frontUri ? (
+                    <View style={styles.photoPreviewContainerNew}>
                       <TouchableOpacity
-                        style={styles.removeSelfieBtn}
-                        onPress={() => setSelfieUri(null)}
-                        activeOpacity={0.8}
+                        style={styles.photoPreviewTouchable}
+                        onPress={() => setPreviewUri(frontUri)}
+                        activeOpacity={0.9}
                       >
-                        <IconX size={18} color="#fff" />
-                        <Text style={styles.removeSelfieText}>Tirar outra</Text>
+                        <Image source={{ uri: frontUri }} style={styles.photoPreviewImageNew} />
+                        <TouchableOpacity
+                          style={styles.removePhotoBtnNew}
+                          onPress={() => setFrontUri(null)}
+                          activeOpacity={0.8}
+                        >
+                          <IconX size={14} color="#fff" />
+                        </TouchableOpacity>
                       </TouchableOpacity>
                     </View>
                   ) : (
-                    <TouchableOpacity style={styles.selfieCameraBtn} onPress={async () => { const uri = await pickImage(true); if (uri) setSelfieUri(uri); }} activeOpacity={0.8}>
-                      <View style={styles.selfieCameraInner}>
-                        <Text style={styles.selfieCameraIcon}>📷</Text>
-                        <Text style={styles.selfieCameraTitle}>Tirar Selfie</Text>
-                        <Text style={styles.selfieCameraSubtitle}>Use a câmera ao vivo</Text>
+                    <TouchableOpacity
+                      style={styles.photoUploadArea}
+                      onPress={() => setChoiceModal({ visible: true, type: 'front' })}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.photoUploadPlaceholder} />
+                    </TouchableOpacity>
+                  )}
+                  <View style={styles.photoActionButtons}>
+                    <TouchableOpacity
+                      style={styles.photoActionBtn}
+                      onPress={async () => { const uri = await pickImage(true); if (uri) setFrontUri(uri); }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.photoActionBtnText}>Tirar foto</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.photoActionBtn}
+                      onPress={async () => { const uri = await pickImage(); if (uri) setFrontUri(uri); }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.photoActionBtnText}>Abrir galeria</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Verso Section */}
+                <View style={styles.photoSectionNew}>
+                  <Text style={styles.photoSectionLabel}>Verso</Text>
+                  {backUri ? (
+                    <View style={styles.photoPreviewContainerNew}>
+                      <TouchableOpacity
+                        style={styles.photoPreviewTouchable}
+                        onPress={() => setPreviewUri(backUri)}
+                        activeOpacity={0.9}
+                      >
+                        <Image source={{ uri: backUri }} style={styles.photoPreviewImageNew} />
+                        <TouchableOpacity
+                          style={styles.removePhotoBtnNew}
+                          onPress={() => setBackUri(null)}
+                          activeOpacity={0.8}
+                        >
+                          <IconX size={14} color="#fff" />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.photoUploadArea}
+                      onPress={() => setChoiceModal({ visible: true, type: 'back' })}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.photoUploadPlaceholder} />
+                    </TouchableOpacity>
+                  )}
+                  <View style={styles.photoActionButtons}>
+                    <TouchableOpacity
+                      style={styles.photoActionBtn}
+                      onPress={async () => { const uri = await pickImage(true); if (uri) setBackUri(uri); }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.photoActionBtnText}>Tirar foto</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.photoActionBtn}
+                      onPress={async () => { const uri = await pickImage(); if (uri) setBackUri(uri); }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.photoActionBtnText}>Abrir galeria</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.btnRow}>
+                  <TouchableOpacity
+                    style={styles.backButtonHalf}
+                    onPress={() => setStep(0)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.backButtonText}>Voltar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.nextButtonHalf,
+                      (!frontUri || !backUri) && styles.nextButtonDisabled
+                    ]}
+                    onPress={() => { if (frontUri && backUri) setStep(2); }}
+                    disabled={!frontUri || !backUri}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.nextButtonText}>Próximo</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Step 2: Selfie - Novo layout */}
+            {step === 2 && (
+              <View style={styles.cardInner}>
+                <Text style={styles.cardTitle}>Tire uma selfie</Text>
+                <Text style={styles.hint}>Rosto visível, boa luz, sem óculos escuros.</Text>
+
+                <View style={styles.selfieSectionNew}>
+                  {selfieUri ? (
+                    <View style={styles.selfiePreviewContainerNew}>
+                      <TouchableOpacity
+                        style={styles.selfiePreviewTouchable}
+                        onPress={() => setPreviewUri(selfieUri)}
+                        activeOpacity={0.9}
+                      >
+                        <Image source={{ uri: selfieUri }} style={styles.selfiePreviewImageNew} />
+                        <TouchableOpacity
+                          style={styles.removePhotoBtnNew}
+                          onPress={() => setSelfieUri(null)}
+                          activeOpacity={0.8}
+                        >
+                          <IconX size={14} color="#fff" />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.selfieUploadArea}
+                      onPress={async () => { const uri = await pickImage(true); if (uri) setSelfieUri(uri); }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.selfieUploadPlaceholder}>
+                        <Text style={styles.selfieCameraIconNew}>📷</Text>
+                        <Text style={styles.selfieCameraTitleNew}>Tirar Selfie</Text>
+                        <Text style={styles.selfieCameraSubtitleNew}>Use a câmera ao vivo</Text>
                       </View>
                     </TouchableOpacity>
                   )}
@@ -293,8 +373,28 @@ export function KYCScreen({ navigation }: Props) {
                 {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
                 <View style={styles.btnRow}>
-                  <Button title="Voltar" onPress={() => setStep(1)} variant="secondary" style={styles.btn} />
-                  <Button title="Enviar" onPress={handleSubmit} disabled={!selfieUri} loading={loading} style={styles.btn} />
+                  <TouchableOpacity
+                    style={styles.backButtonHalf}
+                    onPress={() => setStep(1)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.backButtonText}>Voltar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.nextButtonHalf,
+                      !selfieUri && styles.nextButtonDisabled
+                    ]}
+                    onPress={handleSubmit}
+                    disabled={!selfieUri || loading}
+                    activeOpacity={0.8}
+                  >
+                    {loading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.nextButtonText}>Enviar</Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -309,6 +409,88 @@ export function KYCScreen({ navigation }: Props) {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Image Preview Modal */}
+      <Modal
+        visible={!!previewUri}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setPreviewUri(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalCloseArea}
+            onPress={() => setPreviewUri(null)}
+            activeOpacity={1}
+          >
+            <View style={styles.modalImageContainer}>
+              {previewUri && (
+                <Image
+                  source={{ uri: previewUri }}
+                  style={styles.modalImage}
+                  resizeMode="contain"
+                />
+              )}
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setPreviewUri(null)}
+                activeOpacity={0.8}
+              >
+                <IconX size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* Photo Choice Modal */}
+      <Modal
+        visible={choiceModal.visible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setChoiceModal({ visible: false, type: null })}
+      >
+        <View style={styles.choiceModalOverlay}>
+          <View style={styles.choiceModalContent}>
+            <Text style={styles.choiceModalTitle}>Escolha uma opção</Text>
+            <TouchableOpacity
+              style={styles.choiceModalBtn}
+              onPress={async () => {
+                const uri = await pickImage(true);
+                if (uri) {
+                  if (choiceModal.type === 'front') setFrontUri(uri);
+                  else setBackUri(uri);
+                }
+                setChoiceModal({ visible: false, type: null });
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.choiceModalBtnText}>📷 Tirar foto</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.choiceModalBtn}
+              onPress={async () => {
+                const uri = await pickImage();
+                if (uri) {
+                  if (choiceModal.type === 'front') setFrontUri(uri);
+                  else setBackUri(uri);
+                }
+                setChoiceModal({ visible: false, type: null });
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.choiceModalBtnText}>🖼️ Abrir galeria</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.choiceModalBtn, styles.choiceModalBtnCancel]}
+              onPress={() => setChoiceModal({ visible: false, type: null })}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.choiceModalBtnText, styles.choiceModalBtnTextCancel]}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScreenBackground>
   );
 }
@@ -322,95 +504,107 @@ const styles = StyleSheet.create({
   title: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: spacing.xs, textAlign: 'center' },
   subtitle: { color: '#a3c4a3', fontSize: fonts.sizes.sm, marginBottom: spacing.xl, textAlign: 'center' },
 
-  // Step indicator with background line
+  // Step indicator - Estilo da imagem
   stepRow: {
     position: 'relative',
-    height: 80,
-    marginBottom: spacing.xl,
-    paddingHorizontal: spacing.xl,
+    height: 60,
+    marginBottom: spacing.lg,
+    paddingHorizontal: 40,
   },
   stepBackgroundLine: {
     position: 'absolute',
-    top: 18,
-    left: spacing.xl + 18,
-    right: spacing.xl + 18,
+    top: 20,
+    left: 70,
+    right: 70,
     height: 3,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: '#0E290F',
     borderRadius: 2,
   },
   stepBackgroundLineFill: {
     height: '100%',
-    width: '0%',
-    backgroundColor: '#4ade80',
+    backgroundColor: '#1F5D18',
     borderRadius: 2,
-  },
-  stepBackgroundLineFillHalf: {
-    width: '50%',
-  },
-  stepBackgroundLineFillFull: {
-    width: '100%',
   },
   stepItemsContainer: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    right: 0,
+    left: 40,
+    right: 40,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
   },
   stepItem: {
     alignItems: 'center',
   },
   stepDot: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#0E290F',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: '#0E290F',
   },
-  stepDotActive: {
-    backgroundColor: '#1CBB3D',
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  stepNum: { color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: '700' },
-  stepNumActive: { color: '#fff', fontWeight: '800' },
-  stepLabel: { color: '#6b9e6b', fontSize: 11, textAlign: 'center', maxWidth: 90, fontWeight: '500' },
-  stepLabelActive: { color: '#4ade80', fontWeight: '700' },
+  stepNum: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // Card styled like LoginScreen
+  // Card - Estilo da imagem
   card: {
-    backgroundColor: 'rgba(34, 92, 52, 0.45)',
-    borderWidth: 1,
-    borderColor: 'rgba(187, 255, 0, 0.16)',
-    borderRadius: radius.xl,
+    backgroundColor: '#082006',
+    borderWidth: 2,
+    borderColor: '#0F400B',
+    borderRadius: 16,
     overflow: 'hidden',
   },
   cardInner: {
-    padding: spacing.xl,
+    padding: spacing.lg,
   },
   cardTitle: {
     color: '#fff',
     fontSize: fonts.sizes.lg,
     fontWeight: '700',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
 
   docOption: {
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    marginBottom: spacing.sm,
-    overflow: 'hidden',
-    position: 'relative',
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: '#1F5D18',
+    backgroundColor: '#0E290F',
+    marginBottom: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ scale: 1 }],
   },
-  docOptionSelected: { borderColor: '#4ade80' },
-  docOptionText: { color: '#a3c4a3', fontSize: fonts.sizes.md },
-  docOptionTextSelected: { color: '#4ade80', fontWeight: '700' },
+  docOptionSelected: {
+    backgroundColor: '#1F5D18',
+    borderColor: '#1F5D18',
+    transform: [{ scale: 1.05 }],
+  },
+  docOptionText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  docOptionTextSelected: { color: '#fff', fontWeight: '700' },
+  nextButton: {
+    paddingVertical: 14,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 50,
+    backgroundColor: '#0F400B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    width: '80%',
+    alignSelf: 'center',
+  },
+  nextButtonDisabled: {
+    opacity: 0.5,
+  },
+  nextButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
 
   fieldLabel: { color: '#a3c4a3', fontSize: fonts.sizes.sm, marginBottom: spacing.sm, marginTop: spacing.md, fontWeight: '600' },
 
@@ -619,8 +813,247 @@ const styles = StyleSheet.create({
 
   btnRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   btn: { flex: 1, marginTop: spacing.lg },
+  btnHalf: { flex: 1 },
 
   centerBox: { alignItems: 'center', paddingVertical: spacing.xxl },
   uploadingText: { color: '#a3c4a3', marginTop: spacing.lg, fontSize: fonts.sizes.md },
   errorText: { color: '#f87171', fontSize: fonts.sizes.sm, marginTop: spacing.sm, textAlign: 'center' },
+
+  // Novo layout Step 1 - Fotos
+  photoSectionNew: {
+    marginBottom: spacing.lg,
+  },
+  photoSectionLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  photoPreviewContainerNew: {
+    position: 'relative',
+    marginBottom: spacing.md,
+  },
+  photoPreviewTouchable: {
+    width: '65%',
+    alignSelf: 'center',
+    aspectRatio: 1.3,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#1F5D18',
+    borderStyle: 'dashed',
+    overflow: 'hidden',
+    backgroundColor: '#0E290F',
+  },
+  photoPreviewImageNew: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  removePhotoBtnNew: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(220, 38, 38, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.card,
+  },
+  photoUploadArea: {
+    width: '65%',
+    alignSelf: 'center',
+    aspectRatio: 1.3,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#1F5D18',
+    borderStyle: 'dashed',
+    backgroundColor: '#0E290F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  photoUploadPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'transparent',
+  },
+  photoActionButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  photoActionBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 50,
+    backgroundColor: '#1F5D18',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoActionBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  nextButtonHalf: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 50,
+    backgroundColor: '#0F400B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonHalf: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 50,
+    backgroundColor: '#4F4E47',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // Choice Modal
+  choiceModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  choiceModalContent: {
+    width: '100%',
+    backgroundColor: '#082006',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: spacing.lg,
+    paddingBottom: 40,
+    borderWidth: 2,
+    borderColor: '#0F400B',
+    borderBottomWidth: 0,
+  },
+  choiceModalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  choiceModalBtn: {
+    paddingVertical: 16,
+    borderRadius: 50,
+    backgroundColor: '#1F5D18',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  choiceModalBtnCancel: {
+    backgroundColor: '#4F4E47',
+    marginTop: spacing.sm,
+  },
+  choiceModalBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  choiceModalBtnTextCancel: {
+    color: '#fff',
+  },
+
+  // Modal de preview
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseArea: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalImageContainer: {
+    width: '90%',
+    height: '70%',
+    position: 'relative',
+  },
+  modalImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+  },
+  modalCloseBtn: {
+    position: 'absolute',
+    top: -40,
+    right: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(220, 38, 38, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Selfie section - Novo layout
+  selfieSectionNew: {
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  selfiePreviewContainerNew: {
+    position: 'relative',
+    alignItems: 'center',
+  },
+  selfiePreviewTouchable: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    borderWidth: 2,
+    borderColor: '#1F5D18',
+    overflow: 'hidden',
+    backgroundColor: '#0E290F',
+  },
+  selfiePreviewImageNew: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  selfieUploadArea: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    borderWidth: 2,
+    borderColor: '#1F5D18',
+    borderStyle: 'dashed',
+    backgroundColor: '#0E290F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selfieUploadPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selfieCameraIconNew: {
+    fontSize: 48,
+    marginBottom: spacing.sm,
+  },
+  selfieCameraTitleNew: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  selfieCameraSubtitleNew: {
+    color: '#a3c4a3',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
+  },
 });

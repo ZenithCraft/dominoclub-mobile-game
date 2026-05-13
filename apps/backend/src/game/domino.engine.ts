@@ -100,7 +100,7 @@ export function initGame(
   players: { userId: string; team: number; seat: number; isBot: boolean }[]
 ): GameState {
   const allTiles = shuffle(generateTiles());
-  const tilesPerPlayer = players.length >= 4 ? 6 : 7;
+  const tilesPerPlayer = 6;
   const playerStates: PlayerState[] = players.map((p, i) => ({
     ...p,
     hand: allTiles.slice(i * tilesPerPlayer, (i + 1) * tilesPerPlayer),

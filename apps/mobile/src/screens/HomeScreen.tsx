@@ -687,7 +687,7 @@ const styles = StyleSheet.create({
   modeRow: {
     flexDirection: 'row',
     gap: spacing.xl,
-    marginTop: spacing.lg,
+    marginTop: spacing.xs,
   },
 
   modeBtn: {
@@ -789,8 +789,10 @@ const styles = StyleSheet.create({
 
   // Profile modal
   profileCard: {
-    width: Platform.OS === 'web' ? 640 : 520,
-    maxHeight: '85%',
+    width: Platform.OS === 'web' ? 640 : '92%',
+    maxWidth: 520,
+    maxHeight: '88%',
+    flex: 1,
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
     paddingHorizontal: SETTINGS_CARD_PAD,
