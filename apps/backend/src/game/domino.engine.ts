@@ -169,7 +169,7 @@ function findFirstPlayer(players: PlayerState[]): { index: number; tile: Tile } 
  */
 export function initNextRound(state: GameState): GameState {
   const allTiles = shuffle(generateTiles());
-  const tilesPerPlayer = state.players.length >= 4 ? 6 : 7;
+  const tilesPerPlayer = 6;
 
   const players: PlayerState[] = state.players.map((p, i) => ({
     ...p,

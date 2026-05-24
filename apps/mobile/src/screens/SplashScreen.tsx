@@ -24,7 +24,7 @@ const KYC_COLORS = {
 // Peças de dominó reais
 const dominoImages: Record<string, any> = {
   '6-6': require('../../assets/domino-pieces/6-6.png'),
-  '5-3': require('../../assets/domino-pieces/5-3.png'),
+  '3-5': require('../../assets/domino-pieces/3-5.png'),
   '6-0': require('../../assets/domino-pieces/6-0.png'),
   '4-4': require('../../assets/domino-pieces/4-4.png'),
 };
@@ -152,7 +152,7 @@ export function SplashScreen({ navigation }: Props) {
               ]}
             ]}>
               <Image
-                source={dominoImages['5-3']}
+                source={dominoImages['3-5']}
                 style={styles.dominoPiece}
                 resizeMode="contain"
               />

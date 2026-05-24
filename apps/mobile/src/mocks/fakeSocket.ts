@@ -174,10 +174,10 @@ class FakeSocket {
 
         if (is2v2) {
           const players2v2 = [
-            { userId: myId, name: myName,   team: 1, seat: 0, hand: deck.slice(0,  7) as Tile[], isBot: false, connected: true },
-            { userId: 'p2', name: 'Ana',    team: 2, seat: 1, hand: deck.slice(7,  14) as Tile[], isBot: true,  connected: true },
-            { userId: 'p3', name: 'Pedro',  team: 1, seat: 2, hand: deck.slice(14, 21) as Tile[], isBot: true,  connected: true },
-            { userId: 'p4', name: 'Carlos', team: 2, seat: 3, hand: deck.slice(21, 27) as Tile[], isBot: true,  connected: true },
+            { userId: myId, name: myName,   team: 1, seat: 0, hand: deck.slice(0,  6) as Tile[], isBot: false, connected: true },
+            { userId: 'p2', name: 'Ana',    team: 2, seat: 1, hand: deck.slice(6,  12) as Tile[], isBot: true,  connected: true },
+            { userId: 'p3', name: 'Pedro',  team: 1, seat: 2, hand: deck.slice(12, 18) as Tile[], isBot: true,  connected: true },
+            { userId: 'p4', name: 'Carlos', team: 2, seat: 3, hand: deck.slice(18, 24) as Tile[], isBot: true,  connected: true },
           ];
           const firstDouble2v2 = findHighestDouble(players2v2);
           this.state = {
@@ -192,8 +192,8 @@ class FakeSocket {
           };
         } else {
           const players1v1 = [
-            { userId: myId, name: myName,     team: 1, seat: 0, hand: deck.slice(0, 7) as Tile[], isBot: false, connected: true },
-            { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: deck.slice(7, 14) as Tile[], isBot: true,  connected: true },
+            { userId: myId, name: myName,     team: 1, seat: 0, hand: deck.slice(0, 6) as Tile[], isBot: false, connected: true },
+            { userId: 'p2', name: 'Fuad HBK', team: 2, seat: 1, hand: deck.slice(6, 12) as Tile[], isBot: true,  connected: true },
           ];
           const firstDouble1v1 = findHighestDouble(players1v1);
           this.state = {
@@ -201,7 +201,7 @@ class FakeSocket {
             players: players1v1,
             board: [], leftOpen: -1, rightOpen: -1,
             currentPlayerIndex: firstDouble1v1?.playerIdx ?? 0, turnCount: 0,
-            status: 'playing', boneyard: deck.slice(14) as Tile[], firstPlayMade: false,
+            status: 'playing', boneyard: deck.slice(12) as Tile[], firstPlayMade: false,
             requiredFirstTile: firstDouble1v1?.tile ?? null,
             matchScores: { 1: 0, 2: 0 }, roundNumber: 1, targetScore: 6,
             consecutivePasses: 0,

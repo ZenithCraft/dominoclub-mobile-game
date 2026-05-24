@@ -529,7 +529,6 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           <>
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
-              <Text style={styles.scrollHint}>← Deslize para ver mais jogos →</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
                 {LIVRE_1V1.map((r) => {
                   const betAmount = r.buyIn ?? 0;
@@ -552,7 +551,6 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
-              <Text style={styles.scrollHint}>← Deslize para ver mais jogos →</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
                 {LIVRE_2V2.map((r) => {
                   const betAmount = r.buyIn ?? 0;
@@ -1062,9 +1060,9 @@ const styles = StyleSheet.create({
           elevation: 6,
         }),
   },
-  roomCardInner: { padding: spacing.lg, gap: spacing.md, minHeight: 220 },
+  roomCardInner: { padding: spacing.md, gap: spacing.sm, minHeight: 140 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, width: '100%' },
-  playersIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.18)', alignItems: 'center', justifyContent: 'center' },
+  playersIconWrap: { width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.18)', alignItems: 'center', justifyContent: 'center' },
   playersMeta: { flexDirection: 'column', gap: 2, alignItems: 'center' },
   playersLabel: { fontSize: fonts.sizes.sm, fontWeight: '800', textAlign: 'center', fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System' },
   playersCount: { fontSize: fonts.sizes.sm, fontWeight: '900', textAlign: 'center', fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System' },
@@ -1074,7 +1072,7 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: radius.md,
     backgroundColor: '#E5E7EB',
-    paddingVertical: 10,
+    paddingVertical: 6,
     alignItems: 'center',
     gap: 2,
   },

@@ -442,9 +442,19 @@ function buildSnakeLayout(
     const bi = r * rowCells;
     const tiles = Array.from({ length: hPerRow }, (_, i) => seq[bi + i] ?? null) as (Tile | null)[];
     const corner = (seq[bi + hPerRow] ?? null) as Tile | null;
-    const steps = tiles.map((t) => t ? ((t[0] === t[1] ? S : L) + GH) : L + GH);
+    // Calculate steps: tile width + gap ONLY between consecutive tiles (not after last)
+    const steps = tiles.map((t) => {
+      if (!t) return 0; // No width for null slots - they don't contribute to layout
+      return (t[0] === t[1] ? S : L);
+    });
     const cum: number[] = [0];
-    for (const w of steps) cum.push(cum[cum.length - 1] + w);
+    let prevWasReal = false;
+    for (let i = 0; i < steps.length; i++) {
+      // Add gap before this tile only between two real (non-null) tiles
+      const gapBefore = (prevWasReal && steps[i] > 0) ? GH : 0;
+      cum.push(cum[cum.length - 1] + gapBefore + steps[i]);
+      if (steps[i] > 0) prevWasReal = true;
+    }
     let pFirst = -1, pLast = -1;
     for (let i = 0; i < tiles.length; i++) { if (tiles[i]) { if (pFirst < 0) pFirst = i; pLast = i; } }
     perRow.push({ tiles, corner, steps, cum, w: cum[hPerRow], first: pFirst, last: pLast });
@@ -454,6 +464,7 @@ function buildSnakeLayout(
   for (let r = 0; r < rows - 1; r++) {
     const rtl = r % 2 === 1;
     const rLast = perRow[r].last;
+    // Use cum[rLast+1] which is the position AFTER the last tile (includes tile width but not trailing gap)
     let rLastCum = rLast >= 0 ? perRow[r].cum[rLast + 1] : perRow[r].w;
     if (!rtl) {
       rowBaseX.push(rowBaseX[r] + rLastCum - perRow[r + 1].w);
@@ -482,9 +493,10 @@ function buildSnakeLayout(
       const tileH = isDouble ? L : S;
 
       const cellXLocal = rtl ? (totalRowWidth - cumSteps[i + 1]) : cumSteps[i];
-      const left = baseX + cellXLocal + Math.floor(GH / 2);
+      // Use cellXLocal directly - steps already include proper gap spacing
+      // No extra offset needed to maintain consistent spacing between tiles
+      const left = baseX + cellXLocal;
       // Alinhamento vertical: todas as peças alinhadas pelo topo da linha
-      // Remover offset assimétrico que causava desnível
       const top = cursorY + Math.floor((rowHeight - tileH) / 2);
 
       // In RTL rows tiles are placed right-to-left, so tile[0] ends up on the RIGHT
@@ -507,16 +519,18 @@ function buildSnakeLayout(
 
       if (rtl) {
         // Left-side corner: aligned with left edge of the last (leftmost) tile
+        // cumSteps[last+1] is position after last tile (no trailing gap)
         const leftCellStart = last >= 0 ? (totalRowWidth - cumSteps[last + 1]) : 0;
-        cornerLeft = baseX + leftCellStart + GH;
+        cornerLeft = baseX + leftCellStart;
       } else {
         // Right-side corner: aligned with right edge of the last tile minus cornerW
-        cornerLeft = baseX + (last >= 0 ? cumSteps[last] : 0) + GH + lastTileW - S;
+        // cumSteps[last] + lastTileW = right edge of last tile
+        cornerLeft = baseX + (last >= 0 ? cumSteps[last + 1] : 0) - S;
       }
-      // Corner must start just below the last horizontal tile's centre line.
-      const lastBottom = cursorY + (lastIsDouble ? L : Math.floor((L + S) / 2));
-      cornerTop = Math.max(cursorY + Math.floor((L + S) / 2) + GH, lastBottom + GH);
-      cursorY = cornerTop + Math.floor((L + S) / 2) + GH;
+      // Corner must start just below the last horizontal tile's centre line with gap
+      const lastBottom = cursorY + (lastIsDouble ? L : S + Math.floor((L - S) / 2));
+      cornerTop = lastBottom + GH;
+      cursorY = cornerTop + L + GV;
 
       placed.push({ tile: cornerTile, x: cornerLeft, y: cornerTop, horizontal: false, isCorner: true });
       minX = Math.min(minX, cornerLeft);
@@ -605,7 +619,7 @@ function buildFullBoardLayout(
   const S = Math.round(base.short * scale);
   const L = Math.round(base.long * scale);
   const G = Math.max(1, Math.round(gap * scale));
-  const GV = Math.max(1, Math.round((gap + 2) * scale));
+  const GV = G;
 
   // Spinner is a double in CRUZADA → horizontal=false, width=S, height=L
   const spinner   = snake.placed[spinnerSnakeIdx];
@@ -626,6 +640,7 @@ function buildFullBoardLayout(
   let topEdgeXLeft = spinnerCX - S / 2;   // Left growing edge
   let topEdgeXRight = spinnerCX + S / 2;  // Right growing edge
   let topGrowLeft = true;
+  let prevWasVertical = false;  // Track if previous tile was vertical
   for (let i = 1; i < board.length; i++) {
     const pt = board[i];
     if (pt.side !== 'top') continue;
@@ -633,6 +648,12 @@ function buildFullBoardLayout(
     const isDouble = effective[0] === effective[1];
     const tileW = isDouble ? L : S;
     const tileH = isDouble ? S : L;
+    const isVertical = !isDouble;  // Portrait orientation
+    // If previous tile was also vertical, force grow to opposite side
+    // to prevent overlapping vertical tiles
+    if (prevWasVertical && isVertical) {
+      topGrowLeft = !topGrowLeft;
+    }
     // Alternate left and right for branching pattern
     const tileX = topGrowLeft ? Math.round(topEdgeXLeft - tileW) : Math.round(topEdgeXRight);
     const tileY = topEdgeY - GV - tileH;
@@ -640,6 +661,7 @@ function buildFullBoardLayout(
     if (topGrowLeft) topEdgeXLeft = tileX - G;
     else topEdgeXRight = tileX + tileW + G;
     topGrowLeft = !topGrowLeft;
+    prevWasVertical = isVertical;
     allPlaced.push({ tile: effective, x: tileX, y: tileY, horizontal: isDouble });
     minX = Math.min(minX, tileX); maxX = Math.max(maxX, tileX + tileW);
     minY = Math.min(minY, tileY);
@@ -651,6 +673,7 @@ function buildFullBoardLayout(
   let bottomEdgeXLeft = spinnerCX - S / 2;   // Left growing edge
   let bottomEdgeXRight = spinnerCX + S / 2;  // Right growing edge
   let bottomGrowLeft = true;
+  let bottomPrevWasVertical = false;  // Track if previous tile was vertical
   for (let i = 1; i < board.length; i++) {
     const pt = board[i];
     if (pt.side !== 'bottom') continue;
@@ -658,6 +681,12 @@ function buildFullBoardLayout(
     const isDouble = effective[0] === effective[1];
     const tileW = isDouble ? L : S;
     const tileH = isDouble ? S : L;
+    const isVertical = !isDouble;  // Portrait orientation
+    // If previous tile was also vertical, force grow to opposite side
+    // to prevent overlapping vertical tiles
+    if (bottomPrevWasVertical && isVertical) {
+      bottomGrowLeft = !bottomGrowLeft;
+    }
     // Alternate left and right for branching pattern
     const tileX = bottomGrowLeft ? Math.round(bottomEdgeXLeft - tileW) : Math.round(bottomEdgeXRight);
     const tileY = bottomEdgeY + GV;
@@ -665,6 +694,7 @@ function buildFullBoardLayout(
     if (bottomGrowLeft) bottomEdgeXLeft = tileX - G;
     else bottomEdgeXRight = tileX + tileW + G;
     bottomGrowLeft = !bottomGrowLeft;
+    bottomPrevWasVertical = isVertical;
     allPlaced.push({ tile: effective, x: tileX, y: tileY, horizontal: isDouble });
     minX = Math.min(minX, tileX); maxX = Math.max(maxX, tileX + tileW);
     maxY = Math.max(maxY, tileY + tileH);
@@ -683,29 +713,29 @@ function buildFullBoardLayout(
 // Sorted descending: [6,6] → Frame 14164 … [0,0] → Frame 14191
 const DOMINO_IMAGES: Record<string, any> = {
   '6,6': require('../../assets/domino-pieces/6-6.png'),
-  '6,5': require('../../assets/domino-pieces/6-5.png'),
-  '6,4': require('../../assets/domino-pieces/6-4.png'),
-  '6,3': require('../../assets/domino-pieces/6-3.png'),
-  '6,2': require('../../assets/domino-pieces/6-2.png'),
-  '6,1': require('../../assets/domino-pieces/6-1.png'),
+  '6,5': require('../../assets/domino-pieces/5-6.png'),
+  '6,4': require('../../assets/domino-pieces/4-6.png'),
+  '6,3': require('../../assets/domino-pieces/3-6.png'),
+  '6,2': require('../../assets/domino-pieces/2-6.png'),
+  '6,1': require('../../assets/domino-pieces/1-6.png'),
   '6,0': require('../../assets/domino-pieces/6-0.png'),
   '5,5': require('../../assets/domino-pieces/5-5.png'),
-  '5,4': require('../../assets/domino-pieces/5-4.png'),
-  '5,3': require('../../assets/domino-pieces/5-3.png'),
-  '5,2': require('../../assets/domino-pieces/5-2.png'),
-  '5,1': require('../../assets/domino-pieces/5-1.png'),
+  '5,4': require('../../assets/domino-pieces/4-5.png'),
+  '5,3': require('../../assets/domino-pieces/3-5.png'),
+  '5,2': require('../../assets/domino-pieces/2-5.png'),
+  '5,1': require('../../assets/domino-pieces/1-5.png'),
   '5,0': require('../../assets/domino-pieces/5-0.png'),
   '4,4': require('../../assets/domino-pieces/4-4.png'),
-  '4,3': require('../../assets/domino-pieces/4-3.png'),
-  '4,2': require('../../assets/domino-pieces/4-2.png'),
-  '4,1': require('../../assets/domino-pieces/4-1.png'),
+  '4,3': require('../../assets/domino-pieces/3-4.png'),
+  '4,2': require('../../assets/domino-pieces/2-4.png'),
+  '4,1': require('../../assets/domino-pieces/1-4.png'),
   '4,0': require('../../assets/domino-pieces/4-0.png'),
   '3,3': require('../../assets/domino-pieces/3-3.png'),
-  '3,2': require('../../assets/domino-pieces/3-2.png'),
-  '3,1': require('../../assets/domino-pieces/3-1.png'),
+  '3,2': require('../../assets/domino-pieces/2-3.png'),
+  '3,1': require('../../assets/domino-pieces/1-3.png'),
   '3,0': require('../../assets/domino-pieces/3-0.png'),
   '2,2': require('../../assets/domino-pieces/2-2.png'),
-  '2,1': require('../../assets/domino-pieces/2-1.png'),
+  '2,1': require('../../assets/domino-pieces/1-2.png'),
   '2,0': require('../../assets/domino-pieces/2-0.png'),
   '1,1': require('../../assets/domino-pieces/1-1.png'),
   '1,0': require('../../assets/domino-pieces/1-0.png'),
@@ -728,7 +758,7 @@ function TileHandImage({ tile, selected, playable, onPress }: {
   return (
     <DominoTile
       tile={tile}
-      size="hand"
+      size="board"
       selected={selected}
       style={!playable ? { opacity: 0.38 } : undefined}
       onPress={onPress}
@@ -842,7 +872,7 @@ const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: numb
   xs:   { short: 22, long: 35, pip: 4, corner: 4 },
   sm:   { short: 34, long: 54, pip: 5, corner: 5 },
   md:   { short: 44, long: 70, pip: 7, corner: 8 },
-  board: { short: 28, long: 44, pip: 4, corner: 5 }, // Tamanho intermediário para o tabuleiro
+  board: { short: 22, long: 40, pip: 4, corner: 5 }, // Tamanho intermediário para o tabuleiro
 };
 
 function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, onPress, style }: DominoTileProps) {
@@ -857,17 +887,17 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
   const lo = Math.min(tile[0], tile[1]);
   const imgSrc = DOMINO_IMAGES[`${hi},${lo}`];
 
-  const imageTopIsHi = lo === 0;
-  const topMatchesTile0 = imageTopIsHi ? (tile[0] === hi) : (tile[0] === lo);
+  // Images are named first-second.png where first = top half, second = bottom half.
+  // Files are always lower-higher.png so lo is on top.
+  // topMatchesTile0: tile[0] appears at image-top position (i.e. tile[0] is lo).
+  const topMatchesTile0 = tile[0] === lo;
   const rotation = horizontal
     ? (topMatchesTile0 ? '-90deg' : '90deg')
     : (topMatchesTile0 ? '0deg'   : '180deg');
 
-  const wrapperOffsetY = rotation === '90deg' ? 1 : 0;
-
   const content = (
     <View style={[
-      { width: tileW, height: tileH, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', marginTop: wrapperOffsetY },
+      { width: tileW, height: tileH, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
       selected && (Platform.OS === 'web'
         ? ({ borderWidth: 2, borderColor: colors.primary, boxShadow: '0 0 10px rgba(74,222,128,0.6)' } as any)
         : { borderWidth: 2, borderColor: colors.primary }),
@@ -963,12 +993,12 @@ const scoreStyles = StyleSheet.create({
   box: {
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: radius.lg,
-    paddingVertical: 14,
-    paddingHorizontal: 22,
-    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    gap: 8,
     borderWidth: 1,
     borderColor: 'rgba(181,228,85,0.30)',
-    minWidth: 180,
+    minWidth: 160,
     alignItems: 'flex-start',
     ...(Platform.OS === 'web' ? ({
       backdropFilter: 'blur(12px)',
@@ -1401,7 +1431,7 @@ export function GameScreen({ navigation, route }: Props) {
   const [joinAttempt, setJoinAttempt] = useState(0);
   const [emojiByUser, setEmojiByUser] = useState<Record<string, { char: string; nonce: number }>>({});
   const [drawByUser, setDrawByUser] = useState<Record<string, { nonce: number }>>({});
-  const [loadingTimer, setLoadingTimer] = useState(10);
+  const [loadingTimer, setLoadingTimer] = useState(20);
 
   const timerRef        = useRef<ReturnType<typeof setInterval> | null>(null);
   const socketRef       = useRef<Socket | null>(null);
@@ -2006,7 +2036,7 @@ export function GameScreen({ navigation, route }: Props) {
 
   // Gap negativo para compensar a sombra embutida nas imagens das peças
   // Valor ajustado para manter peças próximas mas com espaçamento visual mínimo
-  const SNAKE_GAP_BASE = -1;
+  const SNAKE_GAP_BASE = 3;
   const SNAKE_GAP = SNAKE_GAP_BASE;
   const snakeMaxW = feltWidth
     ? Math.max(0, feltWidth * (is4Player ? 0.92 : 0.94))
@@ -2038,7 +2068,7 @@ export function GameScreen({ navigation, route }: Props) {
   const layout = boardScale < 1
     ? buildFullBoardLayout(currentGame.board ?? [], SNAKE_H_PER_ROW, boardTilePreset, SNAKE_GAP, boardScale)
     : baseLayout;
-  const boardPad = Math.round(10 * boardScale);
+  const boardPad = Math.round(16 * boardScale);
   const layoutW = layout.width;
   const layoutH = layout.height;
 
@@ -2306,8 +2336,14 @@ export function GameScreen({ navigation, route }: Props) {
                   const bottomTiles = verticalTiles.filter(t => t.y >= spinnerCenterY);
 
                   // Get the last tile in each branch
-                  const topEndP = topTiles.length > 0 ? topTiles[topTiles.length - 1] : null;
-                  const bottomEndP = bottomTiles.length > 0 ? bottomTiles[bottomTiles.length - 1] : null;
+                  // Top column: last tile is the one with MIN Y (topmost)
+                  // Bottom column: last tile is the one with MAX Y (bottommost)
+                  const topEndP = topTiles.length > 0
+                    ? topTiles.reduce((min, t) => t.y < min.y ? t : min)
+                    : null;
+                  const bottomEndP = bottomTiles.length > 0
+                    ? bottomTiles.reduce((max, t) => t.y > max.y ? t : max)
+                    : null;
 
                   // Track growth pattern: determine if next tile should grow left or right
                   const topGrowingLeft = topTiles.length % 2 === 0; // Odd count = should grow right
@@ -2398,7 +2434,7 @@ export function GameScreen({ navigation, route }: Props) {
                   };
 
                   return (
-                    <View style={[styles.snakeBoardFrame, { padding: boardPad, paddingTop: boardPad + 20 }]}>
+                    <View style={[styles.snakeBoardFrame, { paddingTop: boardPad + 40, paddingBottom: boardPad + 12, paddingHorizontal: boardPad + 24 }]}>
                       <View style={[styles.snakeBoard, { width: extW, height: layoutH }]}>
                         {/* Board tiles (shifted right by leftSlot_px) */}
                         {layout.placed.map((p, i) => {
@@ -2844,8 +2880,8 @@ export function GameScreen({ navigation, route }: Props) {
       {/* ── Native drag ghost — floats above everything at absolute screen position ── */}
       {Platform.OS !== 'web' && nativeDrag && (() => {
         // TileHandImage always renders vertically: width = short, height = long
-        const ghostW = TILE_DIMS.hand.short;
-        const ghostH = TILE_DIMS.hand.long;
+        const ghostW = TILE_DIMS.board.short;
+        const ghostH = TILE_DIMS.board.long;
         const startY = nativeDrag.startY;
         const boardCX = boardScreenCenterXRef.current;
         // Rotation magnitude grows as tile is dragged upward
@@ -3098,14 +3134,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.xs,
+    paddingTop: 4,
+    paddingBottom: 2,
     gap: spacing.sm,
     zIndex: 50,
   },
   topLeft: {
     alignItems: 'flex-start',
     justifyContent: 'flex-start',
+    marginTop: -8,
   },
   topCenter: {
     flex: 1,
@@ -3252,7 +3289,7 @@ const styles = StyleSheet.create({
   },
   snakeRow: { alignItems: 'center', gap: 0 },
   snakeCorner: { borderRadius: 4, backgroundColor: '#d4cfc6' },
-  playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 16 },
+  playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 8 },
   playerCardFxWrap: { position: 'relative', alignSelf: 'center' },
   playerFxLayer: { ...StyleSheet.absoluteFillObject, zIndex: 50 },
   emojiBubble: {
