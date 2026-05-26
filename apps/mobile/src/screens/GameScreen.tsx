@@ -442,30 +442,36 @@ function buildSnakeLayout(
     const bi = r * rowCells;
     const tiles = Array.from({ length: hPerRow }, (_, i) => seq[bi + i] ?? null) as (Tile | null)[];
     const corner = (seq[bi + hPerRow] ?? null) as Tile | null;
-    // Calculate steps: tile width + gap ONLY between consecutive tiles (not after last)
+    // Calculate steps: tile width only (gap added separately)
     const steps = tiles.map((t) => {
       if (!t) return 0; // No width for null slots - they don't contribute to layout
       return (t[0] === t[1] ? S : L);
     });
+    // cum[i] = START position of tile i (gap before it already included).
+    // cum[i+1] = cum[i] + steps[i] + gapBefore_{i+1}
+    // Total row width = cum[last] + steps[last].
     const cum: number[] = [0];
-    let prevWasReal = false;
     for (let i = 0; i < steps.length; i++) {
-      // Add gap before this tile only between two real (non-null) tiles
-      const gapBefore = (prevWasReal && steps[i] > 0) ? GH : 0;
-      cum.push(cum[cum.length - 1] + gapBefore + steps[i]);
-      if (steps[i] > 0) prevWasReal = true;
+      if (i < steps.length - 1) {
+        // Gap between tile i and tile i+1, only when both are real tiles
+        const gapAfter = (steps[i] > 0 && steps[i + 1] > 0) ? GH : 0;
+        cum.push(cum[i] + steps[i] + gapAfter);
+      }
     }
+    // Ensure cum has hPerRow+1 entries for legacy w = cum[hPerRow] usage
+    while (cum.length <= hPerRow) cum.push(cum[cum.length - 1]);
     let pFirst = -1, pLast = -1;
     for (let i = 0; i < tiles.length; i++) { if (tiles[i]) { if (pFirst < 0) pFirst = i; pLast = i; } }
-    perRow.push({ tiles, corner, steps, cum, w: cum[hPerRow], first: pFirst, last: pLast });
+    const totalW = pLast >= 0 ? cum[pLast] + steps[pLast] : 0;
+    perRow.push({ tiles, corner, steps, cum, w: totalW, first: pFirst, last: pLast });
   }
 
   const rowBaseX: number[] = [0];
   for (let r = 0; r < rows - 1; r++) {
     const rtl = r % 2 === 1;
     const rLast = perRow[r].last;
-    // Use cum[rLast+1] which is the position AFTER the last tile (includes tile width but not trailing gap)
-    let rLastCum = rLast >= 0 ? perRow[r].cum[rLast + 1] : perRow[r].w;
+    // cum[rLast] + steps[rLast] = position AFTER the last tile
+    let rLastCum = rLast >= 0 ? perRow[r].cum[rLast] + perRow[r].steps[rLast] : perRow[r].w;
     if (!rtl) {
       rowBaseX.push(rowBaseX[r] + rLastCum - perRow[r + 1].w);
     } else {
@@ -492,16 +498,13 @@ function buildSnakeLayout(
       const tileW = isDouble ? S : L;
       const tileH = isDouble ? L : S;
 
-      const cellXLocal = rtl ? (totalRowWidth - cumSteps[i + 1]) : cumSteps[i];
-      // Use cellXLocal directly - steps already include proper gap spacing
-      // No extra offset needed to maintain consistent spacing between tiles
+      // cum[i] is the START of tile i; for RTL mirror it within totalRowWidth
+      const cellXLocal = rtl ? (totalRowWidth - cumSteps[i] - tileW) : cumSteps[i];
       const left = baseX + cellXLocal;
       // Alinhamento vertical: todas as peças alinhadas pelo topo da linha
       const top = cursorY + Math.floor((rowHeight - tileH) / 2);
 
-      // In RTL rows tiles are placed right-to-left, so tile[0] ends up on the RIGHT
-      // visually. Swap pip order for non-doubles so tile[0] stays on the LEFT.
-      const displayTile: Tile = (rtl && t[0] !== t[1]) ? [t[1], t[0]] : t;
+      const displayTile: Tile = rtl ? [t[1], t[0]] as Tile : t;
       placed.push({ tile: displayTile, x: left, y: top, horizontal });
       minX = Math.min(minX, left);
       maxX = Math.max(maxX, left + tileW);
@@ -518,19 +521,22 @@ function buildSnakeLayout(
       const lastTileW = lastIsDouble ? S : L;
 
       if (rtl) {
-        // Left-side corner: aligned with left edge of the last (leftmost) tile
-        // cumSteps[last+1] is position after last tile (no trailing gap)
-        const leftCellStart = last >= 0 ? (totalRowWidth - cumSteps[last + 1]) : 0;
+        // Left-side corner: aligned with left edge of the last (leftmost) tile in RTL
+        // In RTL, the last tile's left edge = totalRowWidth - cum[last] - steps[last]
+        const leftCellStart = last >= 0 ? (totalRowWidth - cumSteps[last] - perRow[rowNum].steps[last]) : 0;
         cornerLeft = baseX + leftCellStart;
       } else {
         // Right-side corner: aligned with right edge of the last tile minus cornerW
-        // cumSteps[last] + lastTileW = right edge of last tile
-        cornerLeft = baseX + (last >= 0 ? cumSteps[last + 1] : 0) - S;
+        // Right edge of last tile = cum[last] + steps[last]
+        cornerLeft = baseX + (last >= 0 ? cumSteps[last] + perRow[rowNum].steps[last] : 0) - S;
       }
       // Corner must start just below the last horizontal tile's centre line with gap
       const lastBottom = cursorY + (lastIsDouble ? L : S + Math.floor((L - S) / 2));
       cornerTop = lastBottom + GH;
-      cursorY = cornerTop + L + GV;
+      // cursorY for the next row: cornerTop + L - GH brings horizontal tiles slightly
+      // closer to the corner piece (~3 px gap at scale 0.6) while keeping any overlap
+      // for double tiles imperceptible (~2 px at scale 0.6).
+      cursorY = cornerTop + L - GH;
 
       placed.push({ tile: cornerTile, x: cornerLeft, y: cornerTop, horizontal: false, isCorner: true });
       minX = Math.min(minX, cornerLeft);
@@ -554,8 +560,8 @@ function buildSnakeLayout(
 function buildHorizBoardTiles(
   board: PlacedTile[],
   opts?: { hPerRow?: number; rows?: number }
-): { padded: (Tile | null)[]; spinnerPaddedIdx: number; rightEndRowParity: 0 | 1 } {
-  if (!board || board.length === 0) return { padded: [], spinnerPaddedIdx: 0, rightEndRowParity: 0 };
+): { padded: (Tile | null)[]; spinnerPaddedIdx: number; rightEndRowParity: 0 | 1; leftEndPaddedIdx: number; leftEndRowParity: 0 | 1 } {
+  if (!board || board.length === 0) return { padded: [], spinnerPaddedIdx: 0, rightEndRowParity: 0, leftEndPaddedIdx: 0, leftEndRowParity: 0 };
   const seq: Tile[] = [];
   let leftCount = 0;
   for (let i = 0; i < board.length; i++) {
@@ -586,7 +592,9 @@ function buildHorizBoardTiles(
   // many tiles occupy each row, unlike length-based heuristics.
   const rightEndPaddedIdx = Math.min(startIndex + seq.length - 1, totalCells - 1);
   const rightEndRowParity = (Math.floor(rightEndPaddedIdx / rowCells) % 2) as 0 | 1;
-  return { padded, spinnerPaddedIdx: centerIndex, rightEndRowParity };
+  const leftEndPaddedIdx  = Math.max(0, startIndex);
+  const leftEndRowParity  = (Math.floor(leftEndPaddedIdx / rowCells) % 2) as 0 | 1;
+  return { padded, spinnerPaddedIdx: centerIndex, rightEndRowParity, leftEndPaddedIdx, leftEndRowParity };
 }
 
 function buildFullBoardLayout(
@@ -595,26 +603,28 @@ function buildFullBoardLayout(
   base: { short: number; long: number },
   gap: number,
   scale: number
-): { placed: SnakePlaced[]; width: number; height: number; horizCount: number; rightEndRowParity: 0 | 1 } {
-  if (!board || board.length === 0) return { placed: [], width: 0, height: 0, horizCount: 0, rightEndRowParity: 0 };
+): { placed: SnakePlaced[]; width: number; height: number; horizCount: number; rightEndRowParity: 0 | 1; leftEndRowParity: 0 | 1; leftEndSnakeIdx: number } {
+  if (!board || board.length === 0) return { placed: [], width: 0, height: 0, horizCount: 0, rightEndRowParity: 0, leftEndRowParity: 0, leftEndSnakeIdx: 0 };
 
   // Step 1 — build horizontal snake (left/right chain only)
-  const { padded, spinnerPaddedIdx, rightEndRowParity } = buildHorizBoardTiles(board, { hPerRow, rows: 13 });
+  const { padded, spinnerPaddedIdx, rightEndRowParity, leftEndRowParity, leftEndPaddedIdx } = buildHorizBoardTiles(board, { hPerRow, rows: 13 });
   const snake = buildSnakeLayout(padded, hPerRow, base, gap, 0, scale);
-  if (!snake.placed.length) return { placed: [], width: 0, height: 0, horizCount: 0, rightEndRowParity: 0 };
+  if (!snake.placed.length) return { placed: [], width: 0, height: 0, horizCount: 0, rightEndRowParity: 0, leftEndRowParity: 0, leftEndSnakeIdx: 0 };
 
   const horizCount = snake.placed.length;
 
-  // Step 2 — find the spinner (board[0]) index inside snake.placed
-  // It lives at padded[spinnerPaddedIdx]; count non-null tiles before it.
+  // Step 2 — find the spinner and left-end tile indices inside snake.placed
   let spinnerSnakeIdx = 0;
+  let leftEndSnakeIdx = 0;
   { let c = 0;
     for (let i = 0; i < padded.length; i++) {
+      if (i === leftEndPaddedIdx) leftEndSnakeIdx = c;
       if (i === spinnerPaddedIdx) { spinnerSnakeIdx = c; break; }
       if (padded[i] !== null) c++;
     }
   }
   spinnerSnakeIdx = Math.min(spinnerSnakeIdx, snake.placed.length - 1);
+  leftEndSnakeIdx  = Math.min(leftEndSnakeIdx,  snake.placed.length - 1);
 
   const S = Math.round(base.short * scale);
   const L = Math.round(base.long * scale);
@@ -706,7 +716,7 @@ function buildFullBoardLayout(
   const shiftY = -minY;
   for (const p of allPlaced) { p.x += shiftX; p.y += shiftY; }
 
-  return { placed: allPlaced, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), horizCount, rightEndRowParity };
+  return { placed: allPlaced, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), horizCount, rightEndRowParity, leftEndRowParity, leftEndSnakeIdx };
 }
 
 // ─── Domino piece images ──────────────────────────────────────────────────────
@@ -887,10 +897,10 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
   const lo = Math.min(tile[0], tile[1]);
   const imgSrc = DOMINO_IMAGES[`${hi},${lo}`];
 
-  // Images are named first-second.png where first = top half, second = bottom half.
-  // Files are always lower-higher.png so lo is on top.
-  // topMatchesTile0: tile[0] appears at image-top position (i.e. tile[0] is lo).
-  const topMatchesTile0 = tile[0] === lo;
+  // Images named first-second.png: first = top half, second = bottom half.
+  // Non-0 pairs: lo is on top (e.g. 1-6.png → 1 top). 0-pairs: hi is on top (e.g. 6-0.png → 6 top).
+  const imageTopValue = lo === 0 ? hi : lo;
+  const topMatchesTile0 = tile[0] === imageTopValue;
   const rotation = horizontal
     ? (topMatchesTile0 ? '-90deg' : '90deg')
     : (topMatchesTile0 ? '0deg'   : '180deg');
@@ -1438,7 +1448,11 @@ export function GameScreen({ navigation, route }: Props) {
   const errorFadeAnim   = useRef(new Animated.Value(0)).current;
   const joinPulseAnim   = useRef(new Animated.Value(0)).current;
   const timerPulseAnim  = useRef(new Animated.Value(1)).current;
-  const prevStateRef   = useRef<GameState | null>(null);
+  const prevStateRef    = useRef<GameState | null>(null);
+  const lastSeqRef      = useRef<number>(-1);
+  // Tracks the highest round number ever seen — never reset, not even on retry/reconnect.
+  // Used to hard-drop states from past rounds regardless of seq or prevStateRef state.
+  const currentRoundRef = useRef<number>(0);
   const emojiAnimRef   = useRef<Map<string, Animated.Value>>(new Map());
   const bounceAnimRef  = useRef<Map<string, Animated.Value>>(new Map());
   const sideAnimRef    = useRef<Map<string, Animated.Value>>(new Map());
@@ -1688,9 +1702,37 @@ export function GameScreen({ navigation, route }: Props) {
         if (!mounted) return;
         socketRef.current = socket;
 
-        const onGameState = (state: GameState) => {
+        const onGameState = (state: any) => {
           didReceiveState = true;
           if (joinTimeout) { clearTimeout(joinTimeout); joinTimeout = null; }
+          const incomingSeq: number   = typeof state?.seq         === 'number' ? state.seq         : -1;
+          const incomingRound: number = typeof state?.roundNumber === 'number' ? state.roundNumber : 0;
+
+          // ── Hard-drop: state belongs to a past round we have already advanced past ──
+          // currentRoundRef is NEVER reset (survives retries/reconnects), so this guard
+          // is always reliable even when prevStateRef is null.
+          if (incomingRound > 0 && incomingRound < currentRoundRef.current) return;
+
+          // ── New round detected: advance the round counter and reset seq ──────────
+          // This is the ONLY place lastSeqRef is reset to -1.
+          // We do NOT reset it in onRoundEnded because the server seq is monotonically
+          // increasing across rounds — the first round-N+1 state always has seq > last
+          // round-N state. Resetting in onRoundEnded would allow a stale round-N
+          // game:sync_request response (same seq) to slip through during the 4-second
+          // inter-round pause.
+          if (incomingRound > currentRoundRef.current) {
+            currentRoundRef.current = incomingRound;
+            lastSeqRef.current = -1;
+          }
+
+          // ── Board-cleared fallback (roundNumber missing / zero) ───────────────────
+          const incomingBoardLen: number = Array.isArray(state?.board) ? state.board.length : 0;
+          const prevBoardLen: number     = prevStateRef.current?.board?.length ?? 0;
+          if (prevBoardLen > 0 && incomingBoardLen === 0) lastSeqRef.current = -1;
+
+          // ── Seq deduplication (within the same round) ────────────────────────────
+          if (incomingSeq !== -1 && incomingSeq <= lastSeqRef.current) return;
+          if (incomingSeq !== -1) lastSeqRef.current = incomingSeq;
           const normalized = normalizeGameState(state);
           const prev = prevStateRef.current;
           setGame(normalized);
@@ -1746,6 +1788,14 @@ export function GameScreen({ navigation, route }: Props) {
 
         const onEnded = (result: any) => { if (timerRef.current) clearInterval(timerRef.current); setGameResult(result); setResultModal(true); };
         const onRoundEnded = (data: any) => {
+          // Advance currentRoundRef so any stale same-round states are hard-dropped.
+          // Do NOT reset lastSeqRef here: the server seq counter never resets between
+          // rounds, so the first state of round N+1 will always have a higher seq than
+          // the last state of round N. Resetting to -1 here would allow a stale
+          // game:sync_request response (with the last round's seq) to slip through
+          // during the 4-second inter-round pause and show the old hand to the player.
+          const endedRound: number = typeof data?.roundNumber === 'number' ? data.roundNumber : 0;
+          if (endedRound > 0) currentRoundRef.current = Math.max(currentRoundRef.current, endedRound);
           setRoundBanner({
             roundNumber:     data.roundNumber,
             winnerTeam:      data.winnerTeam,
@@ -1770,6 +1820,9 @@ export function GameScreen({ navigation, route }: Props) {
         const onConnect = () => {
           if (disconnectTimeout) clearTimeout(disconnectTimeout);
           setDisconnected(false);
+          // Request full state sync after reconnect — we may have missed
+          // the round-start broadcast while the socket was offline.
+          socket.emit('game:sync_request', { gameId });
         };
 
         socket.on('game:state', onGameState);
@@ -1818,6 +1871,7 @@ export function GameScreen({ navigation, route }: Props) {
     disconnectSocket();
     socketRef.current = null;
     prevStateRef.current = null;
+    lastSeqRef.current = -1;
     setDisconnected(false);
     setGameError(null);
     setJoinAttempt((n) => n + 1);
@@ -2310,15 +2364,43 @@ export function GameScreen({ navigation, route }: Props) {
 
                   const gapPx = Math.round(2 * boardScale);
 
-                  // Chain endpoints: horizTiles[0] = seq[0] = left open end (always),
-                  // horizTiles[last] = seq[last] = right open end (always).
-                  // Using min/max-x is wrong when an end tile sits in an RTL snake row,
-                  // because RTL rows display right→left so the first padded index is the
-                  // rightmost screen position — not the leftmost.
+                  // rightEndRowParity: 0 = LTR row (chain arrives from left), 1 = RTL row.
+                  // Declared early so rightEndP IIFE can use it.
+                  const rightComesFromLeft = layout.rightEndRowParity === 0;
+                  // leftEndRowParity: 0 = LTR (left-end tile is visually leftmost in its row),
+                  //                   1 = RTL (left-end tile is visually rightmost in its row).
+                  const leftEndIsInLTR = layout.leftEndRowParity === 0;
+
+                  // Chain endpoints: leftEndP = visual left open end, rightEndP = visual right open end.
+                  // We find the endpoint by picking the tile at the extreme visual position in the
+                  // last chain row: max-X for LTR rows, min-X for RTL rows.
                   const horizTiles = layout.placed.slice(0, layout.horizCount > 0 ? layout.horizCount : layout.placed.length);
                   const chainTiles = horizTiles.filter(t => !t.isCorner);
-                  const leftEndP  = chainTiles[0] ?? horizTiles[0];
-                  const rightEndP = chainTiles[chainTiles.length - 1] ?? horizTiles[horizTiles.length - 1];
+                  // leftEndP: chain's left open-end tile (may be a corner).
+                  const leftEndP = (() => {
+                    const candidate = horizTiles[layout.leftEndSnakeIdx];
+                    if (candidate) return candidate;
+                    if (chainTiles.length === 0) return horizTiles[0] ?? horizTiles[horizTiles.length - 1];
+                    return leftEndIsInLTR
+                      ? chainTiles.reduce((min, t) => t.x < min.x ? t : min)
+                      : chainTiles.reduce((max, t) => t.x > max.x ? t : max);
+                  })();
+                  const leftEndIsCorner = leftEndP?.isCorner ?? false;
+
+                  // rightEndP: chain's right open-end tile (may be a corner).
+                  // horizTiles.last is the actual last placed tile in snake order.
+                  const rightEndActual = horizTiles[horizTiles.length - 1] ?? null;
+                  const rightEndIsCorner = rightEndActual?.isCorner ?? false;
+                  const rightEndP = rightEndIsCorner ? rightEndActual : (() => {
+                    if (chainTiles.length === 0) return horizTiles[horizTiles.length - 1];
+                    const lastTile = chainTiles[chainTiles.length - 1];
+                    const rowWindow = Math.round(L_u * boardScale);
+                    const lastRowTiles = chainTiles.filter(t => Math.abs(t.y - lastTile.y) < rowWindow);
+                    if (lastRowTiles.length === 0) return lastTile;
+                    return rightComesFromLeft
+                      ? lastRowTiles.reduce((max, t) => t.x > max.x ? t : max)
+                      : lastRowTiles.reduce((min, t) => t.x < min.x ? t : min);
+                  })();
 
                   // Top/bottom endpoints (vertical CRUZADA branches)
                   // Find tiles that are not in the horizontal chain
@@ -2349,28 +2431,38 @@ export function GameScreen({ navigation, route }: Props) {
                   const topGrowingLeft = topTiles.length % 2 === 0; // Odd count = should grow right
                   const bottomGrowingLeft = bottomTiles.length % 2 === 0;
 
-                  // rightEndRowParity: 0 = LTR row (chain arrives from left), 1 = RTL row.
-                  // Derived from the right chain end's padded-array index — accurate regardless
-                  // of row fill level, unlike the old length-based heuristic.
-                  const rightComesFromLeft = layout.rightEndRowParity === 0;
+                  // DEBUG — remove after fixing ghosts
+                  if (__DEV__ && (leftPlay || rightPlay)) {
+                    const dbgPlaced = layout.placed.map((p, i) =>
+                      `[${i}](${p.x.toFixed(0)},${p.y.toFixed(0)} h=${p.horizontal} c=${!!p.isCorner})`).join(' ');
+                    console.log('[ghost] leftEndSnakeIdx=', layout.leftEndSnakeIdx,
+                      'leftEndP=', leftEndP ? `(${leftEndP.x.toFixed(0)},${leftEndP.y.toFixed(0)} h=${leftEndP.horizontal})` : 'null',
+                      'rightEndP=', rightEndP ? `(${rightEndP.x.toFixed(0)},${rightEndP.y.toFixed(0)} h=${rightEndP.horizontal})` : 'null',
+                      'horizCount=', layout.horizCount, 'placed=', layout.placed.length,
+                      'layoutW=', layoutW.toFixed(0), 'layoutH=', layoutH.toFixed(0),
+                      'rightParity=', layout.rightEndRowParity, 'leftParity=', layout.leftEndRowParity,
+                      '\nplaced:', dbgPlaced);
+                  }
 
-                  // Determine which physical side (left/right of the container) each ghost occupies.
-                  // Left ghost always extends leftward.
-                  // Right chain end: LTR row → ghost goes RIGHT; RTL row → ghost goes LEFT.
-                  const leftGhostOnLeft  = true;           // left ghost always extends leftward
-                  const rightGhostOnLeft = !rightComesFromLeft; // RTL row → right ghost on LEFT too
+                  // Ghost side: corners have no horizontal extension (ghost goes BELOW them).
+                  const leftGhostOnLeft  = !leftEndIsCorner && leftEndIsInLTR;
+                  const rightGhostOnLeft = !rightEndIsCorner && !rightComesFromLeft;
 
                   const ghostExt_px = ghostW_px + gapPx;
-                  // Accumulate how much extra space is needed on each physical side
                   let leftSlot_px  = 0;
                   let rightSlot_px = 0;
-                  if (leftPlay)  { if (leftGhostOnLeft)  leftSlot_px  += ghostExt_px; else rightSlot_px += ghostExt_px; }
-                  if (rightPlay) { if (rightGhostOnLeft) leftSlot_px  += ghostExt_px; else rightSlot_px += ghostExt_px; }
+                  if (leftPlay  && !leftEndIsCorner)  { if (leftGhostOnLeft)  leftSlot_px += ghostExt_px; else rightSlot_px += ghostExt_px; }
+                  if (rightPlay && !rightEndIsCorner) { if (rightGhostOnLeft) leftSlot_px += ghostExt_px; else rightSlot_px += ghostExt_px; }
                   const extW = layoutW + leftSlot_px + rightSlot_px;
 
-                  // Y position: center ghost on the endpoint tile vertically.
-                  const ghostH_u = ghostHoriz ? S_u : L_u;
+                  const ghostH_u  = ghostHoriz ? S_u : L_u;
+                  const ghostH_px = Math.round(ghostH_u * boardScale);
+                  const cornerL_px = Math.round(L_u * boardScale);
+                  const cornerS_px = Math.round(S_u * boardScale);
+
+                  // Y: center on endpoint tile; for corners, place ghost directly below.
                   const ghostY = (endP: typeof leftEndP): number => {
+                    if (endP.isCorner) return endP.y + cornerL_px + gapPx;
                     const endTileH_u = endP.horizontal ? S_u : L_u;
                     const centerOffset = Math.round(((endTileH_u - ghostH_u) / 2) * boardScale);
                     return endP.y + centerOffset;
@@ -2383,18 +2475,29 @@ export function GameScreen({ navigation, route }: Props) {
                       : activeGhostTile;
                   };
 
-                  const leftEndTileW_px  = Math.round((leftEndP.horizontal  ? L_u : S_u) * boardScale);
+                  const leftEndTileW_px  = Math.round((leftEndP.horizontal ? L_u : S_u) * boardScale);
                   const rightEndTileW_px = Math.round((rightEndP.horizontal ? L_u : S_u) * boardScale);
 
-                  // Ghost X positions (all coords are within the extW container, tiles shifted right by leftSlot_px)
-                  // Left chain end is in LTR row → ghost sits immediately to the LEFT of the end tile
-                  const leftGhostX_px = leftEndP.x + leftSlot_px - ghostW_px - gapPx;
+                  // X: corner ends are centered on the corner; others use horizontal formula.
+                  const leftEndTileLeft_px  = leftEndP.x + leftSlot_px;
+                  const leftGhostX_px = leftEndIsCorner
+                    ? leftEndTileLeft_px + Math.round((cornerS_px - ghostW_px) / 2)
+                    : leftGhostOnLeft
+                      ? leftEndTileLeft_px - ghostW_px - gapPx
+                      : leftEndTileLeft_px + leftEndTileW_px + gapPx;
 
-                  // Right chain end: LTR row → ghost to the RIGHT; RTL row → ghost to the LEFT
                   const rightEndTileLeft_px = rightEndP.x + leftSlot_px;
-                  const rightGhostX_px = rightComesFromLeft
-                    ? rightEndTileLeft_px + rightEndTileW_px + gapPx          // LTR → ghost RIGHT of tile
-                    : rightEndTileLeft_px - ghostW_px - gapPx;                // RTL → ghost LEFT of tile
+                  const rightGhostX_px = rightEndIsCorner
+                    ? rightEndTileLeft_px + Math.round((cornerS_px - ghostW_px) / 2)
+                    : rightComesFromLeft
+                      ? rightEndTileLeft_px + rightEndTileW_px + gapPx
+                      : rightEndTileLeft_px - ghostW_px - gapPx;
+
+                  // Extend container height if corner ghosts extend below the laid-out board.
+                  let extraBelowH = 0;
+                  if (leftPlay  && leftEndIsCorner)  extraBelowH = Math.max(extraBelowH, ghostY(leftEndP)  + ghostH_px - layoutH + gapPx);
+                  if (rightPlay && rightEndIsCorner) extraBelowH = Math.max(extraBelowH, ghostY(rightEndP) + ghostH_px - layoutH + gapPx);
+                  const extH = layoutH + Math.max(0, extraBelowH);
 
                   // Top/bottom ghost dimensions and positions
                   const topbottomGhostW_u = ghostHoriz ? L_u : S_u;
@@ -2435,7 +2538,7 @@ export function GameScreen({ navigation, route }: Props) {
 
                   return (
                     <View style={[styles.snakeBoardFrame, { paddingTop: boardPad + 40, paddingBottom: boardPad + 12, paddingHorizontal: boardPad + 24 }]}>
-                      <View style={[styles.snakeBoard, { width: extW, height: layoutH }]}>
+                      <View style={[styles.snakeBoard, { width: extW, height: extH }]}>
                         {/* Board tiles (shifted right by leftSlot_px) */}
                         {layout.placed.map((p, i) => {
                           return (
@@ -2882,32 +2985,11 @@ export function GameScreen({ navigation, route }: Props) {
         // TileHandImage always renders vertically: width = short, height = long
         const ghostW = TILE_DIMS.board.short;
         const ghostH = TILE_DIMS.board.long;
-        const startY = nativeDrag.startY;
-        const boardCX = boardScreenCenterXRef.current;
-        // Rotation magnitude grows as tile is dragged upward
-        const rotMag = nativeDragPos.y.interpolate({
-          inputRange: [startY - 70, startY - 10],
-          outputRange: [90, 0],
-          extrapolate: 'clamp',
-        });
-        // Direction: left of board center = negative (CCW), right = positive (CW)
-        // 80px transition zone so direction doesn't snap abruptly at dead-center
-        const rotDir = nativeDragPos.x.interpolate({
-          inputRange: [boardCX - 80, boardCX + 80],
-          outputRange: [-1, 1],
-          extrapolate: 'clamp',
-        });
-        const rot = (Animated.multiply(rotMag, rotDir) as any).interpolate({
-          inputRange: [-90, 90],
-          outputRange: ['-90deg', '90deg'],
-          extrapolate: 'clamp',
-        });
         const scl = nativeDragPos.y.interpolate({
-          inputRange: [startY - 70, startY],
+          inputRange: [nativeDrag.startY - 70, nativeDrag.startY],
           outputRange: [1.06, 1],
           extrapolate: 'clamp',
         });
-        // pageX/pageY are screen coords; subtract safe insets since ghost is inside SafeAreaView
         const offsetLeft = safeInsets.left;
         const offsetTop  = safeInsets.top;
         return (
@@ -2919,7 +3001,7 @@ export function GameScreen({ navigation, route }: Props) {
               top:  Animated.subtract(nativeDragPos.y, ghostH * 0.7 + offsetTop),
               zIndex: 99999,
               opacity: 0.88,
-              transform: [{ rotate: rot }, { scale: scl }],
+              transform: [{ scale: scl }],
             }}
           >
             <TileHandImage tile={nativeDrag.tile} selected={true} playable={true} />
@@ -2929,17 +3011,11 @@ export function GameScreen({ navigation, route }: Props) {
 
       {/* ── Web drag ghost — floats above everything, outside the hand ScrollView ── */}
       {Platform.OS === 'web' && webDrag && (() => {
-        const isDouble = webDrag.tile[0] === webDrag.tile[1];
         // TileHandImage always renders vertically: width = short, height = long
         const ghostW = TILE_DIMS.hand.short;
         const ghostH = TILE_DIMS.hand.long;
-        // Animate "lie down" toward the side the pointer is on
         const dy = webDrag.startY - webDrag.y;
-        const progress = Math.min(1, Math.max(0, (dy - 10) / 60));
-        const goingLeft = webDrag.x < boardScreenCenterXRef.current;
-        // CCW (−90°) when going left, CW (+90°) when going right
-        const rotDeg = isDouble ? 0 : progress * (goingLeft ? -90 : 90);
-        const sc = 1 + progress * 0.06;
+        const sc = 1 + Math.min(1, Math.max(0, (dy - 10) / 60)) * 0.06;
         return (
           <View
             pointerEvents="none"
@@ -2951,8 +3027,7 @@ export function GameScreen({ navigation, route }: Props) {
               opacity: 0.88,
               ...(Platform.OS === 'web' ? ({
                 pointerEvents: 'none',
-                transform: `rotate(${rotDeg}deg) scale(${sc})`,
-                transition: 'transform 0.12s ease',
+                transform: `scale(${sc})`,
                 transformOrigin: 'center center',
               } as any) : null),
             }}
