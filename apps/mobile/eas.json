@@ -33,7 +33,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.dominoclub.com.br/api/v1"
+        "EXPO_PUBLIC_API_URL": "http://34.233.108.8:3001/api/v1"
       }
     }
   },
