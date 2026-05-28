@@ -721,12 +721,14 @@ async function handleGameEnd(
   } else {
     // Start next round after a 4-second pause (client shows round banner)
     setTimeout(() => {
-      const nextState = initNextRound(state);
+      // CRITICAL FIX: Get FRESH state from activeGames, NOT the stale closure variable
+      const freshState = activeGames.get(gameId);
+      if (!freshState) return;
+      const nextState = initNextRound(freshState);
       activeGames.set(gameId, nextState);
       broadcastGameState(gameId, nextState, io);
       startTurnTimer(gameId, nextState, io);
       scheduleBotTurn(gameId, nextState, io);
-      logger.info('Next round started', { gameId, round: nextState.roundNumber });
     }, 4000);
   }
 }

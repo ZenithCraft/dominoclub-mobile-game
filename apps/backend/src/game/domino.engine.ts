@@ -100,7 +100,9 @@ export function initGame(
   players: { userId: string; team: number; seat: number; isBot: boolean }[]
 ): GameState {
   const allTiles = shuffle(generateTiles());
+  // FIX: Always 6 tiles per player (consistent with fakeSocket and user requirement)
   const tilesPerPlayer = 6;
+
   const playerStates: PlayerState[] = players.map((p, i) => ({
     ...p,
     hand: allTiles.slice(i * tilesPerPlayer, (i + 1) * tilesPerPlayer),
@@ -109,6 +111,7 @@ export function initGame(
   }));
 
   const boneyard = allTiles.slice(players.length * tilesPerPlayer);
+  console.log(`[INIT GAME] Boneyard: ${boneyard.length}, Hands: ${playerStates.map(p => p.hand.length).join(', ')}`);
   const firstPlayInfo = findFirstPlayer(playerStates);
 
   return {
@@ -169,16 +172,27 @@ function findFirstPlayer(players: PlayerState[]): { index: number; tile: Tile } 
  */
 export function initNextRound(state: GameState): GameState {
   const allTiles = shuffle(generateTiles());
+
+  // EMERGENCY FIX: Force 2-player mode for 1v1 games
+  // For some reason, players.length might be wrong, so we check both length and actual unique userIds
+  const uniquePlayers = state.players.filter((p, i, arr) => arr.findIndex(x => x.userId === p.userId) === i);
+  const playerCount = uniquePlayers.length;
+  // FIX: Always 6 tiles per player
   const tilesPerPlayer = 6;
 
-  const players: PlayerState[] = state.players.map((p, i) => ({
-    ...p,
-    hand: allTiles.slice(i * tilesPerPlayer, (i + 1) * tilesPerPlayer),
-    connected: p.connected,
-    passedLastTurn: false,
-  }));
+  const players: PlayerState[] = uniquePlayers.map((p, i) => {
+    const startIdx = i * tilesPerPlayer;
+    const endIdx = (i + 1) * tilesPerPlayer;
+    const hand = allTiles.slice(startIdx, endIdx);
+    return {
+      ...p,
+      hand,
+      connected: p.connected,
+      passedLastTurn: false,
+    };
+  });
 
-  const boneyard = allTiles.slice(state.players.length * tilesPerPlayer);
+  const boneyard = allTiles.slice(playerCount * tilesPerPlayer);
   const firstPlayInfo = findFirstPlayer(players);
 
   return {

@@ -386,10 +386,11 @@ class FakeSocket {
     // Restart next round after 4 s (banner shows for 3.5 s)
     setTimeout(() => {
       const deck = shuffle([...VISIBLE_TILES]);
-      const perPlayer = Math.floor(deck.length / this.state.players.length);
+      // FIX: Always deal 6 tiles per player (same as initial deal)
+      const tilesPerPlayer = 6;
       const players = this.state.players.map((p: any, i: number) => ({
         ...p,
-        hand: deck.slice(i * perPlayer, (i + 1) * perPlayer),
+        hand: deck.slice(i * tilesPerPlayer, (i + 1) * tilesPerPlayer),
       }));
       const opener = findHighestDouble(players);
       this.state = {
@@ -420,10 +421,11 @@ class FakeSocket {
     // If it's a fresh game with no board, re-deal shuffled hands so bots get a proper mix
     if (state && (!state.board || state.board.length === 0) && !state.firstPlayMade) {
       const deck = shuffle([...VISIBLE_TILES]);
-      const perPlayer = Math.floor(deck.length / state.players.length);
+      // FIX: Always deal 6 tiles per player
+      const tilesPerPlayer = 6;
       const players = state.players.map((p: any, i: number) => ({
         ...p,
-        hand: deck.slice(i * perPlayer, (i + 1) * perPlayer),
+        hand: deck.slice(i * tilesPerPlayer, (i + 1) * tilesPerPlayer),
       }));
       // Determine who holds the highest double — they go first and must play it
       const opener = findHighestDouble(players);

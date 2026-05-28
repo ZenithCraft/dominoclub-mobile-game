@@ -1122,6 +1122,21 @@ const oppStyles = StyleSheet.create({
   avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
 });
 
+// ─── Opponent Timer (same style as player timer) ──────────────────────────────
+
+function OpponentTimer({ timer, isTurn }: { timer: number; isTurn: boolean }) {
+  if (!isTurn) return null;
+  const pulseAnim = usePulse(true);
+  const timerStyle = timer > 10 ? styles.timerBadgeGreen
+    : timer > 5 ? styles.timerBadgeGold
+    : styles.timerBadgeRed;
+  return (
+    <Animated.View style={[styles.timerBadge, timerStyle, { transform: [{ scale: pulseAnim }] }]}>
+      <Text style={styles.timerText}>{timer}</Text>
+    </Animated.View>
+  );
+}
+
 // ─── Side player card (4p left/right) — horizontal pill, same as OpponentCard ─
 
 function SidePlayerCard({ player, tileCount, isTurn, team = 0, isOpponent = false }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number; isOpponent?: boolean }) {
@@ -1430,6 +1445,9 @@ export function GameScreen({ navigation, route }: Props) {
   }, []);
 
   const [turnTimer, setTurnTimer]       = useState(15);
+  const [opponentTimer, setOpponentTimer] = useState(15);
+  const turnEndTimeRef = useRef<number | null>(null);
+  const opponentEndTimeRef = useRef<number | null>(null);
   const [resultModal, setResultModal]   = useState(false);
   const [playAgainSearching, setPlayAgainSearching] = useState(false);
   const [gameError, setGameError]       = useState<string | null>(null);
@@ -1537,18 +1555,65 @@ export function GameScreen({ navigation, route }: Props) {
   const targetScore   = currentGame?.targetScore ?? 6;
 
   // ── Timer ──────────────────────────────────────────────────────────────────
+  // Timestamp-based timer that works even when browser tab is inactive
   const resetTurnTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
+    turnEndTimeRef.current = Date.now() + 15000;
+    opponentEndTimeRef.current = Date.now() + 15000;
     setTurnTimer(15);
+    setOpponentTimer(15);
     timerRef.current = setInterval(() => {
-      setTurnTimer((t) => {
-        if (t <= 1) { clearInterval(timerRef.current!); return 0; }
-        return t - 1;
-      });
-    }, 1000);
+      if (turnEndTimeRef.current) {
+        const remaining = Math.ceil((turnEndTimeRef.current - Date.now()) / 1000);
+        const newValue = Math.max(0, remaining);
+        setTurnTimer(newValue);
+        if (newValue <= 0) {
+          clearInterval(timerRef.current!);
+        }
+      }
+    }, 100);
   }, []);
 
-  // Removed frontend auto-pass on timer=0. Backend will now auto-play a valid piece on timeout.
+  // Opponent timer countdown - only count when it's opponent's turn
+  useEffect(() => {
+    if (isMyTurn || !currentGame || currentGame.status !== 'playing') {
+      setOpponentTimer(15);
+      opponentEndTimeRef.current = null;
+      return;
+    }
+    opponentEndTimeRef.current = Date.now() + opponentTimer * 1000;
+    const interval = setInterval(() => {
+      if (opponentEndTimeRef.current) {
+        const remaining = Math.ceil((opponentEndTimeRef.current - Date.now()) / 1000);
+        const newValue = Math.max(0, remaining);
+        setOpponentTimer(newValue);
+        if (newValue <= 0) {
+          clearInterval(interval);
+        }
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [isMyTurn, currentGame?.status, currentGame?.currentPlayerIndex]);
+
+  // Auto-pass when timer reaches 0 (no auto-play)
+  const autoPassExecutedRef = useRef(false);
+  useEffect(() => {
+    if (turnTimer !== 0 || !isMyTurn || !currentGame) {
+      autoPassExecutedRef.current = false;
+      return;
+    }
+    // Prevent multiple executions
+    if (autoPassExecutedRef.current) return;
+    autoPassExecutedRef.current = true;
+
+    // Auto-pass when time runs out
+    const timeout = setTimeout(() => {
+      handlePass();
+    }, 100);
+
+    return () => clearTimeout(timeout);
+  }, [turnTimer, isMyTurn]);
+
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
   // Heartbeat animation when ≤ 10 seconds remain
@@ -1714,12 +1779,10 @@ export function GameScreen({ navigation, route }: Props) {
           if (incomingRound > 0 && incomingRound < currentRoundRef.current) return;
 
           // ── New round detected: advance the round counter and reset seq ──────────
-          // This is the ONLY place lastSeqRef is reset to -1.
-          // We do NOT reset it in onRoundEnded because the server seq is monotonically
-          // increasing across rounds — the first round-N+1 state always has seq > last
-          // round-N state. Resetting in onRoundEnded would allow a stale round-N
-          // game:sync_request response (same seq) to slip through during the 4-second
-          // inter-round pause.
+          // Reset lastSeqRef when detecting a new round to ensure the first state of the
+          // new round is always accepted. This prevents a race condition where a stale
+          // game:sync_request response (from the previous round) that arrives just after
+          // the new round starts could update lastSeqRef and block the new round's first state.
           if (incomingRound > currentRoundRef.current) {
             currentRoundRef.current = incomingRound;
             lastSeqRef.current = -1;
@@ -1735,10 +1798,26 @@ export function GameScreen({ navigation, route }: Props) {
           if (incomingSeq !== -1) lastSeqRef.current = incomingSeq;
           const normalized = normalizeGameState(state);
           const prev = prevStateRef.current;
-          setGame(normalized);
-          resetTurnTimer();
+
+          // DEBUG: Log hand size changes between rounds
           const me = normalized.players.find((p) => p.userId === myUserId) ?? normalized.players.find((p) => p.seat === 0);
           const newHand = me?.hand ?? [];
+          const prevMe = prev?.players?.find((p) => p.userId === myUserId);
+          // Log on every state update for debugging
+          console.log(`[GAME STATE] Round ${normalized.roundNumber}, Hand size: ${newHand?.length}, Status: ${normalized.status}`);
+          // CRITICAL: On round change, ensure we completely replace the hand, never accumulate
+          if (normalized.roundNumber !== prev?.roundNumber) {
+            console.log(`[ROUND CHANGE] Round ${prev?.roundNumber} -> ${normalized.roundNumber}`);
+            // Force hand replacement by clearing selected tile
+            setSelectedTile(null);
+            // If server sent wrong hand size, log error
+            if (newHand?.length > 7) {
+              console.error(`[CRITICAL ERROR] Received ${newHand.length} tiles! Expected 6 or 7.`);
+            }
+          }
+
+          setGame(normalized);
+          resetTurnTimer();
           const cur = useGameStore.getState().selectedTile;
           if (cur) {
             const idx = cur.handIndex;
@@ -2258,7 +2337,10 @@ export function GameScreen({ navigation, route }: Props) {
                       });
                     }}
                   >
-                    <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} isTurn={turnUserId === topOpponent.userId} team={topOpponent.team} matchScore={currentGame.matchScores?.[topOpponent.team] ?? 0} isOpponent={topOpponent.team !== myTeam} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <OpponentCard player={topOpponent} tileCount={topOpponent.hand.length} isTurn={turnUserId === topOpponent.userId} team={topOpponent.team} matchScore={currentGame.matchScores?.[topOpponent.team] ?? 0} isOpponent={topOpponent.team !== myTeam} />
+                      <OpponentTimer timer={opponentTimer} isTurn={turnUserId === topOpponent.userId} />
+                    </View>
                     {renderPlayerFx(topOpponent.userId, 'top')}
                   </View>
                 </View>
@@ -2276,7 +2358,10 @@ export function GameScreen({ navigation, route }: Props) {
                       });
                     }}
                   >
-                    <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} team={leftOpponent.team} matchScore={currentGame.matchScores?.[leftOpponent.team] ?? 0} isOpponent={leftOpponent.team !== myTeam} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <OpponentTimer timer={opponentTimer} isTurn={turnUserId === leftOpponent.userId} />
+                      <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} team={leftOpponent.team} matchScore={currentGame.matchScores?.[leftOpponent.team] ?? 0} isOpponent={leftOpponent.team !== myTeam} />
+                    </View>
                     {renderPlayerFx(leftOpponent.userId, 'left')}
                   </View>
                 </View>
@@ -2292,7 +2377,10 @@ export function GameScreen({ navigation, route }: Props) {
                       });
                     }}
                   >
-                    <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} team={rightOpponent.team} matchScore={currentGame.matchScores?.[rightOpponent.team] ?? 0} isOpponent={rightOpponent.team !== myTeam} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} team={rightOpponent.team} matchScore={currentGame.matchScores?.[rightOpponent.team] ?? 0} isOpponent={rightOpponent.team !== myTeam} />
+                      <OpponentTimer timer={opponentTimer} isTurn={turnUserId === rightOpponent.userId} />
+                    </View>
                     {renderPlayerFx(rightOpponent.userId, 'right')}
                   </View>
                 </View>
@@ -2837,7 +2925,7 @@ export function GameScreen({ navigation, route }: Props) {
               </ScrollView>
 
               <View style={styles.playerCardWithTimer}>
-                {currentGame?.status === 'playing' && (
+                {currentGame?.status === 'playing' && isMyTurn && (
                   <Animated.View style={[
                     styles.timerBadge,
                     turnTimer > 10 ? styles.timerBadgeGreen
