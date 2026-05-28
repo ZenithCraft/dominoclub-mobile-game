@@ -36,20 +36,6 @@ function isValidCpf(cpf: string): boolean {
 
 const LIME = '#4ade80';
 
-function IconCircle({ children }: { children: React.ReactNode }) {
-  return (
-    <View style={iconCircleStyles.circle}>
-      {children}
-    </View>
-  );
-}
-const iconCircleStyles = StyleSheet.create({
-  circle: {
-    width: 52, height: 52, borderRadius: 26,
-    backgroundColor: '#1CBB3D',
-    alignItems: 'center', justifyContent: 'center',
-  },
-});
 
 export function RegisterScreen({ navigation, route }: Props) {
   const [name, setName]             = useState('');
@@ -180,9 +166,14 @@ export function RegisterScreen({ navigation, route }: Props) {
               {/* Right column — form */}
               <View style={styles.right}>
                 <View style={styles.formInner}>
-                  <IconCircle>
+                  <LinearGradient
+                    colors={['#BEF311', '#1CBB3D']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.iconCircle}
+                  >
                     <IconUser size={32} color={colors.textPrimary} accessibilityLabel="Usuário" />
-                  </IconCircle>
+                  </LinearGradient>
                   <Text style={styles.cardTitle}>Criar nova conta</Text>
 
                   <Input
@@ -298,26 +289,27 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.xxl,
+    paddingHorizontal: Platform.OS === 'web' ? spacing.xxl : spacing.lg,
     paddingVertical: spacing.xl,
-    paddingLeft: spacing.xxl + 16,
+    paddingLeft: Platform.OS === 'web' ? spacing.xxl + 16 : spacing.lg,
   },
 
   panel: {
-    flexDirection: 'row',
+    flexDirection: Platform.OS === 'web' ? 'row' : 'column',
     backgroundColor: 'rgba(34, 92, 52, 0.45)',
     borderWidth: 1,
     borderColor: 'rgba(187, 255, 0, 0.16)',
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
-  panelWeb: Platform.OS === 'web' ? ({ width: 720 } as any) : {},
+  panelWeb: Platform.OS === 'web' ? ({ width: 720 } as any) : { width: '100%' },
 
   left: {
-    flex: 1,
+    flex: Platform.OS === 'web' ? 1 : undefined,
+    width: Platform.OS === 'web' ? undefined : '100%',
     paddingTop: spacing.xl,
-    paddingBottom: spacing.xl,
-    paddingLeft: spacing.xxl,
+    paddingBottom: Platform.OS === 'web' ? spacing.xl : spacing.md,
+    paddingLeft: Platform.OS === 'web' ? spacing.xxl : spacing.xl,
     paddingRight: spacing.xl,
     justifyContent: 'center',
     alignItems: 'center',
@@ -326,7 +318,7 @@ const styles = StyleSheet.create({
   welcome: {
     fontSize: 52,
     fontWeight: '800',
-    color: '#ffffff',
+    color: Platform.OS === 'web' ? '#ffffff' : '#FDD835',
     letterSpacing: 0.5,
     textAlign: 'center',
     fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
@@ -347,22 +339,29 @@ const styles = StyleSheet.create({
   },
 
   vertDivider: {
-    width: 14,
+    width: Platform.OS === 'web' ? 14 : '100%',
+    height: Platform.OS === 'web' ? undefined : 14,
     alignItems: 'center',
     justifyContent: 'center',
+    display: Platform.OS === 'web' ? 'flex' : 'none',
   },
   vertGrad: { width: 3, height: 230, borderRadius: 2 },
 
   right: {
-    flex: 1,
+    flex: Platform.OS === 'web' ? 1 : undefined,
+    width: Platform.OS === 'web' ? undefined : '100%',
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.md,
   },
   formInner: {
-    width: 260,
+    width: Platform.OS === 'web' ? 260 : '100%',
     alignItems: 'center',
     gap: spacing.md,
+  },
+  iconCircle: {
+    width: 52, height: 52, borderRadius: 26,
+    alignItems: 'center', justifyContent: 'center',
   },
   cardTitle: {
     fontSize: fonts.sizes.lg,
