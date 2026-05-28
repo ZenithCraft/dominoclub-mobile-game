@@ -418,7 +418,7 @@ export function HomeScreen({ navigation }: Props) {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.85,
@@ -552,79 +552,89 @@ export function HomeScreen({ navigation }: Props) {
       </Modal>
 
       {/* ── Profile Modal ── */}
-      <Modal visible={profileVisible} transparent animationType="fade">
-        <Pressable
-          style={styles.overlay}
-          onPress={() => setProfileVisible(false)}
-        >
-          <Pressable style={styles.profileCard} onPress={() => {}} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHeader}>
-              <View style={{ width: 26 }} />
-              <Text style={styles.settingsTitle}>Perfil</Text>
-              <TouchableOpacity onPress={() => setProfileVisible(false)}>
-                <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
-              </TouchableOpacity>
+      <Modal visible={profileVisible} transparent animationType="fade" onRequestClose={() => setProfileVisible(false)}>
+        <View style={styles.profileOverlay}>
+          {/* Overlay touch area to close - only outside the card */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setProfileVisible(false)} />
+
+          {/* Card container - centered and non-touchable */}
+          <View style={styles.profileCardWrapper} pointerEvents="box-none">
+            <View style={styles.profileCard} pointerEvents="auto">
+              <View style={styles.modalHeader}>
+                <View style={{ width: 26 }} />
+                <Text style={styles.settingsTitle}>Perfil</Text>
+                <TouchableOpacity onPress={() => setProfileVisible(false)} activeOpacity={0.7}>
+                  <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={styles.profileScroll}
+                contentContainerStyle={styles.profileScrollContent}
+                showsVerticalScrollIndicator={true}
+                bounces={true}
+                overScrollMode="always"
+              >
+                <View style={styles.profileBody}>
+                  {/* Left: avatar + info */}
+                  <View style={styles.profileLeft}>
+                    <TouchableOpacity style={styles.profileAvatar} activeOpacity={0.85} onPress={onPickProfileAvatar}>
+                      {profileAvatarUri ? (
+                        <Image source={{ uri: profileAvatarUri }} style={styles.profileAvatarImg} />
+                      ) : (
+                        <Text style={styles.profileAvatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
+                      )}
+                    </TouchableOpacity>
+                    <Text style={styles.profileName}>{user?.name || 'Jogador'}</Text>
+                    <Text style={styles.profileBadge}>Bronze</Text>
+                    <View style={styles.profileStarContainer}>
+                      <LevelStarBadge level={profileStatsLoading ? '--' : levelText} size={44} />
+                    </View>
+                    <View style={styles.xpBarBg}>
+                      <View style={[styles.xpBarFill, { width: '40%' }]} />
+                    </View>
+                  </View>
+
+                  {/* Right: stats */}
+                  <View style={styles.profileRight}>
+                    <Text style={styles.statLabel}>Total de vitórias</Text>
+                    <View style={styles.statPill}>
+                      <Text style={styles.statValue}>{profileStatsLoading ? '...' : String(profileStats.totalWins)}</Text>
+                    </View>
+
+                    <Text style={styles.statLabel}>Taxa de vitória</Text>
+                    <View style={styles.statPill}>
+                      <Text style={styles.statValue}>{profileStatsLoading ? '...' : `${profileStats.winRate}%`}</Text>
+                    </View>
+
+                    <Text style={styles.statLabel}>Torneios ganhos</Text>
+                    <View style={styles.statPill}>
+                      <Text style={styles.statValue}>{profileStatsLoading ? '...' : String(profileStats.tournamentsWon)}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.profileActions}>
+                  <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
+                    <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('History'); }}>
+                      <Text style={styles.profileActionTextDark}>Histórico De Partidas</Text>
+                    </TouchableOpacity>
+                  </LinearGradient>
+                  <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
+                    <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Achievements'); }}>
+                      <Text style={styles.profileActionTextDark}>Conquistas</Text>
+                    </TouchableOpacity>
+                  </LinearGradient>
+                  <LinearGradient colors={['#ffd700', '#ca8a04']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
+                    <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Leaderboard'); }}>
+                      <Text style={styles.profileActionTextDark}>Liga & Ranking</Text>
+                    </TouchableOpacity>
+                  </LinearGradient>
+                </View>
+              </ScrollView>
             </View>
-            <ScrollView style={styles.profileScroll} contentContainerStyle={styles.profileScrollContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.profileBody}>
-                {/* Left: avatar + info */}
-                <View style={styles.profileLeft}>
-                  <TouchableOpacity style={styles.profileAvatar} activeOpacity={0.85} onPress={onPickProfileAvatar}>
-                    {profileAvatarUri ? (
-                      <Image source={{ uri: profileAvatarUri }} style={styles.profileAvatarImg} />
-                    ) : (
-                      <Text style={styles.profileAvatarText}>{user?.name?.[0]?.toUpperCase() || '?'}</Text>
-                    )}
-                  </TouchableOpacity>
-                  <Text style={styles.profileName}>{user?.name || 'Jogador'}</Text>
-                  <Text style={styles.profileBadge}>Bronze</Text>
-                  <View style={styles.profileStarContainer}>
-                    <LevelStarBadge level={profileStatsLoading ? '--' : levelText} size={44} />
-                  </View>
-                  <View style={styles.xpBarBg}>
-                    <View style={[styles.xpBarFill, { width: '40%' }]} />
-                  </View>
-                </View>
-
-                {/* Right: stats */}
-                <View style={styles.profileRight}>
-                  <Text style={styles.statLabel}>Total de vitórias</Text>
-                  <View style={styles.statPill}>
-                    <Text style={styles.statValue}>{profileStatsLoading ? '...' : String(profileStats.totalWins)}</Text>
-                  </View>
-
-                  <Text style={styles.statLabel}>Taxa de vitória</Text>
-                  <View style={styles.statPill}>
-                    <Text style={styles.statValue}>{profileStatsLoading ? '...' : `${profileStats.winRate}%`}</Text>
-                  </View>
-
-                  <Text style={styles.statLabel}>Torneios ganhos</Text>
-                  <View style={styles.statPill}>
-                    <Text style={styles.statValue}>{profileStatsLoading ? '...' : String(profileStats.tournamentsWon)}</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.profileActions}>
-                <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
-                  <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('History'); }}>
-                    <Text style={styles.profileActionTextDark}>Histórico De Partidas</Text>
-                  </TouchableOpacity>
-                </LinearGradient>
-                <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
-                  <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Achievements'); }}>
-                    <Text style={styles.profileActionTextDark}>Conquistas</Text>
-                  </TouchableOpacity>
-                </LinearGradient>
-                <LinearGradient colors={['#ffd700', '#ca8a04']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
-                  <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Leaderboard'); }}>
-                    <Text style={styles.profileActionTextDark}>Liga & Ranking</Text>
-                  </TouchableOpacity>
-                </LinearGradient>
-              </View>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={logoutVisible} transparent animationType="fade">
@@ -729,6 +739,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Profile overlay (separate to handle different layout)
+  profileOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    position: 'relative',
+  },
 
   // Settings modal
   settingsCard: {
@@ -788,16 +804,21 @@ const styles = StyleSheet.create({
   },
 
   // Profile modal
+  profileCardWrapper: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+  },
   profileCard: {
     width: Platform.OS === 'web' ? 640 : '92%',
     maxWidth: 520,
-    maxHeight: '88%',
+    maxHeight: Platform.OS === 'web' ? 600 : '80%',
     flex: 1,
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
-    paddingHorizontal: SETTINGS_CARD_PAD,
-    paddingTop: Math.max(10, SETTINGS_CARD_PAD - 6),
-    paddingBottom: Math.max(6, SETTINGS_CARD_PAD - 10),
+    padding: SETTINGS_CARD_PAD,
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#BBFF00',
@@ -805,9 +826,12 @@ const styles = StyleSheet.create({
   },
   profileScroll: {
     flex: 1,
+    width: '100%',
   },
   profileScrollContent: {
     gap: Math.max(10, SETTINGS_ITEM_GAP - 6),
+    paddingVertical: 8,
+    paddingBottom: 20,
   },
   profileBody: {
     flexDirection: 'row',

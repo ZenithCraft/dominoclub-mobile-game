@@ -5,7 +5,7 @@ export const config = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3001', 10),
   apiPrefix: process.env.API_PREFIX || '/api/v1',
-  devAuthBypass: process.env.NODE_ENV !== 'production' && process.env.DEV_AUTH_BYPASS === 'true',
+  devAuthBypass: process.env.DEV_AUTH_BYPASS === 'true',
   devAuthDefaultPhone: process.env.DEV_AUTH_DEFAULT_PHONE || '+5511999990001',
 
   db: {

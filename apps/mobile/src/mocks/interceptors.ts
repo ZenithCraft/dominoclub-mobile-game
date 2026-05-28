@@ -17,10 +17,10 @@ function getMockData(url: string, method: string): any | undefined {
   if (m === 'get'  && url.includes('/game/tournaments/my-active')) return {};
   if (m === 'post' && url.includes('/auth/otp/send'))    return {};
   if (m === 'post' && url.includes('/auth/otp/verify'))  return { accessToken: MOCK_ACCESS_TOKEN, refreshToken: MOCK_REFRESH_TOKEN, user: MOCK_USER };
-  if (m === 'get'  && url.includes('/auth/me'))          return { user: MOCK_USER };
+  if (m === 'get'  && url.includes('/auth/me'))          return MOCK_USER;
   if (m === 'post' && url.includes('/auth/token/refresh')) return { accessToken: MOCK_ACCESS_TOKEN, refreshToken: MOCK_REFRESH_TOKEN };
   if (m === 'post' && url.includes('/auth/logout'))      return {};
-  if (m === 'put'  && url.includes('/auth/profile'))     return { user: MOCK_USER };
+  if (m === 'put'  && url.includes('/auth/profile'))     return MOCK_USER;
   if (m === 'post' && url.includes('/auth/cpf/verify'))  return {};
   if (m === 'post' && url.includes('/auth/forgot-password')) return {};
   if (m === 'post' && url.includes('/auth/reset-password'))  return {};

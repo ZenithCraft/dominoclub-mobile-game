@@ -10,6 +10,15 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
+    },
+    "android": {
+      "package": "com.jojoyoro.dominoclub"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a1bd4eff-ab83-4101-825d-1972317f28c9"
     }
   }
 }
