@@ -14,6 +14,7 @@ import {
   IconVolumeUp, IconMusic, IconChevronLeft, IconChevronRight,
 } from '../components/Icons';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { tileScale as deviceTileScale } from '../theme/responsive';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import { useGameStore, Tile, GameState, PlacedTile, WIN_TYPE_LABEL, WIN_TYPE_POINTS } from '../store/game.store';
@@ -875,14 +876,15 @@ type DominoTileProps = {
   style?: any;
 };
 
+const T = (n: number) => Math.round(n * deviceTileScale);
 const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
-  icon: { short: 16, long: 25, pip: 2, corner: 2 },
-  hand: { short: 28, long: 44, pip: 4, corner: 6 },
-  xxs:  { short: 19, long: 30, pip: 4, corner: 3 },
-  xs:   { short: 22, long: 35, pip: 4, corner: 4 },
-  sm:   { short: 34, long: 54, pip: 5, corner: 5 },
-  md:   { short: 44, long: 70, pip: 7, corner: 8 },
-  board: { short: 22, long: 40, pip: 4, corner: 5 }, // Tamanho intermediário para o tabuleiro
+  icon:  { short: T(16), long: T(25), pip: T(2),  corner: 2 },
+  hand:  { short: T(28), long: T(44), pip: T(4),  corner: T(6) },
+  xxs:   { short: T(19), long: T(30), pip: T(4),  corner: T(3) },
+  xs:    { short: T(22), long: T(35), pip: T(4),  corner: T(4) },
+  sm:    { short: T(34), long: T(54), pip: T(5),  corner: T(5) },
+  md:    { short: T(44), long: T(70), pip: T(7),  corner: T(8) },
+  board: { short: T(22), long: T(40), pip: T(4),  corner: T(5) }, // Tamanho intermediário para o tabuleiro
 };
 
 function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, onPress, style }: DominoTileProps) {
@@ -3068,34 +3070,6 @@ export function GameScreen({ navigation, route }: Props) {
         </View>
       </Modal>
 
-      {/* ── Native drag ghost — floats above everything at absolute screen position ── */}
-      {Platform.OS !== 'web' && nativeDrag && (() => {
-        // TileHandImage always renders vertically: width = short, height = long
-        const ghostW = TILE_DIMS.board.short;
-        const ghostH = TILE_DIMS.board.long;
-        const scl = nativeDragPos.y.interpolate({
-          inputRange: [nativeDrag.startY - 70, nativeDrag.startY],
-          outputRange: [1.06, 1],
-          extrapolate: 'clamp',
-        });
-        const offsetLeft = safeInsets.left;
-        const offsetTop  = safeInsets.top;
-        return (
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: Animated.subtract(nativeDragPos.x, ghostW / 2 + offsetLeft),
-              top:  Animated.subtract(nativeDragPos.y, ghostH * 0.7 + offsetTop),
-              zIndex: 99999,
-              opacity: 0.88,
-              transform: [{ scale: scl }],
-            }}
-          >
-            <TileHandImage tile={nativeDrag.tile} selected={true} playable={true} />
-          </Animated.View>
-        );
-      })()}
 
       {/* ── Web drag ghost — floats above everything, outside the hand ScrollView ── */}
       {Platform.OS === 'web' && webDrag && (() => {
@@ -3187,6 +3161,33 @@ export function GameScreen({ navigation, route }: Props) {
         </View>
       )}
       </SafeAreaView>
+
+      {/* ── Native drag ghost — rendered OUTSIDE SafeAreaView to use raw screen coords ── */}
+      {Platform.OS !== 'web' && nativeDrag && (() => {
+        // TileHandImage always renders vertically: width = short, height = long
+        const ghostW = TILE_DIMS.board.short;
+        const ghostH = TILE_DIMS.board.long;
+        const scl = nativeDragPos.y.interpolate({
+          inputRange: [nativeDrag.startY - 70, nativeDrag.startY],
+          outputRange: [1.06, 1],
+          extrapolate: 'clamp',
+        });
+        return (
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: Animated.subtract(nativeDragPos.x, ghostW / 2),
+              top:  Animated.subtract(nativeDragPos.y, ghostH * 0.7),
+              zIndex: 99999,
+              opacity: 0.88,
+              transform: [{ scale: scl }],
+            }}
+          >
+            <TileHandImage tile={nativeDrag.tile} selected={true} playable={true} />
+          </Animated.View>
+        );
+      })()}
     </ScreenBackground>
   );
 }

@@ -23,6 +23,16 @@ jest.mock('../../components/ConsentModal', () => ({
   ConsentModal: () => null,
 }));
 
+jest.mock('expo-location', () => ({
+  getForegroundPermissionsAsync: async () => ({ status: 'granted' }),
+  requestForegroundPermissionsAsync: async () => ({ status: 'granted' }),
+}));
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: { getItem: async () => JSON.stringify({ acceptedAt: '2024-01-01', ageConfirmed: true, termsAccepted: true }), setItem: async () => {}, removeItem: async () => {} },
+}));
+
 describe('HomeScreen settings modal', () => {
   it('does not close when toggling switches', () => {
     const { HomeScreen } = require('../HomeScreen');

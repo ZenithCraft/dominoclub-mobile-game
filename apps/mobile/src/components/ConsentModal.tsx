@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity,
-  NativeScrollEvent, NativeSyntheticEvent, Animated,
+  NativeScrollEvent, NativeSyntheticEvent, Animated, Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, radius } from '../theme';
@@ -131,7 +131,10 @@ export function ConsentModal({ onAccepted }: Props) {
                   <TouchableOpacity
                     style={[styles.ageBtn, styles.ageBtnSecondary]}
                     onPress={() => {
-                      // Cannot proceed — just ignore. In production, this would close the app.
+                      Alert.alert(
+                        'Acesso Restrito',
+                        'O DominoClub é exclusivo para maiores de 18 anos. O uso por menores é proibido por lei.',
+                      );
                     }}
                   >
                     <Text style={[styles.ageBtnText, styles.ageBtnTextSecondary]}>Não tenho 18 anos</Text>

@@ -2,6 +2,7 @@
 // Dark forest green theme matching Figma mockups
 
 import { Platform } from 'react-native';
+import { moderateScale } from './responsive';
 
 export const colors = {
   // Backgrounds
@@ -56,25 +57,25 @@ export const fonts = {
   medium: 'System',
   bold: 'System',
   sizes: {
-    xs: 11,
-    sm: 13,
-    md: 15,
-    lg: 17,
-    xl: 20,
-    xxl: 24,
-    xxxl: 32,
-    display: 40,
+    xs:      moderateScale(11),
+    sm:      moderateScale(13),
+    md:      moderateScale(15),
+    lg:      moderateScale(17),
+    xl:      moderateScale(20),
+    xxl:     moderateScale(24),
+    xxxl:    moderateScale(32),
+    display: moderateScale(40),
   },
 };
 
 export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  xxl: 32,
-  xxxl: 48,
+  xs:   moderateScale(4),
+  sm:   moderateScale(8),
+  md:   moderateScale(12),
+  lg:   moderateScale(16),
+  xl:   moderateScale(24),
+  xxl:  moderateScale(32),
+  xxxl: moderateScale(48),
 };
 
 export const radius = {

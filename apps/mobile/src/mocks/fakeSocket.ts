@@ -219,6 +219,17 @@ class FakeSocket {
         const { tile, side, flipped } = args[0] ?? {};
         if (!this.state || !tile) break;
         const idx = this.state.currentPlayerIndex;
+        // Enforce the required opening tile (highest double) on the first play of a round.
+        if (!this.state.firstPlayMade && this.state.requiredFirstTile) {
+          const r = this.state.requiredFirstTile as Tile;
+          const matches =
+            (tile[0] === r[0] && tile[1] === r[1]) ||
+            (tile[0] === r[1] && tile[1] === r[0]);
+          if (!matches) {
+            this._trigger('game:error', { message: 'A primeira pedra deve ser a maior dupla' });
+            break;
+          }
+        }
         this.state = applyMove(this.state, idx, tile as Tile, side, flipped);
         this._trigger('game:state', this.state);
         if (this.state.status === 'finished') {
@@ -343,29 +354,73 @@ class FakeSocket {
   private _triggerEnd() {
     if (!this.state) return;
 
-    // Reset consecutivePasses for next round
-    const winner = this.state.players.find((p: any) => p.hand.length === 0);
-    const lastBoardTile = this.state.board[this.state.board.length - 1];
-    const lastTile = lastBoardTile?.tile as [number, number] | undefined;
-    const winType: string = lastTile && lastTile[0] === lastTile[1] ? 'carroca' : 'simples';
-    const points: number = winType === 'carroca' ? 2 : 1;
-
-    const winnerTeam: number | null = winner?.team ?? null;
     const prevScores = this.state.matchScores ?? { 1: 0, 2: 0 };
     const newScores: Record<number, number> = { ...prevScores };
-    if (winnerTeam !== null) newScores[winnerTeam] = (newScores[winnerTeam] ?? 0) + points;
-
     const targetScore: number = this.state.targetScore ?? 6;
     const roundNumber: number = this.state.roundNumber ?? 1;
+
+    // Determine the round outcome.
+    const handWinner = this.state.players.find(
+      (p: any) => (p.hand?.filter(Boolean).length ?? 0) === 0
+    );
+
+    let winnerTeam: number | null = null;
+    let winType: string = 'simples';
+    let points = 0;
+
+    if (handWinner) {
+      // Win by emptying the hand — win type from the last placed tile.
+      const lastBoardTile = this.state.board[this.state.board.length - 1];
+      const lastTile = lastBoardTile?.tile as [number, number] | undefined;
+      winType = lastTile && lastTile[0] === lastTile[1] ? 'carroca' : 'simples';
+      points = winType === 'carroca' ? 2 : 1;
+      winnerTeam = handWinner.team ?? null;
+    } else {
+      // Blocked game — count remaining pips per team. Fewer pips wins 1 point.
+      // Only a true pip tie counts as an empate (draw).
+      const teamPips: Record<number, number> = {};
+      this.state.players.forEach((p: any) => {
+        const pips = (p.hand ?? []).reduce(
+          (sum: number, t: Tile) => sum + (t ? t[0] + t[1] : 0),
+          0
+        );
+        teamPips[p.team] = (teamPips[p.team] ?? 0) + pips;
+      });
+      const teams = Object.keys(teamPips).map(Number);
+      if (teams.length >= 2) {
+        const sorted = [...teams].sort((a, b) => teamPips[a] - teamPips[b]);
+        const lower = sorted[0];
+        const higher = sorted[sorted.length - 1];
+        if (teamPips[lower] !== teamPips[higher]) {
+          winnerTeam = lower;
+          winType = 'simples';
+          points = 1;
+        }
+        // else: equal pips → empate (winnerTeam stays null)
+      }
+    }
+
+    if (winnerTeam !== null) {
+      newScores[winnerTeam] = (newScores[winnerTeam] ?? 0) + points;
+    }
+
     const matchOver = (newScores[1] ?? 0) >= targetScore || (newScores[2] ?? 0) >= targetScore;
     const matchWinnerTeam = matchOver ? ((newScores[1] ?? 0) >= targetScore ? 1 : 2) : null;
+
+    // winnerId for the result screen: prefer the hand winner, else first player on the winning team.
+    const winnerPlayer =
+      handWinner ??
+      (winnerTeam !== null
+        ? this.state.players.find((p: any) => p.team === winnerTeam) ?? null
+        : null);
 
     this._trigger('game:round_ended', {
       roundNumber,
       winnerTeam,
+      winnerId:        winnerPlayer?.userId ?? null,
       winType,
       points,
-      matchScores: newScores,
+      matchScores:     newScores,
       targetScore,
       matchOver,
       matchWinnerTeam,
@@ -374,7 +429,7 @@ class FakeSocket {
     if (matchOver) {
       setTimeout(() => {
         this._trigger('game:ended', {
-          winnerId:       winner?.userId ?? null,
+          winnerId:       winnerPlayer?.userId ?? null,
           winnerTeam:     matchWinnerTeam,
           prizePool:      0,
           prizePerWinner: 0,
@@ -383,22 +438,27 @@ class FakeSocket {
       return;
     }
 
-    // Restart next round after 4 s (banner shows for 3.5 s)
+    // Restart next round after 4 s (banner shows for 3.5 s).
     setTimeout(() => {
       const deck = shuffle([...VISIBLE_TILES]);
-      // FIX: Always deal 6 tiles per player (same as initial deal)
       const tilesPerPlayer = 6;
+      const playerCount = this.state.players.length;
+      const is2v2 = playerCount >= 4;
       const players = this.state.players.map((p: any, i: number) => ({
         ...p,
-        hand: deck.slice(i * tilesPerPlayer, (i + 1) * tilesPerPlayer),
+        hand: deck.slice(i * tilesPerPlayer, (i + 1) * tilesPerPlayer) as Tile[],
       }));
+      // 1v1 keeps a boneyard (fresh tiles); 2v2 deals everything (matches the initial deal).
+      const boneyard = (is2v2 ? [] : deck.slice(playerCount * tilesPerPlayer)) as Tile[];
       const opener = findHighestDouble(players);
       this.state = {
         ...this.state,
         players,
         board: [], leftOpen: -1, rightOpen: -1,
+        boneyard,
         firstPlayMade: false, status: 'playing',
         turnCount: 0,
+        consecutivePasses: 0,
         currentPlayerIndex: opener?.playerIdx ?? 0,
         requiredFirstTile: opener?.tile ?? null,
         matchScores: newScores,

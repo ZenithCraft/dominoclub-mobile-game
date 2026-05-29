@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, NativeScrollEvent,
   NativeSyntheticEvent,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius } from '../theme';
 import { Button } from '../components/Button';
@@ -119,7 +120,11 @@ export function TermsScreen({ navigation, route }: Props) {
           )}
           <Button
             title="Li e aceito os Termos de Uso"
-            onPress={() => {
+            onPress={async () => {
+              await AsyncStorage.setItem(
+                '@dominoclub_consent_v1',
+                JSON.stringify({ acceptedAt: new Date().toISOString(), ageConfirmed: true, termsAccepted: true }),
+              ).catch(() => {});
               onAccept?.();
               navigation.goBack();
             }}

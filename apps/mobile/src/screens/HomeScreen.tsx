@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet,
   TouchableOpacity, Modal, Image, Platform, Pressable, Animated, ScrollView,
+  Linking, Alert,
 } from 'react-native';
+import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -304,6 +307,8 @@ export function HomeScreen({ navigation }: Props) {
   const [logoutVisible, setLogoutVisible]     = useState(false);
   const [soundOn, setSoundOn]   = useState(true);
   const [musicOn, setMusicOn]   = useState(true);
+  const [locationGranted, setLocationGranted]         = useState<boolean | null>(null);
+  const [locationBlockerVisible, setLocationBlockerVisible] = useState(false);
   const [onlineCount, setOnlineCount] = useState(0);
   const [profileAvatarUri, setProfileAvatarUri] = useState<string | null>(null);
   const [profileStatsLoading, setProfileStatsLoading] = useState(false);
@@ -321,6 +326,13 @@ export function HomeScreen({ navigation }: Props) {
         socket.on('online:count', ({ count }: { count: number }) => setOnlineCount(count));
       } catch {}
     })();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') { setLocationGranted(true); return; }
+    Location.getForegroundPermissionsAsync()
+      .then(({ status }) => setLocationGranted(status === 'granted'))
+      .catch(() => setLocationGranted(true));
   }, []);
 
   useEffect(() => {
@@ -437,6 +449,39 @@ export function HomeScreen({ navigation }: Props) {
     }
   };
 
+  const handlePlayPress = async (mode: string) => {
+    try {
+      const raw = await AsyncStorage.getItem('@dominoclub_consent_v1');
+      if (!raw) {
+        Alert.alert(
+          'Termos de Uso',
+          'Para jogar, você precisa aceitar os Termos de Uso e confirmar sua maioridade.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Ver Termos', onPress: () => navigation.navigate('Terms', { showAccept: true }) },
+          ],
+        );
+        return;
+      }
+    } catch {}
+
+    if (Platform.OS !== 'web') {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+          if (newStatus !== 'granted') {
+            setLocationBlockerVisible(true);
+            return;
+          }
+          setLocationGranted(true);
+        }
+      } catch {}
+    }
+
+    navigation.navigate('ModeSelect', { mode });
+  };
+
   const handleLogout = () => {
     setProfileVisible(false);
     setLogoutVisible(false);
@@ -467,7 +512,7 @@ export function HomeScreen({ navigation }: Props) {
           <TouchableOpacity
             style={styles.modeBtn}
             activeOpacity={0.85}
-            onPress={() => navigation.navigate('ModeSelect', { mode: 'LIVRE' })}
+            onPress={() => handlePlayPress('LIVRE')}
           >
             <LinearGradient
               colors={['#22d3ee', '#0891b2']}
@@ -483,7 +528,7 @@ export function HomeScreen({ navigation }: Props) {
           <TouchableOpacity
             style={styles.modeBtn}
             activeOpacity={0.85}
-            onPress={() => navigation.navigate('ModeSelect', { mode: 'TORNEIO' })}
+            onPress={() => handlePlayPress('TORNEIO')}
           >
             <LinearGradient
               colors={['#fbbf24', '#d97706']}
@@ -547,6 +592,36 @@ export function HomeScreen({ navigation }: Props) {
                 kind="music"
               />
             </View>
+
+            {Platform.OS !== 'web' && (
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Localização:</Text>
+                <TouchableOpacity
+                  style={styles.locationBtn}
+                  onPress={async () => {
+                    try {
+                      const { status } = await Location.getForegroundPermissionsAsync();
+                      if (status === 'granted') {
+                        toast.info('Localização já está ativada');
+                        return;
+                      }
+                      const { status: ns } = await Location.requestForegroundPermissionsAsync();
+                      if (ns === 'granted') {
+                        setLocationGranted(true);
+                        toast.success('Localização ativada!');
+                      } else {
+                        Linking.openSettings();
+                      }
+                    } catch {}
+                  }}
+                  accessibilityLabel="Ativar localização"
+                >
+                  <Text style={[styles.locationBtnText, locationGranted ? styles.locationBtnGranted : null]}>
+                    {locationGranted ? '✓ Ativada' : 'Ativar'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -637,6 +712,34 @@ export function HomeScreen({ navigation }: Props) {
         </View>
       </Modal>
 
+      <Modal visible={locationBlockerVisible} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <View style={styles.logoutCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Localização necessária</Text>
+              <TouchableOpacity onPress={() => setLocationBlockerVisible(false)}>
+                <IconX size={18} color="#fff" accessibilityLabel="Fechar" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.logoutText}>
+              Para jogar, precisamos acessar sua localização. Ative a permissão nas configurações do dispositivo.
+            </Text>
+            <View style={styles.logoutActions}>
+              <TouchableOpacity style={styles.logoutCancelBtn} onPress={() => setLocationBlockerVisible(false)} activeOpacity={0.85}>
+                <Text style={styles.logoutCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.logoutConfirmBtn}
+                onPress={() => { setLocationBlockerVisible(false); Linking.openSettings(); }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.logoutConfirmText}>Configurações</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={logoutVisible} transparent animationType="fade">
         <TouchableOpacity
           style={styles.overlay}
@@ -696,11 +799,13 @@ const styles = StyleSheet.create({
 
   modeRow: {
     flexDirection: 'row',
-    gap: spacing.xl,
+    gap: spacing.md,
     marginTop: spacing.xs,
+    width: '100%',
   },
 
   modeBtn: {
+    flex: 1,
     borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: 3,
@@ -718,10 +823,9 @@ const styles = StyleSheet.create({
   },
   modeBtnGrad: {
     paddingVertical: spacing.xxxl,
-    paddingHorizontal: 92,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 300,
+    width: '100%',
     minHeight: 120,
     borderRadius: radius.lg - 3,
   },
@@ -802,6 +906,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
   },
+  locationBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(74,222,128,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.3)',
+  },
+  locationBtnText: { color: colors.primary, fontWeight: '700', fontSize: fonts.sizes.sm },
+  locationBtnGranted: { color: '#4ade80' },
 
   // Profile modal
   profileCardWrapper: {
