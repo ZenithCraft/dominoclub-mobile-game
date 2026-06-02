@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet,
   TouchableOpacity, Modal, Image, Platform, Pressable, Animated, ScrollView,
-  Linking, Alert,
+  Linking, Alert, Dimensions, useWindowDimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -11,13 +11,18 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { isTablet } from '../theme/responsive';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { useAuthStore } from '../store/auth.store';
 import { toast } from '../store/toast.store';
 import { connectSocket } from '../services/socket';
 import { ConsentModal } from '../components/ConsentModal';
 import { WalletBalanceButton } from '../components/Button';
-import { IconSettings, IconStar, IconLogOut, IconX, IconVolumeUp, IconMusic, IconChevronLeft } from '../components/Icons';
+import { IconSettings, IconStar, IconLogOut, IconX, IconVolumeUp, IconMusic, IconChevronLeft, IconMenu } from '../components/Icons';
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const isSmallPhone = !isTablet && SCREEN_W < 390;
+const isShortScreen = SCREEN_H < 420;
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -140,6 +145,9 @@ export function GameTopBar({
   exitVariant?: 'logout' | 'back';
   level?: number;
 }) {
+  const { height: tbH, width: tbW } = useWindowDimensions();
+  const tbPortrait = tbH > tbW;
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const balance = user?.wallet?.real_balance ?? 0;
   const level   = levelProp ?? 2;
 
@@ -160,27 +168,60 @@ export function GameTopBar({
         </View>
       </TouchableOpacity>
 
-      {/* Right: balance + add + settings + exit */}
-      <View style={topBar.right}>
-        <WalletBalanceButton balance={balance} onPress={onWallet} />
+      {tbPortrait ? (
+        /* Portrait: hamburger menu button + dropdown */
+        <View>
+          <TouchableOpacity style={topBar.iconBtn} onPress={() => setMenuOpen(v => !v)} accessibilityLabel="Menu">
+            <IconMenu size={20} color="#fff" />
+          </TouchableOpacity>
 
-        <TouchableOpacity style={topBar.iconBtn} onPress={onSettings} testID="topbar-settings" accessibilityLabel="Abrir configurações">
-          <IconSettings size={20} color="#fff" accessibilityLabel="Configurações" />
-        </TouchableOpacity>
+          <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+            <TouchableOpacity style={topBar.menuBackdrop} activeOpacity={1} onPress={() => setMenuOpen(false)}>
+              <View style={topBar.menuDropdown} onStartShouldSetResponder={() => true}>
 
-        <TouchableOpacity
-          style={topBar.iconBtn}
-          onPress={onExit}
-          testID={exitVariant === 'back' ? 'topbar-back' : 'topbar-logout'}
-          accessibilityLabel={exitVariant === 'back' ? 'Voltar' : 'Sair'}
-        >
-          {exitVariant === 'back' ? (
-            <IconChevronLeft size={20} color="#fff" accessibilityLabel="Voltar" />
-          ) : (
-            <IconLogOut size={20} color="#fff" accessibilityLabel="Sair" />
-          )}
-        </TouchableOpacity>
-      </View>
+                <TouchableOpacity style={topBar.menuItem} activeOpacity={0.8} onPress={() => { setMenuOpen(false); onWallet?.(); }}>
+                  <WalletBalanceButton balance={balance} onPress={() => { setMenuOpen(false); onWallet?.(); }} />
+                </TouchableOpacity>
+
+                <View style={topBar.menuDivider} />
+
+                <TouchableOpacity style={topBar.menuItem} activeOpacity={0.8} onPress={() => { setMenuOpen(false); onSettings?.(); }}>
+                  <IconSettings size={20} color="#fff" />
+                  <Text style={topBar.menuItemText}>Configurações</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={topBar.menuItem} activeOpacity={0.8} onPress={() => { setMenuOpen(false); onExit?.(); }}>
+                  <IconLogOut size={20} color="#fff" />
+                  <Text style={topBar.menuItemText}>Sair</Text>
+                </TouchableOpacity>
+
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        </View>
+      ) : (
+        /* Landscape / tablet: full right bar */
+        <View style={topBar.right}>
+          <WalletBalanceButton balance={balance} onPress={onWallet} />
+
+          <TouchableOpacity style={topBar.iconBtn} onPress={onSettings} testID="topbar-settings" accessibilityLabel="Abrir configurações">
+            <IconSettings size={isTablet ? 24 : 20} color="#fff" accessibilityLabel="Configurações" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={topBar.iconBtn}
+            onPress={onExit}
+            testID={exitVariant === 'back' ? 'topbar-back' : 'topbar-logout'}
+            accessibilityLabel={exitVariant === 'back' ? 'Voltar' : 'Sair'}
+          >
+            {exitVariant === 'back' ? (
+              <IconChevronLeft size={isTablet ? 24 : 20} color="#fff" accessibilityLabel="Voltar" />
+            ) : (
+              <IconLogOut size={isTablet ? 24 : 20} color="#fff" accessibilityLabel="Sair" />
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -244,16 +285,18 @@ const topBar = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: isTablet ? spacing.xl : spacing.lg,
+    paddingVertical: isTablet ? spacing.lg : spacing.md,
     backgroundColor: 'rgba(24, 73, 18, 0.92)',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(187, 255, 0, 0.18)',
-    minHeight: 84,
+    minHeight: isTablet ? 100 : 84,
   },
   left: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   avatar: {
-    width: 54, height: 54, borderRadius: 27,
+    width: isTablet ? 68 : 54,
+    height: isTablet ? 68 : 54,
+    borderRadius: isTablet ? 34 : 27,
     backgroundColor: '#184912',
     borderWidth: 2,
     borderColor: 'rgba(187, 255, 0, 0.35)',
@@ -261,9 +304,9 @@ const topBar = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
-  name:   { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
-  level:  { color: colors.textMuted, fontSize: fonts.sizes.xs },
+  avatarText: { color: '#fff', fontWeight: '700', fontSize: isTablet ? fonts.sizes.lg : fonts.sizes.md },
+  name:   { color: '#fff', fontWeight: '700', fontSize: isTablet ? fonts.sizes.lg : fonts.sizes.md },
+  level:  { color: colors.textMuted, fontSize: isTablet ? fonts.sizes.sm : fonts.sizes.xs },
   right:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   balanceWrap: {
     borderRadius: 12,
@@ -289,18 +332,43 @@ const topBar = StyleSheet.create({
   },
   balancePlusText: { color: '#fff', fontWeight: '900', fontSize: 14, lineHeight: 16 },
   iconBtn: {
-    width: 44, height: 44, borderRadius: 12,
+    width: isTablet ? 52 : 44,
+    height: isTablet ? 52 : 44,
+    borderRadius: isTablet ? 14 : 12,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(187, 255, 0, 0.22)',
     alignItems: 'center', justifyContent: 'center',
   },
   iconText: { color: '#fff', fontSize: 16 },
+
+  menuBackdrop: { flex: 1 },
+  menuDropdown: {
+    position: 'absolute',
+    top: 84,
+    right: spacing.lg,
+    backgroundColor: '#112d0f',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(187,255,0,0.18)',
+    padding: spacing.sm,
+    minWidth: 200,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 24px rgba(0,0,0,0.55)' } as any)
+      : { elevation: 12, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }),
+  },
+  menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: spacing.xs },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md },
+  menuItemText: { color: '#fff', fontSize: fonts.sizes.sm, fontWeight: '600' },
 });
 
 // ─── Main HomeScreen ────────────────────────────────────────────────────────
 
 export function HomeScreen({ navigation }: Props) {
+  const { height: windowH, width: windowW } = useWindowDimensions();
+  const dynShortScreen = windowH < 420;
+  const dynIsTablet = windowW >= 768;
+  const dynIsPortrait = windowH > windowW;
   const { user } = useAuthStore();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [profileVisible, setProfileVisible]   = useState(false);
@@ -507,7 +575,7 @@ export function HomeScreen({ navigation }: Props) {
       <View style={styles.center}>
         <Text style={styles.title}>Escolha o modo de jogo</Text>
         <Text style={[styles.subtitle, { color: '#ffffff' }]}>Escolha como você quer jogar: individual ou time</Text>
-        <View style={styles.modeRow}>
+        <View style={[styles.modeRow, (dynIsTablet || dynIsPortrait) && { flexDirection: 'column' }]}>
           {/* Livre button — cyan */}
           <TouchableOpacity
             style={styles.modeBtn}
@@ -518,7 +586,7 @@ export function HomeScreen({ navigation }: Props) {
               colors={['#22d3ee', '#0891b2']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.modeBtnGrad}
+              style={[styles.modeBtnGrad, dynIsTablet && { minHeight: 160 }]}
             >
               <Text style={styles.modeBtnText}>Livre</Text>
             </LinearGradient>
@@ -534,7 +602,7 @@ export function HomeScreen({ navigation }: Props) {
               colors={['#fbbf24', '#d97706']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.modeBtnGrad}
+              style={[styles.modeBtnGrad, dynIsTablet && { minHeight: 160 }]}
             >
               <Text style={styles.modeBtnText}>Torneio</Text>
             </LinearGradient>
@@ -634,7 +702,7 @@ export function HomeScreen({ navigation }: Props) {
 
           {/* Card container - centered and non-touchable */}
           <View style={styles.profileCardWrapper} pointerEvents="box-none">
-            <View style={styles.profileCard} pointerEvents="auto">
+            <View style={[styles.profileCard, { maxHeight: Math.round(windowH * 0.82) }]} pointerEvents="auto">
               <View style={styles.modalHeader}>
                 <View style={{ width: 26 }} />
                 <Text style={styles.settingsTitle}>Perfil</Text>
@@ -690,21 +758,13 @@ export function HomeScreen({ navigation }: Props) {
                 </View>
 
                 <View style={styles.profileActions}>
-                  <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
-                    <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('History'); }}>
-                      <Text style={styles.profileActionTextDark}>Histórico De Partidas</Text>
-                    </TouchableOpacity>
-                  </LinearGradient>
-                  <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
-                    <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Achievements'); }}>
-                      <Text style={styles.profileActionTextDark}>Conquistas</Text>
-                    </TouchableOpacity>
-                  </LinearGradient>
-                  <LinearGradient colors={['#ffd700', '#ca8a04']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.profileActionGrad}>
-                    <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate('Leaderboard'); }}>
-                      <Text style={styles.profileActionTextDark}>Liga & Ranking</Text>
-                    </TouchableOpacity>
-                  </LinearGradient>
+                  {[{colors: ['#BEF311','#1CBB3D'] as [string,string], label:'Histórico De Partidas', route:'History'},{colors: ['#BEF311','#1CBB3D'] as [string,string], label:'Conquistas', route:'Achievements'},{colors: ['#ffd700','#ca8a04'] as [string,string], label:'Liga & Ranking', route:'Leaderboard'}].map(({colors: gc, label, route}) => (
+                    <LinearGradient key={route} colors={gc} start={{x:0,y:0}} end={{x:1,y:1}} style={[styles.profileActionGrad, dynShortScreen && { paddingVertical: 4 }]}>
+                      <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate(route as any); }}>
+                        <Text style={[styles.profileActionTextDark, dynShortScreen && { fontSize: fonts.sizes.xs }]}>{label}</Text>
+                      </TouchableOpacity>
+                    </LinearGradient>
+                  ))}
                 </View>
               </ScrollView>
             </View>
@@ -779,9 +839,10 @@ const styles = StyleSheet.create({
   center: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xl,
-    paddingHorizontal: spacing.xxl,
+    justifyContent: 'flex-start',
+    gap: isSmallPhone ? spacing.md : spacing.xl,
+    paddingHorizontal: isSmallPhone ? spacing.lg : spacing.xxl,
+    paddingTop: spacing.xl,
   },
 
   title: {
@@ -822,11 +883,11 @@ const styles = StyleSheet.create({
         }),
   },
   modeBtnGrad: {
-    paddingVertical: spacing.xxxl,
+    paddingVertical: isSmallPhone ? spacing.lg : (isShortScreen ? spacing.md : spacing.xxxl),
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    minHeight: 120,
+    minHeight: isSmallPhone ? 90 : (isShortScreen ? 80 : 120),
     borderRadius: radius.lg - 3,
   },
   modeBtnText: {
@@ -852,7 +913,8 @@ const styles = StyleSheet.create({
 
   // Settings modal
   settingsCard: {
-    width: Platform.OS === 'web' ? 640 : 520,
+    width: Platform.OS === 'web' ? 640 : (isTablet ? '75%' : Math.min(440, SCREEN_W * 0.92)),
+    maxWidth: isTablet ? 780 : 480,
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
     padding: SETTINGS_CARD_PAD,
@@ -926,10 +988,9 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   profileCard: {
-    width: Platform.OS === 'web' ? 640 : '92%',
-    maxWidth: 520,
-    maxHeight: Platform.OS === 'web' ? 600 : '80%',
-    flex: 1,
+    width: Platform.OS === 'web' ? 640 : (isTablet ? '80%' : '92%'),
+    maxWidth: isTablet ? 900 : 520,
+    maxHeight: Platform.OS === 'web' ? 600 : (isTablet ? Math.round(SCREEN_H * 0.85) : Math.round(SCREEN_H * 0.80)),
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
     padding: SETTINGS_CARD_PAD,
@@ -952,15 +1013,17 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
     alignItems: 'flex-start',
   },
-  profileLeft: { alignItems: 'center', gap: spacing.sm, width: 140 },
+  profileLeft: { alignItems: 'center', gap: spacing.sm, width: isSmallPhone ? 110 : (isTablet ? 160 : 140) },
   profileAvatar: {
-    width: 72, height: 72, borderRadius: 8,
+    width: isSmallPhone ? 52 : (isTablet ? 90 : 72),
+    height: isSmallPhone ? 52 : (isTablet ? 90 : 72),
+    borderRadius: 8,
     backgroundColor: '#4a7c4a',
     alignItems: 'center', justifyContent: 'center',
   },
   profileAvatarImg: { width: '100%', height: '100%' },
-  profileAvatarText: { color: '#fff', fontSize: 32, fontWeight: '700' },
-  profileName:  { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md, fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System' },
+  profileAvatarText: { color: '#fff', fontSize: isSmallPhone ? 22 : (isTablet ? 40 : 32), fontWeight: '700' },
+  profileName:  { color: '#fff', fontWeight: '700', fontSize: isSmallPhone ? fonts.sizes.sm : fonts.sizes.md, fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System' },
   profileBadge: { color: '#cd7f32', fontSize: fonts.sizes.sm, fontWeight: '600' },
   profileStarContainer: { marginBottom: spacing.sm },
   levelBadge: {
@@ -996,15 +1059,16 @@ const styles = StyleSheet.create({
   profileActions: { gap: spacing.sm },
   profileActionGrad: {
     borderRadius: radius.sm,
-    paddingVertical: 10,
+    paddingVertical: isSmallPhone ? 6 : 10,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.25)',
   },
-  profileActionTextDark: { color: '#0a1f0a', fontWeight: '900', fontSize: fonts.sizes.sm },
+  profileActionTextDark: { color: '#0a1f0a', fontWeight: '900', fontSize: isSmallPhone ? fonts.sizes.xs : fonts.sizes.sm },
 
   logoutCard: {
-    width: 380,
+    width: isTablet ? '60%' : Math.min(360, SCREEN_W * 0.90),
+    maxWidth: isTablet ? 640 : 420,
     backgroundColor: 'rgba(8, 20, 8, 0.96)',
     borderWidth: 1,
     borderColor: 'rgba(187, 255, 0, 0.22)',

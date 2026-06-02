@@ -15,7 +15,7 @@
     "preview": {
       "distribution": "internal",
       "channel": "preview",
-      "node": "20.10.0",
+      "node": "20.19.4",
       "ios": { "simulator": false },
       "android": { "buildType": "apk", "image": "latest" },
       "env": {

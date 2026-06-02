@@ -19,7 +19,7 @@ import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
 import { toast } from '../store/toast.store';
 import { GameTopBar, GradientToggle } from './HomeScreen';
-import { IconX, IconVolumeUp, IconMusic } from '../components/Icons';
+import { IconX, IconVolumeUp, IconMusic, IconChevronRight } from '../components/Icons';
 import { Pressable, Image } from 'react-native';
 
 type Props = {
@@ -114,10 +114,8 @@ function RoomCard({ room, section, onJoin, width, queuedCount, modeTotal }: { ro
             <View style={styles.playersIconWrap}>
               <PlayersIcon size={18} color={textColor} />
             </View>
-            <View style={styles.playersMeta}>
-              <Text style={[styles.playersLabel, { color: textColor }]}>Jogadores</Text>
-              <Text style={[styles.playersCount, { color: textColor }]}>{queuedCount}/{modeTotal}</Text>
-            </View>
+            <Text style={[styles.playersLabel, { color: textColor }]}>Jogadores</Text>
+            <Text style={[styles.playersCount, { color: textColor }]}>{queuedCount}/{modeTotal}</Text>
           </View>
           <View style={[styles.cardDivider, styles.cardDividerDark]} />
 
@@ -147,10 +145,8 @@ function RoomCard({ room, section, onJoin, width, queuedCount, modeTotal }: { ro
             <View style={styles.playersIconWrap}>
               <PlayersIcon size={18} color={textColor} />
             </View>
-            <View style={styles.playersMeta}>
-              <Text style={[styles.playersLabel, { color: textColor }]}>Jogadores</Text>
-              <Text style={[styles.playersCount, { color: textColor }]}>{queuedCount}/{modeTotal}</Text>
-            </View>
+            <Text style={[styles.playersLabel, { color: textColor }]}>Jogadores</Text>
+            <Text style={[styles.playersCount, { color: textColor }]}>{queuedCount}/{modeTotal}</Text>
           </View>
           <View style={styles.cardDivider} />
 
@@ -269,7 +265,8 @@ function InPersonTournamentCard({ t, onPress }: { t: Tournament; onPress: () => 
 export function ModeSelectScreen({ navigation, route }: Props) {
   const mode = route.params?.mode ?? 'LIVRE';
   const isTorneio = IS_TORNEIO(mode);
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const isPortrait = screenHeight > screenWidth;
 
   const { user, refreshUser, setTokens, setUser } = useAuthStore();
   const { setQueueStatus, setLastQueue } = useGameStore();
@@ -499,7 +496,10 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const contentPad = spacing.xl;
   const sectionPad = spacing.xl;
   const sectionInnerWidth = Math.max(1, screenWidth - contentPad * 2 - sectionPad * 2);
-  const roomCardWidth = Math.max(1, Math.floor((sectionInnerWidth - rowGap * 3) / 4));
+  const MIN_CARD_W = 140;
+  const calcW = (n: number) => Math.max(1, Math.floor((sectionInnerWidth - rowGap * (n - 1)) / n));
+  const cardColumns = calcW(4) >= MIN_CARD_W ? 4 : calcW(3) >= MIN_CARD_W ? 3 : 2;
+  const roomCardWidth = isPortrait ? sectionInnerWidth : calcW(cardColumns);
 
   return (
     <ScreenBackground style={styles.root}>
@@ -528,47 +528,63 @@ export function ModeSelectScreen({ navigation, route }: Props) {
         {!isTorneio && (
           <>
             <View style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
-                {LIVRE_1V1.map((r) => {
-                  const betAmount = r.buyIn ?? 0;
-                  const queuedCount = queueStats['ARENA_1V1']?.byBet?.[String(betAmount)] ?? 0;
-                  const modeTotal = queueStats['ARENA_1V1']?.total ?? 0;
-                  return (
-                    <RoomCard
-                      key={r.id}
-                      room={r}
-                      section="1v1"
-                      width={roomCardWidth}
-                      queuedCount={queuedCount}
-                      modeTotal={modeTotal}
-                      onJoin={() => setConfirmRoom({ room: r, section: '1v1' })}
-                    />
-                  );
-                })}
-              </ScrollView>
+              <View style={styles.sectionTitleRow}>
+                <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
+                {!isPortrait && <IconChevronRight size={18} color="rgba(255,255,255,0.45)" accessibilityLabel="Arraste para ver mais" />}
+              </View>
+              {isPortrait ? (
+                <View style={[styles.cardsRow, { flexDirection: 'column' }]}>
+                  {LIVRE_1V1.map((r) => {
+                    const betAmount = r.buyIn ?? 0;
+                    const queuedCount = queueStats['ARENA_1V1']?.byBet?.[String(betAmount)] ?? 0;
+                    const modeTotal = queueStats['ARENA_1V1']?.total ?? 0;
+                    return (
+                      <RoomCard key={r.id} room={r} section="1v1" width={roomCardWidth} queuedCount={queuedCount} modeTotal={modeTotal} onJoin={() => setConfirmRoom({ room: r, section: '1v1' })} />
+                    );
+                  })}
+                </View>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
+                  {LIVRE_1V1.map((r) => {
+                    const betAmount = r.buyIn ?? 0;
+                    const queuedCount = queueStats['ARENA_1V1']?.byBet?.[String(betAmount)] ?? 0;
+                    const modeTotal = queueStats['ARENA_1V1']?.total ?? 0;
+                    return (
+                      <RoomCard key={r.id} room={r} section="1v1" width={roomCardWidth} queuedCount={queuedCount} modeTotal={modeTotal} onJoin={() => setConfirmRoom({ room: r, section: '1v1' })} />
+                    );
+                  })}
+                </ScrollView>
+              )}
             </View>
 
             <View style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
-                {LIVRE_2V2.map((r) => {
-                  const betAmount = r.buyIn ?? 0;
-                  const queuedCount = queueStats['RECREATIONAL_2V2']?.byBet?.[String(betAmount)] ?? 0;
-                  const modeTotal = queueStats['RECREATIONAL_2V2']?.total ?? 0;
-                  return (
-                    <RoomCard
-                      key={r.id}
-                      room={r}
-                      section="2v2"
-                      width={roomCardWidth}
-                      queuedCount={queuedCount}
-                      modeTotal={modeTotal}
-                      onJoin={() => setConfirmRoom({ room: r, section: '2v2' })}
-                    />
-                  );
-                })}
-              </ScrollView>
+              <View style={styles.sectionTitleRow}>
+                <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
+                {!isPortrait && <IconChevronRight size={18} color="rgba(255,255,255,0.45)" accessibilityLabel="Arraste para ver mais" />}
+              </View>
+              {isPortrait ? (
+                <View style={[styles.cardsRow, { flexDirection: 'column' }]}>
+                  {LIVRE_2V2.map((r) => {
+                    const betAmount = r.buyIn ?? 0;
+                    const queuedCount = queueStats['RECREATIONAL_2V2']?.byBet?.[String(betAmount)] ?? 0;
+                    const modeTotal = queueStats['RECREATIONAL_2V2']?.total ?? 0;
+                    return (
+                      <RoomCard key={r.id} room={r} section="2v2" width={roomCardWidth} queuedCount={queuedCount} modeTotal={modeTotal} onJoin={() => setConfirmRoom({ room: r, section: '2v2' })} />
+                    );
+                  })}
+                </View>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
+                  {LIVRE_2V2.map((r) => {
+                    const betAmount = r.buyIn ?? 0;
+                    const queuedCount = queueStats['RECREATIONAL_2V2']?.byBet?.[String(betAmount)] ?? 0;
+                    const modeTotal = queueStats['RECREATIONAL_2V2']?.total ?? 0;
+                    return (
+                      <RoomCard key={r.id} room={r} section="2v2" width={roomCardWidth} queuedCount={queuedCount} modeTotal={modeTotal} onJoin={() => setConfirmRoom({ room: r, section: '2v2' })} />
+                    );
+                  })}
+                </ScrollView>
+              )}
             </View>
           </>
         )}
@@ -669,11 +685,6 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             {confirmTour && (
               <>
-                <View style={styles.modalHeaderIcon}>
-                  <Text style={styles.modalIcon}>🏆</Text>
-                </View>
-                <Text style={styles.modalTitle}>Comprar entrada por R$ {Number(confirmTour.entry_fee).toFixed(2)}?</Text>
-                <Text style={styles.modalTourName}>{confirmTour.name}</Text>
                 <View style={styles.modalInfoBox}>
                   <View style={styles.modalRow}>
                     <Text style={styles.modalLabel}>Prêmio total</Text>
@@ -721,14 +732,6 @@ export function ModeSelectScreen({ navigation, route }: Props) {
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             {confirmRoom && (
               <>
-                <View style={styles.modalHeaderIcon}>
-                  <Text style={styles.modalIcon}>🎮</Text>
-                </View>
-                <Text style={styles.modalTitle}>
-                  {confirmRoom.room.buyIn === null
-                    ? `Entrar na partida ${confirmRoom.section === '2v2' ? '(2x2)' : '(1x1)'}?`
-                    : `Comprar entrada por R$ ${Number(confirmRoom.room.buyIn).toFixed(2)}?`}
-                </Text>
                 <View style={styles.modalInfoBox}>
                   <View style={styles.modalRow}>
                     <Text style={styles.modalLabel}>Buy in</Text>
@@ -998,7 +1001,13 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     gap: spacing.lg,
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   sectionTitle: {
+    flex: 1,
     color: '#fff',
     fontWeight: '900',
     fontSize: fonts.sizes.xl,
@@ -1061,7 +1070,7 @@ const styles = StyleSheet.create({
         }),
   },
   roomCardInner: { padding: spacing.md, gap: spacing.sm, minHeight: 140 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, width: '100%' },
+  cardTop: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, width: '100%' },
   playersIconWrap: { width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.18)', alignItems: 'center', justifyContent: 'center' },
   playersMeta: { flexDirection: 'column', gap: 2, alignItems: 'center' },
   playersLabel: { fontSize: fonts.sizes.sm, fontWeight: '800', textAlign: 'center', fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System' },
@@ -1184,7 +1193,7 @@ const styles = StyleSheet.create({
   },
 
   tourCard: {
-    width: 200,
+    width: 180,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: 'rgba(14, 127, 0, 0.40)',
@@ -1261,7 +1270,9 @@ const styles = StyleSheet.create({
   // Modal - Estilo KYC
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center' },
   modalCard: {
-    width: 320,
+    width: '88%',
+    maxWidth: 620,
+    maxHeight: '88%',
     backgroundColor: '#082006',
     borderRadius: radius.xl,
     borderWidth: 2,

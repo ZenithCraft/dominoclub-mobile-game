@@ -14,7 +14,7 @@ import {
   IconVolumeUp, IconMusic, IconChevronLeft, IconChevronRight,
 } from '../components/Icons';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
-import { tileScale as deviceTileScale } from '../theme/responsive';
+import { tileScale as deviceTileScale, isTablet } from '../theme/responsive';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import { useGameStore, Tile, GameState, PlacedTile, WIN_TYPE_LABEL, WIN_TYPE_POINTS } from '../store/game.store';
@@ -24,6 +24,11 @@ import { RootStackParamList } from '../navigation';
 type PlaySide = 'left' | 'right' | 'top' | 'bottom';
 type PlayOption = { side: PlaySide; flipped: boolean };
 type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
+
+const { width: GS_SCREEN_W } = Dimensions.get('window');
+const isSmallPhone = !isTablet && GS_SCREEN_W < 390;
+const isPhone = !isTablet;
+const smallPhoneScale = isSmallPhone ? Math.max(0.80, GS_SCREEN_W / 390) : 1;
 
 const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
 const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
@@ -876,7 +881,8 @@ type DominoTileProps = {
   style?: any;
 };
 
-const T = (n: number) => Math.round(n * deviceTileScale);
+const tabletScale = isTablet ? 1.05 : 1;
+const T = (n: number) => Math.round(n * deviceTileScale * (isSmallPhone ? smallPhoneScale : isPhone ? 0.60 : tabletScale));
 const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
   icon:  { short: T(16), long: T(25), pip: T(2),  corner: 2 },
   hand:  { short: T(28), long: T(44), pip: T(4),  corner: T(6) },
@@ -1005,12 +1011,12 @@ const scoreStyles = StyleSheet.create({
   box: {
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: radius.lg,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    gap: 8,
+    paddingVertical: isPhone ? 5 : isTablet ? 14 : 10,
+    paddingHorizontal: isPhone ? 10 : isTablet ? 24 : 18,
+    gap: isPhone ? 4 : isTablet ? 10 : 8,
     borderWidth: 1,
     borderColor: 'rgba(181,228,85,0.30)',
-    minWidth: 160,
+    minWidth: isPhone ? 110 : isTablet ? 220 : 160,
     alignItems: 'flex-start',
     ...(Platform.OS === 'web' ? ({
       backdropFilter: 'blur(12px)',
@@ -1018,10 +1024,10 @@ const scoreStyles = StyleSheet.create({
     } as any) : null),
   },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 12, width: '100%' },
-  label: { color: '#fff', fontSize: fonts.sizes.md, fontWeight: '700' },
-  scoreValue: { color: '#4ade80', fontWeight: '900', fontSize: fonts.sizes.lg },
-  pipsRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-start' },
-  pip: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  label: { color: '#fff', fontSize: isPhone ? fonts.sizes.xs : isTablet ? fonts.sizes.lg : fonts.sizes.md, fontWeight: '700' },
+  scoreValue: { color: '#4ade80', fontWeight: '900', fontSize: isPhone ? fonts.sizes.sm : isTablet ? fonts.sizes.xxl : fonts.sizes.lg },
+  pipsRow: { flexDirection: 'row', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-start' },
+  pip: { width: isPhone ? 6 : isTablet ? 12 : 8, height: isPhone ? 6 : isTablet ? 12 : 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   pipFilled: { backgroundColor: '#4ade80', borderColor: '#4ade80' },
 });
 
@@ -1097,22 +1103,22 @@ const oppStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: radius.full,
-    paddingVertical: 10,
-    paddingLeft: 16,
-    paddingRight: 12,
-    gap: 10,
+    paddingVertical: isSmallPhone ? 5 : isPhone ? 7 : 10,
+    paddingLeft: isSmallPhone ? 8 : isPhone ? 12 : 16,
+    paddingRight: isSmallPhone ? 6 : isPhone ? 10 : 12,
+    gap: isSmallPhone ? 4 : isPhone ? 6 : 10,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: 140,
-    minHeight: 48,
+    minWidth: isSmallPhone ? 105 : isPhone ? 135 : isTablet ? 320 : 170,
+    minHeight: isSmallPhone ? 34 : isPhone ? 40 : isTablet ? 80 : 48,
   },
-  textWrap: { flex: 1, justifyContent: 'center' },
-  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
-  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.xs },
+  textWrap: { flex: 1, justifyContent: 'center', paddingLeft: isPhone ? 4 : isTablet ? 10 : 6 },
+  name: { color: '#fff', fontWeight: '800', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.md : fonts.sizes.xs },
+  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.sm : fonts.sizes.xs },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
+    height: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
+    borderRadius: isSmallPhone ? 13 : isPhone ? 16 : isTablet ? 28 : 20,
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -1121,7 +1127,7 @@ const oppStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
+  avatarText: { color: '#fff', fontWeight: '900', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.sm : fonts.sizes.xs },
 });
 
 // ─── Opponent Timer (same style as player timer) ──────────────────────────────
@@ -1176,19 +1182,19 @@ const sideStyles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'center',
     borderRadius: radius.xl,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: isSmallPhone ? 4 : isPhone ? 6 : 10,
+    paddingHorizontal: isSmallPhone ? 6 : isPhone ? 8 : 14,
     gap: 4,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: 80,
+    minWidth: isSmallPhone ? 58 : isPhone ? 74 : isTablet ? 160 : 100,
   },
-  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, textAlign: 'center' },
-  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.xs, textAlign: 'center' },
+  name: { color: '#fff', fontWeight: '800', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.md : fonts.sizes.xs, textAlign: 'center' },
+  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.sm : fonts.sizes.xs, textAlign: 'center' },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
+    height: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
+    borderRadius: isSmallPhone ? 13 : isPhone ? 16 : isTablet ? 28 : 20,
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -1197,7 +1203,7 @@ const sideStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
+  avatarText: { color: '#fff', fontWeight: '900', fontSize: isPhone ? 10 : fonts.sizes.xs },
 });
 
 // ─── My player card (right side, below emoji) ────────────────────────────────
@@ -1260,22 +1266,22 @@ const myCardStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: radius.full,
-    paddingVertical: 10,
-    paddingLeft: 16,
-    paddingRight: 12,
-    gap: 10,
+    paddingVertical: isSmallPhone ? 5 : isPhone ? 7 : 10,
+    paddingLeft: isSmallPhone ? 8 : isPhone ? 12 : 16,
+    paddingRight: isSmallPhone ? 6 : isPhone ? 10 : 12,
+    gap: isSmallPhone ? 4 : isPhone ? 6 : 10,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: 140,
-    minHeight: 48,
+    minWidth: isSmallPhone ? 115 : isPhone ? 140 : isTablet ? 330 : 175,
+    minHeight: isSmallPhone ? 34 : isPhone ? 40 : isTablet ? 80 : 48,
   },
-  nameWrap: { flex: 1, justifyContent: 'center' },
-  name: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
-  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.xs },
+  nameWrap: { flex: 1, justifyContent: 'center', paddingLeft: isPhone ? 4 : isTablet ? 10 : 6 },
+  name: { color: '#fff', fontWeight: '800', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.md : fonts.sizes.xs },
+  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.sm : fonts.sizes.xs },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
+    height: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
+    borderRadius: isSmallPhone ? 13 : isPhone ? 16 : isTablet ? 28 : 20,
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -1284,7 +1290,7 @@ const myCardStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
+  avatarText: { color: '#fff', fontWeight: '900', fontSize: isPhone ? 10 : fonts.sizes.xs },
 });
 
 // ─── Result card ──────────────────────────────────────────────────────────────
@@ -1311,32 +1317,34 @@ function ResultCard({
   const fmtBRL = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
   return (
     <View style={[styles.resultCard, isWinner ? styles.resultCardWinner : styles.resultCardLoser]}>
-      <View style={styles.resultIcon}>
-        {isWinner ? (
-          <IconTrophy size={64} color={colors.gold} accessibilityLabel="Troféu" />
-        ) : (
-          <IconFrown size={64} color={colors.textSecondary} accessibilityLabel="Rosto triste" />
-        )}
-      </View>
-      <Text style={[styles.resultTitle, isWinner ? styles.resultTitleWinner : styles.resultTitleLoser]}>
-        {!winnerId ? 'Fim de jogo' : isWinner ? 'Ganhador' : 'Você perdeu!'}
-      </Text>
-      {winnerId ? (
-        <Text style={[styles.resultPrize, isWinner ? styles.resultPrizeWinner : styles.resultPrizeLoser]}>
-          {isWinner ? fmtBRL(prizePerWinner) : fmtBRL(netAbs)}
+      <ScrollView style={{ flexShrink: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', gap: isPhone ? 8 : 12 }} showsVerticalScrollIndicator={false}>
+        <View style={[styles.resultIcon, { marginBottom: isPhone ? 0 : spacing.sm }]}>
+          {isWinner ? (
+            <IconTrophy size={isPhone ? 48 : 64} color={colors.gold} accessibilityLabel="Troféu" />
+          ) : (
+            <IconFrown size={isPhone ? 48 : 64} color={colors.textSecondary} accessibilityLabel="Rosto triste" />
+          )}
+        </View>
+        <Text style={[styles.resultTitle, isWinner ? styles.resultTitleWinner : styles.resultTitleLoser]}>
+          {!winnerId ? 'Fim de jogo' : isWinner ? 'Ganhador' : 'Você perdeu!'}
         </Text>
-      ) : null}
-      <TouchableOpacity
-        style={[styles.resultBtn, playAgainLoading && styles.resultBtnDisabled]}
-        onPress={onPlayAgain}
-        disabled={playAgainLoading}
-      >
-        <Text style={styles.resultBtnText}>{playAgainLoading ? 'Procurando...' : 'Jogar novamente'}</Text>
-      </TouchableOpacity>
-      <Text style={styles.resultOrText}>ou</Text>
-      <TouchableOpacity style={styles.resultSecondaryBtn} onPress={onExit} disabled={playAgainLoading}>
-        <Text style={styles.resultSecondaryText}>Voltar ao menu</Text>
-      </TouchableOpacity>
+        {winnerId ? (
+          <Text style={[styles.resultPrize, isWinner ? styles.resultPrizeWinner : styles.resultPrizeLoser]}>
+            {isWinner ? fmtBRL(prizePerWinner) : fmtBRL(netAbs)}
+          </Text>
+        ) : null}
+        <TouchableOpacity
+          style={[styles.resultBtn, playAgainLoading && styles.resultBtnDisabled]}
+          onPress={onPlayAgain}
+          disabled={playAgainLoading}
+        >
+          <Text style={styles.resultBtnText} numberOfLines={1}>{playAgainLoading ? 'Procurando...' : 'Jogar novamente'}</Text>
+        </TouchableOpacity>
+        <Text style={styles.resultOrText}>ou</Text>
+        <TouchableOpacity style={styles.resultSecondaryBtn} onPress={onExit} disabled={playAgainLoading}>
+          <Text style={styles.resultSecondaryText} numberOfLines={1}>Voltar ao menu</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 }
@@ -1502,7 +1510,9 @@ export function GameScreen({ navigation, route }: Props) {
   const is2v2 = currentGame?.mode?.includes('2V2') ?? false;
   const boardTileSize: DominoTileSize = 'board';
   const boardTilePreset = TILE_DIMS[boardTileSize];
-  const tableHeight = Math.round(Math.min(viewportWidth * 0.88, 940) / 2.2);
+  const tableHeight = isTablet
+    ? Math.round(Math.min(viewportWidth * 0.72, 1366) / 1.45)
+    : Math.round(Math.min(viewportWidth * 0.88, 940) / 2.2);
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
   const myPlayerIndex = (() => {
     const players = currentGame?.players ?? [];
@@ -2317,7 +2327,7 @@ export function GameScreen({ navigation, route }: Props) {
         </View>
         <View style={styles.topCenter} />
         <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)}>
-          <IconSettings size={24} color={colors.textPrimary} accessibilityLabel="Configurações" />
+          <IconSettings size={isTablet ? 40 : 24} color={colors.textPrimary} accessibilityLabel="Configurações" />
         </TouchableOpacity>
       </View>
 
@@ -2327,7 +2337,7 @@ export function GameScreen({ navigation, route }: Props) {
         {/* Table */}
         <View style={styles.tableWrap}>
           <View style={styles.tableArea}>
-            <View style={[styles.tableFrame, { height: tableHeight, width: is4Player ? '85%' : '90%' }]}>
+            <View style={[styles.tableFrame, { height: tableHeight, width: is4Player ? (isTablet ? '96%' : '85%') : (isTablet ? '99%' : '90%') }]}>
               {topOpponent && (
                 <View style={styles.oppCardOverlay}>
                   <View
@@ -2996,31 +3006,33 @@ export function GameScreen({ navigation, route }: Props) {
                 <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
-            <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Som:</Text>
-              <GradientToggle
-                value={soundOn}
-                onValueChange={setSoundOn}
-                pressableTestID="settings-sound-toggle"
-                accessibilityLabel="Som"
-                kind="sound"
-              />
-            </View>
+            <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ gap: isPhone ? 4 : 8 }} showsVerticalScrollIndicator={false}>
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Som:</Text>
+                <GradientToggle
+                  value={soundOn}
+                  onValueChange={setSoundOn}
+                  pressableTestID="settings-sound-toggle"
+                  accessibilityLabel="Som"
+                  kind="sound"
+                />
+              </View>
 
-            <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Música:</Text>
-              <GradientToggle
-                value={musicOn}
-                onValueChange={setMusicOn}
-                pressableTestID="settings-music-toggle"
-                accessibilityLabel="Música"
-                kind="music"
-              />
-            </View>
-            {/* Leave */}
-            <TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveGame}>
-              <Text style={styles.leaveBtnText}>Abandonar partida</Text>
-            </TouchableOpacity>
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Música:</Text>
+                <GradientToggle
+                  value={musicOn}
+                  onValueChange={setMusicOn}
+                  pressableTestID="settings-music-toggle"
+                  accessibilityLabel="Música"
+                  kind="music"
+                />
+              </View>
+              {/* Leave */}
+              <TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveGame}>
+                <Text style={styles.leaveBtnText}>Abandonar partida</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -3037,22 +3049,24 @@ export function GameScreen({ navigation, route }: Props) {
             onStartShouldSetResponder={() => true}
             testID="leave-confirm-card"
           >
-            <View style={styles.confirmIcon}>
-              <IconAlert size={40} color="#ef4444" />
-            </View>
-            <Text style={styles.confirmTitle}>Abandonar partida</Text>
-            <Text style={styles.confirmText}>Tem certeza que deseja sair?</Text>
-            <View style={styles.confirmWarningBox}>
-              <Text style={styles.confirmWarningText}>⚠️ Você perderá a aposta!</Text>
-            </View>
-            <View style={styles.confirmActions}>
-              <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => setLeaveConfirmVisible(false)}>
-                <Text style={styles.confirmCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmLeaveBtn} onPress={doLeave}>
-                <Text style={styles.confirmLeaveText}>Sair</Text>
-              </TouchableOpacity>
-            </View>
+            <ScrollView style={{ flexShrink: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', gap: isPhone ? 8 : 12 }} showsVerticalScrollIndicator={false}>
+              <View style={[styles.confirmIcon, { marginBottom: isPhone ? 0 : spacing.sm }]}>
+                <IconAlert size={isPhone ? 32 : 40} color="#ef4444" />
+              </View>
+              <Text style={styles.confirmTitle}>Abandonar partida</Text>
+              <Text style={styles.confirmText}>Tem certeza que deseja sair?</Text>
+              <View style={styles.confirmWarningBox}>
+                <Text style={styles.confirmWarningText}>⚠️ Você perderá a aposta!</Text>
+              </View>
+              <View style={[styles.confirmActions, { marginTop: isPhone ? 4 : spacing.lg }]}>
+                <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => setLeaveConfirmVisible(false)}>
+                  <Text style={styles.confirmCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.confirmLeaveBtn} onPress={doLeave}>
+                  <Text style={styles.confirmLeaveText}>Sair</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -3305,21 +3319,22 @@ const styles = StyleSheet.create({
   },
   topLeft: {
     alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-    marginTop: -8,
+    justifyContent: 'center',
   },
   topCenter: {
     flex: 1,
     alignItems: 'center',
   },
   gearBtn: {
-    width: 36, height: 36, borderRadius: radius.sm,
+    width: isPhone ? 44 : isTablet ? 76 : 40, height: isPhone ? 44 : isTablet ? 76 : 40, borderRadius: radius.md,
     backgroundColor: 'rgba(0,100,0,0.6)',
     borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)',
     alignItems: 'center', justifyContent: 'center',
   },
   timerBadge: {
-    width: 60, height: 60, borderRadius: 30,
+    width: isSmallPhone ? 40 : isPhone ? 46 : isTablet ? 80 : 60,
+    height: isSmallPhone ? 40 : isPhone ? 46 : isTablet ? 80 : 60,
+    borderRadius: isSmallPhone ? 20 : isPhone ? 23 : isTablet ? 40 : 30,
     borderWidth: 2.5,
     alignItems: 'center', justifyContent: 'center',
   },
@@ -3336,7 +3351,7 @@ const styles = StyleSheet.create({
     borderColor: '#991b1b',
   },
   timerText: {
-    color: '#fff', fontWeight: '900', fontSize: fonts.sizes.lg,
+    color: '#fff', fontWeight: '900', fontSize: isTablet ? fonts.sizes.xxl : fonts.sizes.lg,
   },
 
   // ── Middle ──
@@ -3363,7 +3378,7 @@ const styles = StyleSheet.create({
     zIndex: 20,
     transform: [{ translateX: 60 }, { translateY: -30 }],
   },
-  tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative', paddingBottom: 130 },
+  tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative', paddingBottom: isSmallPhone ? 80 : isPhone ? 100 : isTablet ? 180 : 120 },
   oppCardOverlay: {
     position: 'absolute',
     top: 0,
@@ -3396,7 +3411,7 @@ const styles = StyleSheet.create({
   },
   tableFrame: {
     width: '90%',
-    maxWidth: 1020,
+    maxWidth: isTablet ? 1280 : 1020,
     alignSelf: 'center',
     backgroundColor: '#060e06',
     borderRadius: 999,
@@ -3453,7 +3468,7 @@ const styles = StyleSheet.create({
   },
   snakeRow: { alignItems: 'center', gap: 0 },
   snakeCorner: { borderRadius: 4, backgroundColor: '#d4cfc6' },
-  playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 8 },
+  playerCardWithTimer: { flexDirection: 'row', alignItems: 'center', gap: isSmallPhone ? 8 : 20, marginBottom: 8 },
   playerCardFxWrap: { position: 'relative', alignSelf: 'center' },
   playerFxLayer: { ...StyleSheet.absoluteFillObject, zIndex: 50 },
   emojiBubble: {
@@ -3499,13 +3514,16 @@ const styles = StyleSheet.create({
   jogarBtn: {
     backgroundColor: '#0f2d17',
     borderRadius: radius.full,
-    paddingVertical: 11, paddingHorizontal: 28,
+    paddingVertical: isSmallPhone ? 6 : isPhone ? 8 : isTablet ? 16 : 11,
+    paddingHorizontal: isSmallPhone ? 14 : isPhone ? 20 : isTablet ? 40 : 28,
     borderWidth: 2,
     borderColor: '#4ade80',
   },
-  jogarBtnText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.4 },
+  jogarBtnText: { color: '#fff', fontWeight: '900', fontSize: isSmallPhone ? fonts.sizes.xs : isPhone ? fonts.sizes.sm : isTablet ? fonts.sizes.xl : fonts.sizes.md, letterSpacing: 0.4 },
   sideBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: isSmallPhone ? 32 : isPhone ? 38 : isTablet ? 60 : 44,
+    height: isSmallPhone ? 32 : isPhone ? 38 : isTablet ? 60 : 44,
+    borderRadius: isSmallPhone ? 16 : isPhone ? 19 : isTablet ? 30 : 22,
     backgroundColor: '#0f2d17',
     borderWidth: 2, borderColor: '#4ade80',
     alignItems: 'center', justifyContent: 'center',
@@ -3520,22 +3538,25 @@ const styles = StyleSheet.create({
   },
   drawBtnInner: {
     borderRadius: radius.full,
-    paddingVertical: 11,
-    paddingHorizontal: 26,
+    paddingVertical: isSmallPhone ? 6 : isPhone ? 8 : isTablet ? 16 : 11,
+    paddingHorizontal: isSmallPhone ? 12 : isPhone ? 18 : isTablet ? 36 : 26,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  drawBtnText: { color: '#052e16', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.3 },
+  drawBtnText: { color: '#052e16', fontWeight: '900', fontSize: isSmallPhone ? fonts.sizes.xs : isPhone ? fonts.sizes.sm : isTablet ? fonts.sizes.xl : fonts.sizes.md, letterSpacing: 0.3 },
   passBtn: {
     backgroundColor: '#1c1000',
     borderRadius: radius.full,
-    paddingVertical: 11, paddingHorizontal: 28,
+    paddingVertical: isSmallPhone ? 6 : isPhone ? 8 : isTablet ? 16 : 11,
+    paddingHorizontal: isSmallPhone ? 14 : isPhone ? 20 : isTablet ? 40 : 28,
     borderWidth: 2, borderColor: '#b45309',
   },
-  passBtnText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.md, letterSpacing: 0.4 },
+  passBtnText: { color: '#fff', fontWeight: '900', fontSize: isSmallPhone ? fonts.sizes.xs : isPhone ? fonts.sizes.sm : isTablet ? fonts.sizes.xl : fonts.sizes.md, letterSpacing: 0.4 },
   cancelBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: isSmallPhone ? 32 : isPhone ? 38 : isTablet ? 60 : 44,
+    height: isSmallPhone ? 32 : isPhone ? 38 : isTablet ? 60 : 44,
+    borderRadius: isSmallPhone ? 16 : isPhone ? 19 : isTablet ? 30 : 22,
     backgroundColor: '#3d0a0a',
     borderWidth: 2, borderColor: '#8b1a1a',
     alignItems: 'center', justifyContent: 'center',
@@ -3569,10 +3590,10 @@ const styles = StyleSheet.create({
   },
   handContent: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: 4,
     paddingHorizontal: spacing.xs,
-    paddingTop: 20,
+    paddingTop: 8,
     paddingBottom: 4,
   },
   handTileWrap: {
@@ -3598,12 +3619,14 @@ const styles = StyleSheet.create({
   // Settings modal
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
   settingsCard: {
-    width: Platform.OS === 'web' ? 640 : 520,
+    width: Platform.OS === 'web' ? 640 : '92%',
+    maxWidth: isTablet ? 580 : 440,
+    maxHeight: Platform.OS === 'web' ? 560 : '85%',
     backgroundColor: colors.bgCard,
     borderWidth: 3, borderColor: '#BBFF00',
     borderRadius: radius.xl,
-    padding: SETTINGS_CARD_PAD,
-    gap: SETTINGS_ITEM_GAP,
+    padding: isPhone ? 12 : SETTINGS_CARD_PAD,
+    gap: isPhone ? 8 : SETTINGS_ITEM_GAP,
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.45)' } as any) : shadows.card),
   },
@@ -3621,7 +3644,7 @@ const styles = StyleSheet.create({
   } as any,
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   settingsTitle: {
-    fontSize: fonts.sizes.xxxl,
+    fontSize: isPhone ? fonts.sizes.xl : fonts.sizes.xxxl,
     fontWeight: '900',
     color: '#fff',
     textAlign: 'center',
@@ -3633,13 +3656,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SETTINGS_CARD_PAD,
-    paddingVertical: SETTINGS_ITEM_GAP,
+    paddingVertical: isPhone ? 8 : SETTINGS_ITEM_GAP,
     borderRadius: radius.lg,
     borderWidth: 0,
     overflow: 'hidden',
   },
   settingLabel: {
-    fontSize: fonts.sizes.xl,
+    fontSize: isPhone ? fonts.sizes.md : fonts.sizes.xl,
     color: '#fff',
     fontWeight: '800',
     fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
@@ -3656,10 +3679,12 @@ const styles = StyleSheet.create({
   leaveBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md },
   // Leave confirm modal - Estilo KYC
   confirmCard: {
-    width: Platform.OS === 'web' ? 400 : 320,
+    width: Platform.OS === 'web' ? 400 : '92%',
+    maxWidth: 380,
+    maxHeight: '88%',
     backgroundColor: '#082006',
     borderRadius: radius.xl,
-    padding: spacing.xl,
+    padding: isPhone ? spacing.md : spacing.xl,
     borderWidth: 2,
     borderColor: '#0F400B',
     alignItems: 'center',
@@ -3711,13 +3736,14 @@ const styles = StyleSheet.create({
 
   // Result modal - Estilo baseado nas imagens
   resultCard: {
-    width: Platform.OS === 'web' ? 320 : 280,
+    width: Platform.OS === 'web' ? 320 : '88%',
+    maxWidth: 340,
+    maxHeight: '88%',
     borderRadius: radius.xl,
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.xl,
+    paddingVertical: isPhone ? spacing.md : spacing.xxl,
+    paddingHorizontal: isPhone ? spacing.md : spacing.xl,
     alignItems: 'center',
-    gap: spacing.md,
-    minWidth: 280,
+    gap: isPhone ? 6 : spacing.md,
   },
   resultCardWinner: {
     backgroundColor: '#082006',
@@ -3729,33 +3755,33 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#4F4E47',
   },
-  resultIcon: { marginBottom: spacing.sm },
-  resultTitle: { fontSize: fonts.sizes.xl, fontWeight: '900', textAlign: 'center' },
+  resultIcon: { marginBottom: 0 },
+  resultTitle: { fontSize: isPhone ? fonts.sizes.md : fonts.sizes.xl, fontWeight: '900', textAlign: 'center' },
   resultTitleWinner: { color: '#facc15' },
   resultTitleLoser: { color: 'rgba(255,255,255,0.7)' },
-  resultPrize: { fontSize: fonts.sizes.xxl, fontWeight: '900', textAlign: 'center' },
+  resultPrize: { fontSize: isPhone ? fonts.sizes.lg : fonts.sizes.xxl, fontWeight: '900', textAlign: 'center' },
   resultPrizeWinner: { color: '#facc15' },
   resultPrizeLoser: { color: 'rgba(255,255,255,0.6)' },
   resultBtn: {
     backgroundColor: '#1F5D18',
     borderRadius: radius.full,
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    width: 200,
+    paddingVertical: isPhone ? 9 : 12,
+    paddingHorizontal: isPhone ? 16 : 28,
+    width: '80%',
     alignItems: 'center',
   },
   resultBtnDisabled: { opacity: 0.75 },
-  resultBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md },
-  resultOrText: { color: 'rgba(255,255,255,0.5)', fontSize: fonts.sizes.sm, fontWeight: '600' },
+  resultBtnText: { color: '#fff', fontWeight: '800', fontSize: isPhone ? fonts.sizes.sm : fonts.sizes.md },
+  resultOrText: { color: 'rgba(255,255,255,0.5)', fontSize: fonts.sizes.xs, fontWeight: '600' },
   resultSecondaryBtn: {
     backgroundColor: '#4F4E47',
     borderRadius: radius.full,
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    width: 200,
+    paddingVertical: isPhone ? 9 : 12,
+    paddingHorizontal: isPhone ? 16 : 28,
+    width: '80%',
     alignItems: 'center',
   },
-  resultSecondaryText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
+  resultSecondaryText: { color: '#fff', fontWeight: '700', fontSize: isPhone ? fonts.sizes.sm : fonts.sizes.md },
 
   // Round banner overlay
   roundBannerOverlay: {
