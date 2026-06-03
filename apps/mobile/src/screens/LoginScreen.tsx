@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet,
   KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView, Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -19,6 +20,12 @@ type Props = { navigation: NativeStackNavigationProp<any> };
 const LIME = '#4ade80';
 
 export function LoginScreen({ navigation }: Props) {
+  const { width: winW } = useWindowDimensions();
+  const isWide = winW >= 768;
+  const panelMaxW = Math.min(winW * 0.92, 1100);
+  const rightW = isWide ? Math.max(300, Math.min(460, winW * 0.38)) : '100%';
+  const welcomeSize = winW < 480 ? 32 : winW < 768 ? 40 : 52;
+
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -78,12 +85,12 @@ export function LoginScreen({ navigation }: Props) {
           style={styles.kav}
         >
           <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <View style={[styles.panel, styles.panelWeb]}>
-              <View style={styles.left}>
-                <Text style={[styles.welcome, styles.welcomeGradientWeb]}>Bem-vindo</Text>
+            <View style={[styles.panel, isWide ? { width: panelMaxW, flexDirection: 'row' } : { width: '100%', flexDirection: 'column' }]}>
+              <View style={[styles.left, !isWide && styles.leftMobile]}>
+                <Text style={[styles.welcome, styles.welcomeGradientWeb, { fontSize: welcomeSize }]}>Bem-vindo</Text>
                 <Text style={styles.subtitle}>A resenha da mesa, agora no seu celular</Text>
               </View>
-              <View style={styles.vertDivider}>
+              <View style={[styles.vertDivider, !isWide && { display: 'none' }]}>
                 <LinearGradient
                   colors={[
                     'rgba(44,99,35,0)',
@@ -98,7 +105,7 @@ export function LoginScreen({ navigation }: Props) {
                   style={styles.vertGrad}
                 />
               </View>
-              <View style={styles.right}>
+              <View style={[styles.right, { width: rightW }]}>
                 <View style={styles.formInner}>
                   <LinearGradient
                     colors={['#BEF311', '#1CBB3D']}
@@ -175,29 +182,26 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Platform.OS === 'web' ? spacing.xxl : spacing.lg,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xl,
-    paddingLeft: Platform.OS === 'web' ? spacing.xxl + 16 : spacing.lg,
   },
   panel: {
-    flexDirection: Platform.OS === 'web' ? 'row' : 'column',
     backgroundColor: 'rgba(34, 92, 52, 0.45)',
     borderWidth: 1,
     borderColor: 'rgba(187, 255, 0, 0.16)',
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
-  panelWeb: Platform.OS === 'web' ? ({ width: 720 } as any) : { width: '100%' },
+  leftMobile: { width: '100%' },
   left: {
-    flex: Platform.OS === 'web' ? 1 : undefined,
-    width: Platform.OS === 'web' ? undefined : '100%',
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     gap: spacing.md,
     paddingTop: spacing.xl,
-    paddingBottom: Platform.OS === 'web' ? spacing.xl : spacing.md,
-    paddingLeft: Platform.OS === 'web' ? spacing.xxl : spacing.xl,
-    paddingRight: Platform.OS === 'web' ? spacing.xl : spacing.xl,
+    paddingBottom: spacing.xl,
+    paddingLeft: spacing.xxl,
+    paddingRight: spacing.xl,
   },
   welcome: {
     fontSize: 52,
@@ -222,21 +226,18 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
   },
   vertDivider: {
-    width: Platform.OS === 'web' ? 14 : '100%',
-    height: Platform.OS === 'web' ? undefined : 14,
+    width: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    display: Platform.OS === 'web' ? 'flex' : 'none',
   },
   vertGrad: { width: 3, height: 230, borderRadius: 2 },
   right: {
-    width: Platform.OS === 'web' ? 300 : '100%',
     padding: spacing.lg,
     justifyContent: 'center',
     alignItems: 'center',
   },
   formInner: {
-    width: Platform.OS === 'web' ? undefined : '100%',
+    width: '100%',
     alignItems: 'center',
     gap: spacing.lg,
   },

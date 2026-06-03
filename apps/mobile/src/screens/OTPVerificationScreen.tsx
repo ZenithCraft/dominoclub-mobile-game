@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet,
   TextInput, TouchableOpacity, KeyboardAvoidingView, Platform,
-  ScrollView,
+  ScrollView, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -20,6 +20,12 @@ type Props = NativeStackScreenProps<RootStackParamList, 'OTPVerification'>;
 const LIME = '#4ade80';
 
 export function OTPVerificationScreen({ navigation, route }: Props) {
+  const { width: winW } = useWindowDimensions();
+  const isWide = winW >= 768;
+  const panelMaxW = Math.min(winW * 0.92, 1100);
+  const rightW = isWide ? Math.max(320, Math.min(500, winW * 0.42)) : '100%';
+  const welcomeSize = winW < 480 ? 32 : winW < 768 ? 40 : 52;
+
   const { phone } = route.params;
   const [otp, setOtp]               = useState(['', '', '', '', '', '']);
   const [loading, setLoading]       = useState(false);
@@ -89,13 +95,13 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <View style={[styles.panel, styles.panelWeb]}>
-              <View style={styles.left}>
-                <Text style={[styles.welcome, styles.welcomeGradientWeb]}>Bem-vindo</Text>
+            <View style={[styles.panel, isWide ? { width: panelMaxW, flexDirection: 'row' } : { width: '100%', flexDirection: 'column' }]}>
+              <View style={[styles.left, !isWide && styles.leftMobile]}>
+                <Text style={[styles.welcome, styles.welcomeGradientWeb, { fontSize: welcomeSize }]}>Bem-vindo</Text>
                 <Text style={styles.subtitle}>A resenha da mesa, agora no seu celular</Text>
               </View>
 
-              <View style={styles.vertDivider}>
+              <View style={[styles.vertDivider, !isWide && { display: 'none' }]}>
                 <LinearGradient
                   colors={[
                     'rgba(44,99,35,0)',
@@ -111,7 +117,7 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
                 />
               </View>
 
-              <View style={styles.right}>
+              <View style={[styles.right, { width: rightW }]}>
                 <View style={styles.rightInner}>
                   <View style={styles.formInner}>
                   <View style={styles.iconCircle}>
@@ -181,21 +187,18 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.xxl,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xl,
-    paddingLeft: spacing.xxl + 16,
   },
 
   panel: {
-    flexDirection: 'row',
     backgroundColor: 'rgba(34, 92, 52, 0.45)',
     borderWidth: 1,
     borderColor: 'rgba(187, 255, 0, 0.16)',
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
-  panelWeb: Platform.OS === 'web' ? ({ width: 1160, minHeight: 560 } as any) : {},
-
+  leftMobile: { width: '100%' },
   left: {
     flex: 1,
     justifyContent: 'center',
@@ -237,15 +240,14 @@ const styles = StyleSheet.create({
   vertGrad: { width: 3, height: 230, borderRadius: 2 },
 
   right: {
-    width: 480,
     paddingTop: spacing.xl,
     paddingBottom: spacing.xl,
-    paddingLeft: spacing.xl,
-    paddingRight: spacing.xxxl + 24,
+    paddingHorizontal: spacing.xl,
     justifyContent: 'center',
   },
   rightInner: {
-    width: 380,
+    width: '100%',
+    maxWidth: 380,
     alignSelf: 'center',
   },
   formInner: { alignItems: 'center', gap: spacing.xl },
@@ -259,7 +261,7 @@ const styles = StyleSheet.create({
 
   cardTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#ffffff' },
 
-  otpRow: { flexDirection: 'row', width: 360, justifyContent: 'space-between', alignSelf: 'center' },
+  otpRow: { flexDirection: 'row', width: '100%', maxWidth: 360, justifyContent: 'space-between', alignSelf: 'center' },
   otpBox: {
     width: 54, height: 62, borderRadius: radius.md,
     borderWidth: 1.5, borderColor: 'rgba(187,255,0,0.22)',

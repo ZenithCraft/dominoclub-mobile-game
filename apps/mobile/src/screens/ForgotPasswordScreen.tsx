@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet,
   TouchableOpacity, KeyboardAvoidingView, Platform,
+  useWindowDimensions, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,6 +18,12 @@ type Props = { navigation: NativeStackNavigationProp<any> };
 const LIME = '#4ade80';
 
 export function ForgotPasswordScreen({ navigation }: Props) {
+  const { width: winW } = useWindowDimensions();
+  const isWide = winW >= 768;
+  const panelMaxW = Math.min(winW * 0.92, 960);
+  const rightW = isWide ? Math.max(280, Math.min(420, winW * 0.40)) : '100%';
+  const welcomeSize = winW < 480 ? 28 : winW < 768 ? 34 : 38;
+
   const [email, setEmail]     = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent]       = useState(false);
@@ -42,19 +49,24 @@ export function ForgotPasswordScreen({ navigation }: Props) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.kav}
         >
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
           {/* ONE frosted-glass panel */}
-          <View style={styles.panel}>
+          <View style={[styles.panel, isWide ? { width: panelMaxW, flexDirection: 'row' } : { width: '100%', flexDirection: 'column' }]}>
             {/* Left column */}
-            <View style={styles.left}>
-              <Text style={styles.welcome}>Bem-vindo</Text>
+            <View style={[styles.left, !isWide && styles.leftMobile]}>
+              <Text style={[styles.welcome, { fontSize: welcomeSize }]}>Bem-vindo</Text>
               <Text style={styles.subtitle}>A reserva da mesa, agora no seu celular</Text>
             </View>
 
             {/* Vertical divider */}
-            <View style={styles.vertDivider} />
+            <View style={[styles.vertDivider, !isWide && { display: 'none' }]} />
 
             {/* Right column — form */}
-            <View style={styles.right}>
+            <View style={[styles.right, { width: rightW }]}>
               <View style={styles.iconCircle}>
                 <IconLock size={24} color={colors.textOnPrimary} accessibilityLabel="Senha" />
               </View>
@@ -91,6 +103,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
               </TouchableOpacity>
             </View>
           </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ScreenBackground>
@@ -100,10 +113,16 @@ export function ForgotPasswordScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
   safe: { flex: 1 },
-  kav: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xxl },
+  kav: { flex: 1 },
+  scroll: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
+  },
 
   panel: {
-    flexDirection: 'row',
     backgroundColor: 'rgba(8, 20, 8, 0.88)',
     borderWidth: 1,
     borderColor: 'rgba(74, 222, 128, 0.28)',
@@ -111,6 +130,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
+  leftMobile: { width: '100%' },
   left: {
     flex: 1,
     padding: spacing.xl,
@@ -127,7 +147,6 @@ const styles = StyleSheet.create({
   },
 
   right: {
-    width: 340,
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.md,
