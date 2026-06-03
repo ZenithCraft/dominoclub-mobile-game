@@ -21,10 +21,7 @@ const LIME = '#4ade80';
 
 export function LoginScreen({ navigation }: Props) {
   const { width: winW } = useWindowDimensions();
-  const isWide = winW >= 768;
-  const panelMaxW = Math.min(winW * 0.92, 1100);
-  const rightW = isWide ? Math.max(300, Math.min(460, winW * 0.38)) : '100%';
-  const welcomeSize = winW < 480 ? 32 : winW < 768 ? 40 : 52;
+  const welcomeSize = winW < 480 ? 32 : 40;
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -85,27 +82,12 @@ export function LoginScreen({ navigation }: Props) {
           style={styles.kav}
         >
           <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <View style={[styles.panel, isWide ? { width: panelMaxW, flexDirection: 'row' } : { width: '100%', flexDirection: 'column' }]}>
-              <View style={[styles.left, !isWide && styles.leftMobile]}>
+            <View style={[styles.panel, { width: '100%', flexDirection: 'column' }]}>
+              <View style={[styles.left, styles.leftMobile]}>
                 <Text style={[styles.welcome, styles.welcomeGradientWeb, { fontSize: welcomeSize }]}>Bem-vindo</Text>
                 <Text style={styles.subtitle}>A resenha da mesa, agora no seu celular</Text>
               </View>
-              <View style={[styles.vertDivider, !isWide && { display: 'none' }]}>
-                <LinearGradient
-                  colors={[
-                    'rgba(44,99,35,0)',
-                    '#2C6323',
-                    '#BBFF00',
-                    '#1E5518',
-                    'rgba(30,85,24,0)',
-                  ]}
-                  locations={[0, 0.14, 0.5, 0.86, 1]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0, y: 1 }}
-                  style={styles.vertGrad}
-                />
-              </View>
-              <View style={[styles.right, { width: rightW }]}>
+              <View style={[styles.right, { width: '100%' }]}>
                 <View style={styles.formInner}>
                   <LinearGradient
                     colors={['#BEF311', '#1CBB3D']}
@@ -177,7 +159,7 @@ export function LoginScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
   safe: { flex: 1 },
-  kav:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  kav:  { flex: 1 },
   scroll: {
     flexGrow: 1,
     alignItems: 'center',

@@ -35,7 +35,7 @@ export type RootStackParamList = {
   OTPVerification: { phone: string };
   ForgotPassword: undefined;
   SetNewPassword: { token?: string } | undefined;
-  Main: undefined;
+  Main: { openModal?: 'settings' | 'profile' } | undefined;
   Wallet: undefined;
   KYC: undefined;
   ModeSelect: { mode?: string } | undefined;

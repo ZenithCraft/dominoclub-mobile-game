@@ -25,7 +25,8 @@ type PlaySide = 'left' | 'right' | 'top' | 'bottom';
 type PlayOption = { side: PlaySide; flipped: boolean };
 type Props = NativeStackScreenProps<RootStackParamList, 'Game'>;
 
-const { width: GS_SCREEN_W } = Dimensions.get('window');
+const { width: GS_RAW_W, height: GS_RAW_H } = Dimensions.get('window');
+const GS_SCREEN_W = Math.min(GS_RAW_W, GS_RAW_H);
 const isSmallPhone = !isTablet && GS_SCREEN_W < 390;
 const isPhone = !isTablet;
 const smallPhoneScale = isSmallPhone ? Math.max(0.80, GS_SCREEN_W / 390) : 1;
@@ -418,8 +419,8 @@ function buildSnakeLayout(
   gap: number,
   _overlap: number,
   scale: number
-): { placed: SnakePlaced[]; width: number; height: number } {
-  if (!seq.length) return { placed: [], width: 0, height: 0 };
+): { placed: SnakePlaced[]; width: number; height: number; leftEndIdx: number; rightEndIdx: number } {
+  if (!seq.length) return { placed: [], width: 0, height: 0, leftEndIdx: -1, rightEndIdx: -1 };
 
   const S = Math.round(base.short * scale);
   const L = Math.round(base.long * scale);
@@ -431,6 +432,8 @@ function buildSnakeLayout(
   let minX = Infinity;
   let maxX = -Infinity;
   let maxY = 0;
+  let leftEndIdx = -1;
+  let rightEndIdx = -1;
 
   const rowCells = hPerRow + 1;
   const rows = Math.ceil(seq.length / rowCells);
@@ -511,7 +514,14 @@ function buildSnakeLayout(
       const top = cursorY + Math.floor((rowHeight - tileH) / 2);
 
       const displayTile: Tile = rtl ? [t[1], t[0]] as Tile : t;
+      const placedIdx = placed.length;
       placed.push({ tile: displayTile, x: left, y: top, horizontal });
+      // Track leftmost (first tile in row 0 for LTR, last tile in row 0 for RTL — but
+      // since tiles are placed in visual left-to-right order within each row,
+      // the very first placed tile is the left end overall).
+      if (leftEndIdx === -1) leftEndIdx = placedIdx;
+      // Right end: the last non-corner tile placed
+      rightEndIdx = placedIdx;
       minX = Math.min(minX, left);
       maxX = Math.max(maxX, left + tileW);
       maxY = Math.max(maxY, top + tileH);
@@ -536,13 +546,19 @@ function buildSnakeLayout(
         // Right edge of last tile = cum[last] + steps[last]
         cornerLeft = baseX + (last >= 0 ? cumSteps[last] + perRow[rowNum].steps[last] : 0) - S;
       }
-      // Corner must start just below the last horizontal tile's centre line with gap
-      const lastBottom = cursorY + (lastIsDouble ? L : S + Math.floor((L - S) / 2));
-      cornerTop = lastBottom + GH;
-      // cursorY for the next row: cornerTop + L - GH brings horizontal tiles slightly
-      // closer to the corner piece (~3 px gap at scale 0.6) while keeping any overlap
-      // for double tiles imperceptible (~2 px at scale 0.6).
-      cursorY = cornerTop + L - GH;
+      // Corner starts just below the last tile's actual bottom edge with gap
+      const lastTileBottom = cursorY + Math.floor((L + (lastIsDouble ? L : S)) / 2);
+      cornerTop = lastTileBottom + GH;
+      // cursorY for the next row: match the visual gap above the corner (GH).
+      // The next row's first tile is centered in rowHeight=L:
+      //   double → top = cursorY (no centering, height=L)  → gap = cursorY - cornerBottom
+      //   horiz  → top = cursorY + (L-S)/2                 → gap = cursorY + (L-S)/2 - cornerBottom
+      // We check the next row's first tile to compensate exactly:
+      const nextRow = rowNum + 1 < rows ? perRow[rowNum + 1] : null;
+      const nextFirstTile = nextRow ? nextRow.tiles.find(t => t !== null) : null;
+      const nextIsDouble = nextFirstTile ? nextFirstTile[0] === nextFirstTile[1] : false;
+      const centeringOffset = nextIsDouble ? 0 : Math.floor((L - S) / 2);
+      cursorY = cornerTop + L + GH - centeringOffset;
 
       placed.push({ tile: cornerTile, x: cornerLeft, y: cornerTop, horizontal: false, isCorner: true });
       minX = Math.min(minX, cornerLeft);
@@ -553,10 +569,10 @@ function buildSnakeLayout(
     }
   }
 
-  if (!placed.length) return { placed: [], width: 0, height: 0 };
+  if (!placed.length) return { placed: [], width: 0, height: 0, leftEndIdx: -1, rightEndIdx: -1 };
   const shiftX = -minX;
   for (const p of placed) p.x += shiftX;
-  return { placed, width: Math.max(1, maxX - minX), height: maxY };
+  return { placed, width: Math.max(1, maxX - minX), height: maxY, leftEndIdx, rightEndIdx };
 }
 
 // ─── Full board layout: horizontal snake + vertical CRUZADA branches ─────────
@@ -609,13 +625,13 @@ function buildFullBoardLayout(
   base: { short: number; long: number },
   gap: number,
   scale: number
-): { placed: SnakePlaced[]; width: number; height: number; horizCount: number; rightEndRowParity: 0 | 1; leftEndRowParity: 0 | 1; leftEndSnakeIdx: number } {
-  if (!board || board.length === 0) return { placed: [], width: 0, height: 0, horizCount: 0, rightEndRowParity: 0, leftEndRowParity: 0, leftEndSnakeIdx: 0 };
+): { placed: SnakePlaced[]; width: number; height: number; horizCount: number; rightEndRowParity: 0 | 1; leftEndRowParity: 0 | 1; leftEndSnakeIdx: number; snakeLeftEndIdx: number; snakeRightEndIdx: number } {
+  if (!board || board.length === 0) return { placed: [], width: 0, height: 0, horizCount: 0, rightEndRowParity: 0, leftEndRowParity: 0, leftEndSnakeIdx: 0, snakeLeftEndIdx: -1, snakeRightEndIdx: -1 };
 
   // Step 1 — build horizontal snake (left/right chain only)
   const { padded, spinnerPaddedIdx, rightEndRowParity, leftEndRowParity, leftEndPaddedIdx } = buildHorizBoardTiles(board, { hPerRow, rows: 13 });
   const snake = buildSnakeLayout(padded, hPerRow, base, gap, 0, scale);
-  if (!snake.placed.length) return { placed: [], width: 0, height: 0, horizCount: 0, rightEndRowParity: 0, leftEndRowParity: 0, leftEndSnakeIdx: 0 };
+  if (!snake.placed.length) return { placed: [], width: 0, height: 0, horizCount: 0, rightEndRowParity: 0, leftEndRowParity: 0, leftEndSnakeIdx: 0, snakeLeftEndIdx: -1, snakeRightEndIdx: -1 };
 
   const horizCount = snake.placed.length;
 
@@ -722,7 +738,7 @@ function buildFullBoardLayout(
   const shiftY = -minY;
   for (const p of allPlaced) { p.x += shiftX; p.y += shiftY; }
 
-  return { placed: allPlaced, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), horizCount, rightEndRowParity, leftEndRowParity, leftEndSnakeIdx };
+  return { placed: allPlaced, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), horizCount, rightEndRowParity, leftEndRowParity, leftEndSnakeIdx, snakeLeftEndIdx: snake.leftEndIdx, snakeRightEndIdx: snake.rightEndIdx };
 }
 
 // ─── Domino piece images ──────────────────────────────────────────────────────
@@ -1308,6 +1324,8 @@ function ResultCard({
   onPlayAgain: () => void;
   onExit: () => void;
 }) {
+  const { width: rcW, height: rcH } = useWindowDimensions();
+  const rcIsTablet = Math.min(rcW, rcH) >= 768;
   const winnerId = result?.winnerId ? String(result.winnerId) : '';
   const isWinner = !!winnerId && winnerId === String(userId ?? '');
   const betAmount = typeof result?.betAmount === 'number' ? result.betAmount : Number(result?.betAmount ?? 0);
@@ -1316,7 +1334,7 @@ function ResultCard({
   const netAbs = Math.abs(net);
   const fmtBRL = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
   return (
-    <View style={[styles.resultCard, isWinner ? styles.resultCardWinner : styles.resultCardLoser]}>
+    <View style={[styles.resultCard, rcIsTablet && { maxWidth: 480 }, isWinner ? styles.resultCardWinner : styles.resultCardLoser]}>
       <ScrollView style={{ flexShrink: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', gap: isPhone ? 8 : 12 }} showsVerticalScrollIndicator={false}>
         <View style={[styles.resultIcon, { marginBottom: isPhone ? 0 : spacing.sm }]}>
           {isWinner ? (
@@ -1356,7 +1374,8 @@ export function GameScreen({ navigation, route }: Props) {
   const { user } = useAuthStore();
   const { currentGame, selectedTile, gameResult, roundBanner, lastQueue, setGame, setSelectedTile, setGameResult, setRoundBanner, clearGame } = useGameStore();
 
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
+  const dynIsTablet = Math.min(viewportWidth, viewportHeight) >= 768;
   const safeInsets = useSafeAreaInsets();
   const [feltWidth, setFeltWidth] = useState(0);
   const [tableBgSize, setTableBgSize] = useState({ width: 0, height: 0 });
@@ -2471,36 +2490,24 @@ export function GameScreen({ navigation, route }: Props) {
                   //                   1 = RTL (left-end tile is visually rightmost in its row).
                   const leftEndIsInLTR = layout.leftEndRowParity === 0;
 
-                  // Chain endpoints: leftEndP = visual left open end, rightEndP = visual right open end.
-                  // We find the endpoint by picking the tile at the extreme visual position in the
-                  // last chain row: max-X for LTR rows, min-X for RTL rows.
+                  // Chain endpoints: use tracked indices from buildSnakeLayout.
+                  // leftEndIdx = first non-corner tile placed (visual left end).
+                  // rightEndIdx = last non-corner tile placed (visual right end).
+                  // If the last placed tile overall is a corner, the right end IS that corner.
                   const horizTiles = layout.placed.slice(0, layout.horizCount > 0 ? layout.horizCount : layout.placed.length);
-                  const chainTiles = horizTiles.filter(t => !t.isCorner);
-                  // leftEndP: chain's left open-end tile (may be a corner).
-                  const leftEndP = (() => {
-                    const candidate = horizTiles[layout.leftEndSnakeIdx];
-                    if (candidate) return candidate;
-                    if (chainTiles.length === 0) return horizTiles[0] ?? horizTiles[horizTiles.length - 1];
-                    return leftEndIsInLTR
-                      ? chainTiles.reduce((min, t) => t.x < min.x ? t : min)
-                      : chainTiles.reduce((max, t) => t.x > max.x ? t : max);
-                  })();
+                  const lastHorizTile = horizTiles[horizTiles.length - 1];
+                  const rightEndIsCorner = lastHorizTile?.isCorner ?? false;
+
+                  const leftEndP = layout.snakeLeftEndIdx >= 0 && layout.snakeLeftEndIdx < horizTiles.length
+                    ? horizTiles[layout.snakeLeftEndIdx]
+                    : horizTiles[0];
                   const leftEndIsCorner = leftEndP?.isCorner ?? false;
 
-                  // rightEndP: chain's right open-end tile (may be a corner).
-                  // horizTiles.last is the actual last placed tile in snake order.
-                  const rightEndActual = horizTiles[horizTiles.length - 1] ?? null;
-                  const rightEndIsCorner = rightEndActual?.isCorner ?? false;
-                  const rightEndP = rightEndIsCorner ? rightEndActual : (() => {
-                    if (chainTiles.length === 0) return horizTiles[horizTiles.length - 1];
-                    const lastTile = chainTiles[chainTiles.length - 1];
-                    const rowWindow = Math.round(L_u * boardScale);
-                    const lastRowTiles = chainTiles.filter(t => Math.abs(t.y - lastTile.y) < rowWindow);
-                    if (lastRowTiles.length === 0) return lastTile;
-                    return rightComesFromLeft
-                      ? lastRowTiles.reduce((max, t) => t.x > max.x ? t : max)
-                      : lastRowTiles.reduce((min, t) => t.x < min.x ? t : min);
-                  })();
+                  const rightEndP = rightEndIsCorner
+                    ? lastHorizTile
+                    : (layout.snakeRightEndIdx >= 0 && layout.snakeRightEndIdx < horizTiles.length
+                        ? horizTiles[layout.snakeRightEndIdx]
+                        : lastHorizTile);
 
                   // Top/bottom endpoints (vertical CRUZADA branches)
                   // Find tiles that are not in the horizontal chain
@@ -2535,13 +2542,11 @@ export function GameScreen({ navigation, route }: Props) {
                   if (__DEV__ && (leftPlay || rightPlay)) {
                     const dbgPlaced = layout.placed.map((p, i) =>
                       `[${i}](${p.x.toFixed(0)},${p.y.toFixed(0)} h=${p.horizontal} c=${!!p.isCorner})`).join(' ');
-                    console.log('[ghost] leftEndSnakeIdx=', layout.leftEndSnakeIdx,
-                      'leftEndP=', leftEndP ? `(${leftEndP.x.toFixed(0)},${leftEndP.y.toFixed(0)} h=${leftEndP.horizontal})` : 'null',
-                      'rightEndP=', rightEndP ? `(${rightEndP.x.toFixed(0)},${rightEndP.y.toFixed(0)} h=${rightEndP.horizontal})` : 'null',
-                      'horizCount=', layout.horizCount, 'placed=', layout.placed.length,
-                      'layoutW=', layoutW.toFixed(0), 'layoutH=', layoutH.toFixed(0),
-                      'rightParity=', layout.rightEndRowParity, 'leftParity=', layout.leftEndRowParity,
-                      '\nplaced:', dbgPlaced);
+                    console.log('[ghost] snakeLeftEndIdx=', layout.snakeLeftEndIdx, 'snakeRightEndIdx=', layout.snakeRightEndIdx,
+                      'leftEndP=', leftEndP ? `(${leftEndP.x.toFixed(0)},${leftEndP.y.toFixed(0)} h=${leftEndP.horizontal} c=${!!leftEndP.isCorner})` : 'null',
+                      'rightEndP=', rightEndP ? `(${rightEndP.x.toFixed(0)},${rightEndP.y.toFixed(0)} h=${rightEndP.horizontal} c=${!!rightEndP.isCorner})` : 'null',
+                      'horizCount=', layout.horizCount, 'rightIsCorner=', rightEndIsCorner,
+                      'rightParity=', layout.rightEndRowParity, 'leftParity=', layout.leftEndRowParity);
                   }
 
                   // Ghost side: corners have no horizontal extension (ghost goes BELOW them).
@@ -3044,7 +3049,7 @@ export function GameScreen({ navigation, route }: Props) {
           testID="leave-confirm-overlay"
         >
           <Pressable
-            style={styles.confirmCard}
+            style={[styles.confirmCard, dynIsTablet && { maxWidth: 520 }]}
             onPress={() => {}}
             onStartShouldSetResponder={() => true}
             testID="leave-confirm-card"
@@ -3378,7 +3383,7 @@ const styles = StyleSheet.create({
     zIndex: 20,
     transform: [{ translateX: 60 }, { translateY: -30 }],
   },
-  tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative', paddingBottom: isSmallPhone ? 80 : isPhone ? 100 : isTablet ? 180 : 120 },
+  tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative', paddingTop: isSmallPhone ? 6 : isPhone ? 10 : 16, paddingBottom: isSmallPhone ? 80 : isPhone ? 100 : isTablet ? 180 : 120 },
   oppCardOverlay: {
     position: 'absolute',
     top: 0,
@@ -3386,7 +3391,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 10,
-    transform: [{ translateY: -30 }],
+    transform: [{ translateY: isSmallPhone ? -10 : -20 }],
   },
   tableSideBadgeLeft: {
     position: 'absolute',
@@ -3679,8 +3684,8 @@ const styles = StyleSheet.create({
   leaveBtnText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md },
   // Leave confirm modal - Estilo KYC
   confirmCard: {
-    width: Platform.OS === 'web' ? 400 : '92%',
-    maxWidth: 380,
+    width: '92%',
+    maxWidth: isTablet ? 520 : 380,
     maxHeight: '88%',
     backgroundColor: '#082006',
     borderRadius: radius.xl,
@@ -3736,8 +3741,8 @@ const styles = StyleSheet.create({
 
   // Result modal - Estilo baseado nas imagens
   resultCard: {
-    width: Platform.OS === 'web' ? 320 : '88%',
-    maxWidth: 340,
+    width: '88%',
+    maxWidth: isTablet ? 480 : 340,
     maxHeight: '88%',
     borderRadius: radius.xl,
     paddingVertical: isPhone ? spacing.md : spacing.xxl,

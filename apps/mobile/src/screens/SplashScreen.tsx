@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Image,
-  ActivityIndicator, Animated, Platform,
+  ActivityIndicator, Animated, Platform, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -33,6 +33,8 @@ type Props = { navigation: NativeStackNavigationProp<any> };
 
 export function SplashScreen({ navigation }: Props) {
   const { loadFromStorage, setTokens, setUser } = useAuthStore();
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isTabletSize = Math.min(winW, winH) >= 768;
   const opacity = useRef(new Animated.Value(0)).current;
   const scale   = useRef(new Animated.Value(0.92)).current;
   const pulse   = useRef(new Animated.Value(0)).current;
@@ -73,6 +75,14 @@ export function SplashScreen({ navigation }: Props) {
           navigation.replace('Login');
           return;
         }
+        // Check for an active game (reconnect after app restart)
+        try {
+          const { data: gameData } = await api.get('/game/active');
+          if (gameData.game?.id) {
+            navigation.replace('Game', { gameId: gameData.game.id });
+            return;
+          }
+        } catch {}
         // Check for an active tournament enrollment
         try {
           const { data } = await api.get('/game/tournaments/my-active');
@@ -105,14 +115,14 @@ export function SplashScreen({ navigation }: Props) {
       />
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safe}>
-        <Animated.View style={[styles.card, { opacity, transform: [{ scale }] }]}>
+        <Animated.View style={[styles.card, isTabletSize && styles.cardTablet, { opacity, transform: [{ scale }] }]}>
           <Image
             source={require('../../assets/b9e1ca54722e75c0419489ace1bdc6e4b752369c.png')}
-            style={styles.brandLogo}
+            style={[styles.brandLogo, isTabletSize && styles.brandLogoTablet]}
             resizeMode="contain"
             accessibilityLabel="DominoClub"
           />
-          <View style={styles.dominoRow}>
+          <View style={[styles.dominoRow, isTabletSize && styles.dominoRowTablet]}>
             {/* Peça esquerda */}
             <Animated.View style={[
               styles.dominoWrapper,
@@ -123,7 +133,7 @@ export function SplashScreen({ navigation }: Props) {
             ]}>
               <Image
                 source={dominoImages['6-6']}
-                style={styles.dominoPiece}
+                style={[styles.dominoPiece, isTabletSize && styles.dominoPieceTablet]}
                 resizeMode="contain"
               />
             </Animated.View>
@@ -138,7 +148,7 @@ export function SplashScreen({ navigation }: Props) {
             ]}>
               <Image
                 source={dominoImages['4-4']}
-                style={styles.dominoPieceCenter}
+                style={[styles.dominoPieceCenter, isTabletSize && styles.dominoPieceCenterTablet]}
                 resizeMode="contain"
               />
             </Animated.View>
@@ -153,15 +163,15 @@ export function SplashScreen({ navigation }: Props) {
             ]}>
               <Image
                 source={dominoImages['3-5']}
-                style={styles.dominoPiece}
+                style={[styles.dominoPiece, isTabletSize && styles.dominoPieceTablet]}
                 resizeMode="contain"
               />
             </Animated.View>
           </View>
 
           <View style={styles.loadingRow}>
-            <ActivityIndicator color="#4ade80" size="small" />
-            <Text style={styles.loadingText}>Carregando...</Text>
+            <ActivityIndicator color="#4ade80" size={isTabletSize ? 'large' : 'small'} />
+            <Text style={[styles.loadingText, isTabletSize && styles.loadingTextTablet]}>Carregando...</Text>
           </View>
         </Animated.View>
       </SafeAreaView>
@@ -261,5 +271,31 @@ const styles = StyleSheet.create({
     height: 50,
     maxWidth: '90%',
     marginBottom: spacing.xs,
+  },
+
+  // Tablet overrides
+  cardTablet: {
+    width: 420,
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: 60,
+  },
+  brandLogoTablet: {
+    width: 320,
+    height: 80,
+  },
+  dominoRowTablet: {
+    height: 110,
+    width: 300,
+  },
+  dominoPieceTablet: {
+    width: 90,
+    height: 46,
+  },
+  dominoPieceCenterTablet: {
+    width: 115,
+    height: 58,
+  },
+  loadingTextTablet: {
+    fontSize: fonts.sizes.md,
   },
 });

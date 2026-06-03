@@ -14,6 +14,7 @@ function getMockData(url: string, method: string): any | undefined {
   const m = method.toLowerCase();
 
   if (m === 'post' && url.includes('/auth/dev/login'))   return { accessToken: MOCK_ACCESS_TOKEN, refreshToken: MOCK_REFRESH_TOKEN, user: MOCK_USER };
+  if (m === 'get'  && url.includes('/game/active') && !url.includes('tournaments')) return { game: null };
   if (m === 'get'  && url.includes('/game/tournaments/my-active')) return {};
   if (m === 'post' && url.includes('/auth/otp/send'))    return {};
   if (m === 'post' && url.includes('/auth/otp/verify'))  return { accessToken: MOCK_ACCESS_TOKEN, refreshToken: MOCK_REFRESH_TOKEN, user: MOCK_USER };

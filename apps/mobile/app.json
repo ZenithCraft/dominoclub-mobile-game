@@ -1,6 +1,5 @@
 {
   "expo": {
-    "entryPoint": "./index.js",
     "name": "DominoClub",
     "slug": "dominoclub",
     "version": "1.0.0",

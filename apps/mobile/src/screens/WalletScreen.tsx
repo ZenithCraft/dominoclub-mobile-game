@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Modal, TextInput, Alert, RefreshControl, Animated,
+  Modal, TextInput, Alert, RefreshControl, Animated, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -133,6 +133,10 @@ const badgeStyles = StyleSheet.create({
 export function WalletScreen() {
   const { user, refreshUser } = useAuthStore();
   const navigation = useNavigation<any>();
+  const { width: wW, height: wH } = useWindowDimensions();
+  const wIsTablet = Math.min(wW, wH) >= 768;
+  const dateColW = wIsTablet ? 120 : 80;
+  const statusColW = wIsTablet ? 120 : 90;
 
   const [transactions, setTransactions]   = useState<Transaction[]>([]);
   const [refreshing, setRefreshing]       = useState(false);
@@ -411,10 +415,10 @@ export function WalletScreen() {
           {/* Table header */}
           <View style={styles.tableHead}>
             <Text style={[styles.thCell, { width: 32 }]}>ID</Text>
-            <Text style={[styles.thCell, { width: 80 }]}>Data</Text>
+            <Text style={[styles.thCell, { width: dateColW }]}>Data</Text>
             <Text style={[styles.thCell, { flex: 1 }]}>Tipo</Text>
             <Text style={[styles.thCell, { width: 70 }]}>Valor</Text>
-            <Text style={[styles.thCell, { width: 90 }]}>Status</Text>
+            <Text style={[styles.thCell, { width: statusColW }]}>Status</Text>
           </View>
 
           {/* Table rows */}
@@ -450,14 +454,14 @@ export function WalletScreen() {
             filteredTransactions.map((tx, idx) => (
               <View key={tx.id} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
                 <Text style={[styles.tdCell, { width: 32 }]}>{String(idx + 1).padStart(2, '0')}</Text>
-                <Text style={[styles.tdCell, { width: 80 }]}>
+                <Text style={[styles.tdCell, { width: dateColW }]}>
                   {new Date(tx.created_at).toLocaleDateString('pt-BR')}
                 </Text>
                 <Text style={[styles.tdCell, { flex: 1 }]}>{TYPE_LABEL[tx.type] ?? tx.type}</Text>
                 <Text style={[styles.tdCell, { width: 70, color: tx.amount > 0 ? '#4ade80' : '#f87171', fontWeight: '700' }]}>
                   R${Math.abs(tx.amount)}
                 </Text>
-                <View style={{ width: 90 }}>
+                <View style={{ width: statusColW }}>
                   <StatusBadge status={tx.status} />
                 </View>
               </View>

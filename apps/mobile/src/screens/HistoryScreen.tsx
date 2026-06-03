@@ -135,6 +135,8 @@ export function HistoryScreen({ navigation }: Props) {
           user={user}
           exitVariant="back"
           onExit={() => navigation.goBack()}
+          onSettings={() => navigation.navigate('Main', { openModal: 'settings' })}
+          onProfile={() => navigation.navigate('Main', { openModal: 'profile' })}
         />
 
         {loading ? (

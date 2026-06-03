@@ -1,6 +1,10 @@
 import { Dimensions, Platform } from 'react-native';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const { width: RAW_W, height: RAW_H } = Dimensions.get('window');
+// Use the shorter dimension as the reference width so landscape mode
+// (where width > height) doesn't over-scale everything.
+const SCREEN_W = Math.min(RAW_W, RAW_H);
+const SCREEN_H = Math.max(RAW_W, RAW_H);
 
 /** Design baseline — iPhone SE / 375-point width */
 const BASE_WIDTH  = 375;

@@ -40,10 +40,7 @@ const LIME = '#4ade80';
 
 export function RegisterScreen({ navigation, route }: Props) {
   const { width: winW } = useWindowDimensions();
-  const isWide = winW >= 768;
-  const panelMaxW = Math.min(winW * 0.92, 1100);
-  const rightW = isWide ? Math.max(300, Math.min(480, winW * 0.40)) : '100%';
-  const welcomeSize = winW < 480 ? 32 : winW < 768 ? 40 : 52;
+  const welcomeSize = winW < 480 ? 32 : 40;
   const [name, setName]             = useState('');
   const [phone, setPhone]           = useState(route.params?.phone?.replace('+55', '') || '');
   const [cpf, setCpf]               = useState('');
@@ -145,32 +142,15 @@ export function RegisterScreen({ navigation, route }: Props) {
             showsVerticalScrollIndicator={false}
           >
             {/* ONE frosted-glass panel */}
-            <View style={[styles.panel, isWide ? { width: panelMaxW, flexDirection: 'row' } : { width: '100%', flexDirection: 'column' }]}>
+            <View style={[styles.panel, { width: '100%', flexDirection: 'column' }]}>
               {/* Left column */}
-              <View style={[styles.left, !isWide && styles.leftMobile]}>
+              <View style={[styles.left, styles.leftMobile]}>
                 <Text style={[styles.welcome, styles.welcomeGradientWeb, { fontSize: welcomeSize }]}>Bem-vindo</Text>
                 <Text style={styles.subtitle}>Crie a sua conta ou faça o login</Text>
               </View>
 
-              {/* Vertical divider */}
-              <View style={[styles.vertDivider, !isWide && { display: 'none' }]}>
-                <LinearGradient
-                  colors={[
-                    'rgba(44,99,35,0)',
-                    '#2C6323',
-                    '#BBFF00',
-                    '#1E5518',
-                    'rgba(30,85,24,0)',
-                  ]}
-                  locations={[0, 0.14, 0.5, 0.86, 1]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0, y: 1 }}
-                  style={styles.vertGrad}
-                />
-              </View>
-
-              {/* Right column — form */}
-              <View style={[styles.right, { width: rightW }]}>
+              {/* Form */}
+              <View style={[styles.right, { width: '100%' }]}>
                 <View style={styles.formInner}>
                   <LinearGradient
                     colors={['#BEF311', '#1CBB3D']}
@@ -250,7 +230,7 @@ export function RegisterScreen({ navigation, route }: Props) {
                     <Text style={styles.generalError}>{errors.general}</Text>
                   ) : null}
 
-                  <Button title="Criar Conta" onPress={handleSubmit} loading={loading} style={styles.btn} />
+                  <Button title="Criar Conta" onPress={handleSubmit} loading={loading} style={{ ...styles.btn, width: winW >= 768 ? 320 : 220 }} />
 
                   <View style={styles.loginRow}>
                   <Text style={[styles.linkText, styles.whiteText]}>Já tem conta? faça o </Text>

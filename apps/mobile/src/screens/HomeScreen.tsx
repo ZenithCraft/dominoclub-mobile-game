@@ -24,7 +24,7 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const isSmallPhone = !isTablet && SCREEN_W < 390;
 const isShortScreen = SCREEN_H < 420;
 
-type Props = { navigation: NativeStackNavigationProp<any> };
+type Props = { navigation: NativeStackNavigationProp<any>; route?: any };
 
 // ─── Shared top-bar used across logged-in screens ──────────────────────────
 
@@ -364,7 +364,7 @@ const topBar = StyleSheet.create({
 
 // ─── Main HomeScreen ────────────────────────────────────────────────────────
 
-export function HomeScreen({ navigation }: Props) {
+export function HomeScreen({ navigation, route }: Props) {
   const { height: windowH, width: windowW } = useWindowDimensions();
   const dynShortScreen = windowH < 420;
   const dynIsTablet = windowW >= 768;
@@ -386,6 +386,18 @@ export function HomeScreen({ navigation }: Props) {
     tournamentsWon: 0,
     totalGames: 0,
   });
+
+  // Handle openModal param from other screens (settings/profile)
+  useEffect(() => {
+    const openModal = route?.params?.openModal;
+    if (openModal === 'settings') {
+      setSettingsVisible(true);
+      navigation.setParams?.({ openModal: undefined });
+    } else if (openModal === 'profile') {
+      setProfileVisible(true);
+      navigation.setParams?.({ openModal: undefined });
+    }
+  }, [route?.params?.openModal]);
 
   useEffect(() => {
     (async () => {
@@ -572,7 +584,7 @@ export function HomeScreen({ navigation }: Props) {
       />
 
       {/* Center content */}
-      <View style={styles.center}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.center} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Escolha o modo de jogo</Text>
         <Text style={[styles.subtitle, { color: '#ffffff' }]}>Escolha como você quer jogar: individual ou time</Text>
         <View style={[styles.modeRow, (dynIsTablet || dynIsPortrait) && { flexDirection: 'column' }]}>
@@ -608,7 +620,7 @@ export function HomeScreen({ navigation }: Props) {
             </LinearGradient>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
 
       {/* ── Settings Modal (Configurações) ── */}
       <Modal visible={settingsVisible} transparent animationType="fade">
@@ -837,12 +849,13 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
 
   center: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: isSmallPhone ? spacing.md : spacing.xl,
     paddingHorizontal: isSmallPhone ? spacing.lg : spacing.xxl,
     paddingTop: spacing.xl,
+    paddingBottom: spacing.xxl,
   },
 
   title: {
