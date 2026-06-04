@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, ActivityIndicator, Modal, Pressable, Image, Platform,
+  TouchableOpacity, ActivityIndicator, Pressable, Image, Platform,
 } from 'react-native';
+import { BlurModal } from '../components/BlurModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -100,7 +101,7 @@ export function TournamentBracketScreen({ navigation, route }: Props) {
       <ScreenBackground style={styles.bg}>
         <SafeAreaView style={styles.safe}>
           <View style={styles.centered}>
-            <ActivityIndicator color="#4ade80" size="large" />
+            <ActivityIndicator color="#1CBB3D" size="large" />
           </View>
         </SafeAreaView>
       </ScreenBackground>
@@ -206,7 +207,7 @@ export function TournamentBracketScreen({ navigation, route }: Props) {
         </ScrollView>
 
         {/* ── Settings modal ── */}
-        <Modal visible={settingsVisible} transparent animationType="fade">
+        <BlurModal visible={settingsVisible} transparent animationType="fade">
           <Pressable style={settingsStyles.overlay} onPress={() => setSettingsVisible(false)} testID="settings-overlay">
             <Pressable style={settingsStyles.card} onPress={() => {}} onStartShouldSetResponder={() => true} testID="settings-card">
               <View style={[settingsStyles.textureWrap, (Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : null)]}>
@@ -233,7 +234,7 @@ export function TournamentBracketScreen({ navigation, route }: Props) {
               </View>
             </Pressable>
           </Pressable>
-        </Modal>
+        </BlurModal>
 
       </SafeAreaView>
     </ScreenBackground>
@@ -330,17 +331,17 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 4,
   },
-  progressDone: { backgroundColor: 'rgba(74,222,128,0.2)', borderColor: '#4ade80' },
-  progressActive: { backgroundColor: '#4ade80', borderColor: '#4ade80' },
+  progressDone: { backgroundColor: 'rgba(28,187,61,0.2)', borderColor: '#1CBB3D' },
+  progressActive: { backgroundColor: '#1CBB3D', borderColor: '#1CBB3D' },
   progressNum: { color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.xs, fontWeight: '700' },
   progressNumActive: { color: '#052e16' },
   progressLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 9, textAlign: 'center', fontWeight: '600' },
-  progressLabelActive: { color: '#4ade80' },
+  progressLabelActive: { color: '#1CBB3D' },
   progressLine: {
     position: 'absolute', top: 15, left: '50%', right: '-50%', height: 1,
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
-  progressLineDone: { backgroundColor: '#4ade80' },
+  progressLineDone: { backgroundColor: '#1CBB3D' },
 
   roundSection: { gap: spacing.sm },
   roundTitle: { color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.sm, fontWeight: '700', letterSpacing: 0.5 },
@@ -355,11 +356,11 @@ const styles = StyleSheet.create({
   matchPlayerElim: { opacity: 0.45 },
   matchAvatar: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(74,222,128,0.2)',
-    borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)',
+    backgroundColor: 'rgba(28,187,61,0.2)',
+    borderWidth: 1, borderColor: 'rgba(28,187,61,0.3)',
     alignItems: 'center', justifyContent: 'center',
   },
-  matchAvatarText: { color: '#4ade80', fontWeight: '900', fontSize: fonts.sizes.md },
+  matchAvatarText: { color: '#1CBB3D', fontWeight: '900', fontSize: fonts.sizes.md },
   matchPlayerName: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md, flex: 1 },
   matchPlayerNameElim: { textDecorationLine: 'line-through', color: 'rgba(255,255,255,0.4)' },
   matchElimTag: {
@@ -368,9 +369,9 @@ const styles = StyleSheet.create({
     color: '#fca5a5', fontSize: fonts.sizes.xs, fontWeight: '700',
   },
   matchWinTag: {
-    backgroundColor: 'rgba(74,222,128,0.2)', borderRadius: radius.sm,
+    backgroundColor: 'rgba(28,187,61,0.2)', borderRadius: radius.sm,
     paddingHorizontal: 8, paddingVertical: 2,
-    color: '#4ade80', fontSize: fonts.sizes.xs, fontWeight: '700',
+    color: '#1CBB3D', fontSize: fonts.sizes.xs, fontWeight: '700',
   },
   matchDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginHorizontal: spacing.md },
   matchStatus: {
@@ -378,6 +379,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6, paddingHorizontal: spacing.md,
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)',
   },
-  matchStatusDone: { backgroundColor: 'rgba(74,222,128,0.08)' },
+  matchStatusDone: { backgroundColor: 'rgba(28,187,61,0.08)' },
   matchStatusText: { color: 'rgba(255,255,255,0.5)', fontSize: fonts.sizes.xs, fontWeight: '600' },
 });

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Image,
-  TouchableOpacity, Modal, Alert, Animated, Pressable, ActivityIndicator,
+  TouchableOpacity, Alert, Animated, Pressable, ActivityIndicator,
   Platform, useWindowDimensions, Easing, PanResponder, Dimensions, AppState,
 } from 'react-native';
+import { BlurModal } from '../components/BlurModal';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Socket } from 'socket.io-client';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -898,7 +899,7 @@ type DominoTileProps = {
 };
 
 const tabletScale = isTablet ? 1.05 : 1;
-const T = (n: number) => Math.round(n * deviceTileScale * (isSmallPhone ? smallPhoneScale : isPhone ? 0.60 : tabletScale));
+const T = (n: number) => Math.round(n * deviceTileScale * (isSmallPhone ? 0.66 : isPhone ? 0.70 : tabletScale));
 const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
   icon:  { short: T(16), long: T(25), pip: T(2),  corner: 2 },
   hand:  { short: T(28), long: T(44), pip: T(4),  corner: T(6) },
@@ -906,7 +907,7 @@ const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: numb
   xs:    { short: T(22), long: T(35), pip: T(4),  corner: T(4) },
   sm:    { short: T(34), long: T(54), pip: T(5),  corner: T(5) },
   md:    { short: T(44), long: T(70), pip: T(7),  corner: T(8) },
-  board: { short: T(22), long: T(40), pip: T(4),  corner: T(5) }, // Tamanho intermediário para o tabuleiro
+  board: { short: T(23), long: T(41), pip: T(4),  corner: T(5) }, // Tamanho intermediário para o tabuleiro
 };
 
 function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, onPress, style }: DominoTileProps) {
@@ -933,7 +934,7 @@ function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, on
     <View style={[
       { width: tileW, height: tileH, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
       selected && (Platform.OS === 'web'
-        ? ({ borderWidth: 2, borderColor: colors.primary, boxShadow: '0 0 10px rgba(74,222,128,0.6)' } as any)
+        ? ({ borderWidth: 2, borderColor: colors.primary, boxShadow: '0 0 10px rgba(28,187,61,0.6)' } as any)
         : { borderWidth: 2, borderColor: colors.primary }),
       style,
     ]}>
@@ -982,7 +983,7 @@ const emojiStyles = StyleSheet.create({
     padding: 8,
     backgroundColor: 'rgba(8,18,8,0.94)',
     borderRadius: radius.lg,
-    borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)',
+    borderWidth: 1, borderColor: 'rgba(28,187,61,0.2)',
     zIndex: 200,
   },
   row: { flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', width: '100%' },
@@ -1041,10 +1042,10 @@ const scoreStyles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 12, width: '100%' },
   label: { color: '#fff', fontSize: isPhone ? fonts.sizes.xs : isTablet ? fonts.sizes.lg : fonts.sizes.md, fontWeight: '700' },
-  scoreValue: { color: '#4ade80', fontWeight: '900', fontSize: isPhone ? fonts.sizes.sm : isTablet ? fonts.sizes.xxl : fonts.sizes.lg },
+  scoreValue: { color: '#1CBB3D', fontWeight: '900', fontSize: isPhone ? fonts.sizes.sm : isTablet ? fonts.sizes.xxl : fonts.sizes.lg },
   pipsRow: { flexDirection: 'row', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-start' },
   pip: { width: isPhone ? 6 : isTablet ? 12 : 8, height: isPhone ? 6 : isTablet ? 12 : 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
-  pipFilled: { backgroundColor: '#4ade80', borderColor: '#4ade80' },
+  pipFilled: { backgroundColor: '#1CBB3D', borderColor: '#1CBB3D' },
 });
 
 // ─── Opponent card (top centre) ───────────────────────────────────────────────
@@ -1531,7 +1532,7 @@ export function GameScreen({ navigation, route }: Props) {
   const boardTilePreset = TILE_DIMS[boardTileSize];
   const tableHeight = isTablet
     ? Math.round(Math.min(viewportWidth * 0.72, 1366) / 1.45)
-    : Math.round(Math.min(viewportWidth * 0.88, 940) / 2.2);
+    : Math.round(Math.min(viewportWidth * 0.88, 940) / 2.05);
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
   const myPlayerIndex = (() => {
     const players = currentGame?.players ?? [];
@@ -2155,13 +2156,13 @@ export function GameScreen({ navigation, route }: Props) {
           <View style={styles.joinWrap}>
             <Animated.View style={[styles.joinGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]} />
             <LinearGradient
-              colors={['rgba(187,255,0,0.20)', 'rgba(0,0,0,0.55)', 'rgba(74,222,128,0.18)']}
+              colors={['rgba(187,255,0,0.20)', 'rgba(0,0,0,0.55)', 'rgba(28,187,61,0.18)']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.joinCard}
             >
               <View style={styles.joinSpinnerRow}>
-                <ActivityIndicator color="#4ade80" size="large" />
+                <ActivityIndicator color="#1CBB3D" size="large" />
               </View>
               <Text style={styles.joinTitle}>Entrando na partida...</Text>
               <Text style={styles.joinSubtitle}>Conectando e preparando a mesa</Text>
@@ -2225,7 +2226,7 @@ export function GameScreen({ navigation, route }: Props) {
     const availH = Math.max(0, tableHeight * (is4Player ? 0.76 : 0.86) - boardPadBase * 2);
     const scaleW = baseLayout.width > availW ? availW / baseLayout.width : 1;
     const scaleH = baseLayout.height > availH ? availH / baseLayout.height : 1;
-    return Math.max(is4Player ? 0.40 : 0.52, Math.min(1, scaleW, scaleH));
+    return Math.max(is4Player ? 0.41 : 0.55, Math.min(1, scaleW, scaleH));
   })();
   // Recompute layout at the actual boardScale so positions are integers — no
   // further multiplication in render, which avoids cumulative rounding drift.
@@ -2311,7 +2312,7 @@ export function GameScreen({ navigation, route }: Props) {
 
       {/* Loading overlay — 10 second countdown at game start */}
       {loadingTimer > 0 && !currentGame && (
-        <Modal visible transparent animationType="none">
+        <BlurModal visible transparent animationType="none">
           <View style={[styles.container, { backgroundColor: 'rgba(10, 31, 10, 0.95)', justifyContent: 'center', alignItems: 'center' }]}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={{ marginTop: 20, fontSize: 18, color: colors.primary, fontWeight: '600' }}>
@@ -2321,7 +2322,7 @@ export function GameScreen({ navigation, route }: Props) {
               {loadingTimer}s
             </Text>
           </View>
-        </Modal>
+        </BlurModal>
       )}
 
       {/* Disconnect banner */}
@@ -2675,8 +2676,8 @@ export function GameScreen({ navigation, route }: Props) {
                               borderRadius: 4,
                               borderWidth: 2,
                               borderStyle: 'dashed',
-                              borderColor: dragTargetSide === 'left' ? '#f97316' : '#4ade80',
-                              backgroundColor: dragTargetSide === 'left' ? 'rgba(249,115,22,0.15)' : 'rgba(74,222,128,0.15)',
+                              borderColor: dragTargetSide === 'left' ? '#f97316' : '#1CBB3D',
+                              backgroundColor: dragTargetSide === 'left' ? 'rgba(249,115,22,0.15)' : 'rgba(28,187,61,0.15)',
                             }} />
                           </TouchableOpacity>
                         )}
@@ -2697,8 +2698,8 @@ export function GameScreen({ navigation, route }: Props) {
                               borderRadius: 4,
                               borderWidth: 2,
                               borderStyle: 'dashed',
-                              borderColor: dragTargetSide === 'right' ? '#f97316' : '#4ade80',
-                              backgroundColor: dragTargetSide === 'right' ? 'rgba(249,115,22,0.15)' : 'rgba(74,222,128,0.15)',
+                              borderColor: dragTargetSide === 'right' ? '#f97316' : '#1CBB3D',
+                              backgroundColor: dragTargetSide === 'right' ? 'rgba(249,115,22,0.15)' : 'rgba(28,187,61,0.15)',
                             }} />
                           </TouchableOpacity>
                         )}
@@ -2719,8 +2720,8 @@ export function GameScreen({ navigation, route }: Props) {
                               borderRadius: 4,
                               borderWidth: 2,
                               borderStyle: 'dashed',
-                              borderColor: '#4ade80',
-                              backgroundColor: 'rgba(74,222,128,0.15)',
+                              borderColor: '#1CBB3D',
+                              backgroundColor: 'rgba(28,187,61,0.15)',
                             }} />
                           </TouchableOpacity>
                         )}
@@ -2741,8 +2742,8 @@ export function GameScreen({ navigation, route }: Props) {
                               borderRadius: 4,
                               borderWidth: 2,
                               borderStyle: 'dashed',
-                              borderColor: '#4ade80',
-                              backgroundColor: 'rgba(74,222,128,0.15)',
+                              borderColor: '#1CBB3D',
+                              backgroundColor: 'rgba(28,187,61,0.15)',
                             }} />
                           </TouchableOpacity>
                         )}
@@ -2773,7 +2774,7 @@ export function GameScreen({ navigation, route }: Props) {
                 {hasBoneyard && !is2v2 && !hasValidMoves && (
                   <Animated.View style={{ transform: [{ scale: drawPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }] }}>
                     <LinearGradient
-                      colors={['#4ade80', '#22c55e']}
+                      colors={['#1CBB3D', '#22c55e']}
                       start={{ x: 0, y: 0.5 }}
                       end={{ x: 1, y: 0.5 }}
                       style={styles.drawBtn}
@@ -2984,7 +2985,7 @@ export function GameScreen({ navigation, route }: Props) {
 
 
       {/* ── Settings modal (HomeScreen-style card) ── */}
-      <Modal visible={settingsVisible} transparent animationType="fade">
+      <BlurModal visible={settingsVisible} transparent animationType="fade">
         <Pressable
           style={styles.overlay}
           onPress={() => setSettingsVisible(false)}
@@ -3040,9 +3041,9 @@ export function GameScreen({ navigation, route }: Props) {
             </ScrollView>
           </Pressable>
         </Pressable>
-      </Modal>
+      </BlurModal>
 
-      <Modal visible={leaveConfirmVisible} transparent animationType="fade">
+      <BlurModal visible={leaveConfirmVisible} transparent animationType="fade">
         <Pressable
           style={styles.overlay}
           onPress={() => setLeaveConfirmVisible(false)}
@@ -3074,10 +3075,10 @@ export function GameScreen({ navigation, route }: Props) {
             </ScrollView>
           </Pressable>
         </Pressable>
-      </Modal>
+      </BlurModal>
 
       {/* ── Result modal ── */}
-      <Modal visible={resultModal} transparent animationType="fade">
+      <BlurModal visible={resultModal} transparent animationType="fade">
         <View style={styles.overlay}>
           <ResultCard
             result={gameResult}
@@ -3087,7 +3088,7 @@ export function GameScreen({ navigation, route }: Props) {
             onExit={() => { setResultModal(false); setPlayAgainSearching(false); clearGame(); navigation.replace('Main'); }}
           />
         </View>
-      </Modal>
+      </BlurModal>
 
 
       {/* ── Web drag ghost — floats above everything, outside the hand ScrollView ── */}
@@ -3281,7 +3282,7 @@ const styles = StyleSheet.create({
   },
   loadingHint: { color: '#e2e8f0', fontSize: fonts.sizes.sm, textAlign: 'center' },
   retryBtn: {
-    backgroundColor: '#4ade80',
+    backgroundColor: '#1CBB3D',
     borderRadius: radius.full,
     paddingVertical: 11,
     paddingHorizontal: 18,
@@ -3333,7 +3334,7 @@ const styles = StyleSheet.create({
   gearBtn: {
     width: isPhone ? 44 : isTablet ? 76 : 40, height: isPhone ? 44 : isTablet ? 76 : 40, borderRadius: radius.md,
     backgroundColor: 'rgba(0,100,0,0.6)',
-    borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)',
+    borderWidth: 1, borderColor: 'rgba(28,187,61,0.4)',
     alignItems: 'center', justifyContent: 'center',
   },
   timerBadge: {
@@ -3345,7 +3346,7 @@ const styles = StyleSheet.create({
   },
   timerBadgeGreen: {
     backgroundColor: '#0f2d17',
-    borderColor: '#4ade80',
+    borderColor: '#1CBB3D',
   },
   timerBadgeGold: {
     backgroundColor: '#1c1000',
@@ -3491,9 +3492,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(74,222,128,0.16)',
+    backgroundColor: 'rgba(28,187,61,0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.35)',
+    borderColor: 'rgba(28,187,61,0.35)',
   },
   drawBubbleText: { color: '#bbf7d0', fontSize: 14, fontWeight: '900' },
 
@@ -3522,7 +3523,7 @@ const styles = StyleSheet.create({
     paddingVertical: isSmallPhone ? 6 : isPhone ? 8 : isTablet ? 16 : 11,
     paddingHorizontal: isSmallPhone ? 14 : isPhone ? 20 : isTablet ? 40 : 28,
     borderWidth: 2,
-    borderColor: '#4ade80',
+    borderColor: '#1CBB3D',
   },
   jogarBtnText: { color: '#fff', fontWeight: '900', fontSize: isSmallPhone ? fonts.sizes.xs : isPhone ? fonts.sizes.sm : isTablet ? fonts.sizes.xl : fonts.sizes.md, letterSpacing: 0.4 },
   sideBtn: {
@@ -3530,7 +3531,7 @@ const styles = StyleSheet.create({
     height: isSmallPhone ? 32 : isPhone ? 38 : isTablet ? 60 : 44,
     borderRadius: isSmallPhone ? 16 : isPhone ? 19 : isTablet ? 30 : 22,
     backgroundColor: '#0f2d17',
-    borderWidth: 2, borderColor: '#4ade80',
+    borderWidth: 2, borderColor: '#1CBB3D',
     alignItems: 'center', justifyContent: 'center',
   },
   drawBtn: {
@@ -3538,7 +3539,7 @@ const styles = StyleSheet.create({
     padding: 2,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 10px 22px rgba(0,0,0,0.35), 0 0 18px rgba(74,222,128,0.30)' } as any)
+      ? ({ boxShadow: '0 10px 22px rgba(0,0,0,0.35), 0 0 18px rgba(28,187,61,0.30)' } as any)
       : { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 10 }),
   },
   drawBtnInner: {
@@ -3616,7 +3617,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 7,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderTopColor: '#4ade80',
+    borderTopColor: '#1CBB3D',
     alignSelf: 'center',
     marginBottom: 3,
   },
@@ -3799,7 +3800,7 @@ const styles = StyleSheet.create({
   roundBannerCard: {
     backgroundColor: 'rgba(0,0,0,0.82)',
     borderWidth: 2,
-    borderColor: '#4ade80',
+    borderColor: '#1CBB3D',
     borderRadius: radius.xl,
     paddingVertical: 24,
     paddingHorizontal: 40,
@@ -3808,7 +3809,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 32px rgba(0,0,0,0.7)' } as any) : shadows.card),
   },
   roundBannerTitle: {
-    color: '#4ade80',
+    color: '#1CBB3D',
     fontSize: fonts.sizes.xxxl,
     fontWeight: '900',
     textAlign: 'center',

@@ -35,7 +35,7 @@
         "backgroundColor": "#0a1f0a"
       },
       "package": "com.dominoclub.app",
-      "versionCode": 12,
+      "versionCode": 13,
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",

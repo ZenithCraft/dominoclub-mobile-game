@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet,
-  TouchableOpacity, Modal, Image, Platform, Pressable, Animated, ScrollView,
+  TouchableOpacity, Image, Platform, Pressable, Animated, ScrollView,
   Linking, Alert, Dimensions, useWindowDimensions,
 } from 'react-native';
+import { BlurModal } from '../components/BlurModal';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -172,10 +173,12 @@ export function GameTopBar({
         /* Portrait: hamburger menu button + dropdown */
         <View>
           <TouchableOpacity style={topBar.iconBtn} onPress={() => setMenuOpen(v => !v)} accessibilityLabel="Menu">
-            <IconMenu size={20} color="#fff" />
+            <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={topBar.iconBtnGrad}>
+              <IconMenu size={20} color="#0a1f0a" />
+            </LinearGradient>
           </TouchableOpacity>
 
-          <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+          <BlurModal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
             <TouchableOpacity style={topBar.menuBackdrop} activeOpacity={1} onPress={() => setMenuOpen(false)}>
               <View style={topBar.menuDropdown} onStartShouldSetResponder={() => true}>
 
@@ -191,13 +194,17 @@ export function GameTopBar({
                 </TouchableOpacity>
 
                 <TouchableOpacity style={topBar.menuItem} activeOpacity={0.8} onPress={() => { setMenuOpen(false); onExit?.(); }}>
-                  <IconLogOut size={20} color="#fff" />
-                  <Text style={topBar.menuItemText}>Sair</Text>
+                  {exitVariant === 'back' ? (
+                    <IconChevronLeft size={20} color="#fff" />
+                  ) : (
+                    <IconLogOut size={20} color="#fff" />
+                  )}
+                  <Text style={topBar.menuItemText}>{exitVariant === 'back' ? 'Voltar' : 'Sair'}</Text>
                 </TouchableOpacity>
 
               </View>
             </TouchableOpacity>
-          </Modal>
+          </BlurModal>
         </View>
       ) : (
         /* Landscape / tablet: full right bar */
@@ -205,7 +212,9 @@ export function GameTopBar({
           <WalletBalanceButton balance={balance} onPress={onWallet} />
 
           <TouchableOpacity style={topBar.iconBtn} onPress={onSettings} testID="topbar-settings" accessibilityLabel="Abrir configurações">
-            <IconSettings size={isTablet ? 24 : 20} color="#fff" accessibilityLabel="Configurações" />
+            <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={topBar.iconBtnGrad}>
+              <IconSettings size={isTablet ? 22 : 18} color="#0a1f0a" strokeWidth={2.5} accessibilityLabel="Configurações" />
+            </LinearGradient>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -214,11 +223,13 @@ export function GameTopBar({
             testID={exitVariant === 'back' ? 'topbar-back' : 'topbar-logout'}
             accessibilityLabel={exitVariant === 'back' ? 'Voltar' : 'Sair'}
           >
-            {exitVariant === 'back' ? (
-              <IconChevronLeft size={isTablet ? 24 : 20} color="#fff" accessibilityLabel="Voltar" />
-            ) : (
-              <IconLogOut size={isTablet ? 24 : 20} color="#fff" accessibilityLabel="Sair" />
-            )}
+            <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={topBar.iconBtnGrad}>
+              {exitVariant === 'back' ? (
+                <IconChevronLeft size={isTablet ? 22 : 18} color="#0a1f0a" strokeWidth={2.5} accessibilityLabel="Voltar" />
+              ) : (
+                <IconLogOut size={isTablet ? 22 : 18} color="#0a1f0a" strokeWidth={2.5} accessibilityLabel="Sair" />
+              )}
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       )}
@@ -260,7 +271,9 @@ export function GameTopBarMinimal({
       {/* Right: settings + exit (no balance) */}
       <View style={topBar.right}>
         <TouchableOpacity style={topBar.iconBtn} onPress={onSettings} testID="topbar-settings" accessibilityLabel="Abrir configurações">
-          <IconSettings size={20} color="#fff" accessibilityLabel="Configurações" />
+          <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={topBar.iconBtnGrad}>
+            <IconSettings size={20} color="#0a1f0a" accessibilityLabel="Configurações" />
+          </LinearGradient>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -269,11 +282,13 @@ export function GameTopBarMinimal({
           testID={exitVariant === 'back' ? 'topbar-back' : 'topbar-logout'}
           accessibilityLabel={exitVariant === 'back' ? 'Voltar' : 'Sair'}
         >
-          {exitVariant === 'back' ? (
-            <IconChevronLeft size={20} color="#fff" accessibilityLabel="Voltar" />
-          ) : (
-            <IconLogOut size={20} color="#fff" accessibilityLabel="Sair" />
-          )}
+          <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={topBar.iconBtnGrad}>
+            {exitVariant === 'back' ? (
+              <IconChevronLeft size={20} color="#0a1f0a" accessibilityLabel="Voltar" />
+            ) : (
+              <IconLogOut size={20} color="#0a1f0a" accessibilityLabel="Sair" />
+            )}
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </View>
@@ -285,27 +300,27 @@ const topBar = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: isTablet ? spacing.xl : spacing.lg,
-    paddingVertical: isTablet ? spacing.lg : spacing.md,
-    backgroundColor: 'rgba(24, 73, 18, 0.92)',
+    paddingHorizontal: isTablet ? spacing.xl : spacing.md,
+    paddingVertical: isTablet ? spacing.lg : spacing.xs,
+    backgroundColor: 'rgb(24, 73, 18)',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(187, 255, 0, 0.18)',
-    minHeight: isTablet ? 100 : 84,
+    minHeight: isTablet ? 90 : 60,
   },
   left: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   avatar: {
-    width: isTablet ? 68 : 54,
-    height: isTablet ? 68 : 54,
-    borderRadius: isTablet ? 34 : 27,
+    width: isTablet ? 60 : 40,
+    height: isTablet ? 60 : 40,
+    borderRadius: isTablet ? 30 : 20,
     backgroundColor: '#184912',
     borderWidth: 2,
-    borderColor: 'rgba(187, 255, 0, 0.35)',
+    borderColor: '#1CBB3D',
     alignItems: 'center', justifyContent: 'center',
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { color: '#fff', fontWeight: '700', fontSize: isTablet ? fonts.sizes.lg : fonts.sizes.md },
-  name:   { color: '#fff', fontWeight: '700', fontSize: isTablet ? fonts.sizes.lg : fonts.sizes.md },
+  avatarText: { color: '#fff', fontWeight: '700', fontSize: isTablet ? fonts.sizes.lg : fonts.sizes.sm },
+  name:   { color: '#fff', fontWeight: '700', fontSize: isTablet ? fonts.sizes.lg : fonts.sizes.sm },
   level:  { color: colors.textMuted, fontSize: isTablet ? fonts.sizes.sm : fonts.sizes.xs },
   right:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   balanceWrap: {
@@ -332,20 +347,22 @@ const topBar = StyleSheet.create({
   },
   balancePlusText: { color: '#fff', fontWeight: '900', fontSize: 14, lineHeight: 16 },
   iconBtn: {
-    width: isTablet ? 52 : 44,
-    height: isTablet ? 52 : 44,
-    borderRadius: isTablet ? 14 : 12,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(187, 255, 0, 0.22)',
-    alignItems: 'center', justifyContent: 'center',
+    width: isTablet ? 48 : 36,
+    height: isTablet ? 48 : 36,
+    borderRadius: isTablet ? 13 : 10,
+    overflow: 'hidden',
+  },
+  iconBtnGrad: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconText: { color: '#fff', fontSize: 16 },
 
   menuBackdrop: { flex: 1 },
   menuDropdown: {
     position: 'absolute',
-    top: 84,
+    top: isTablet ? 90 : 60,
     right: spacing.lg,
     backgroundColor: '#112d0f',
     borderRadius: radius.lg,
@@ -587,10 +604,10 @@ export function HomeScreen({ navigation, route }: Props) {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.center} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Escolha o modo de jogo</Text>
         <Text style={[styles.subtitle, { color: '#ffffff' }]}>Escolha como você quer jogar: individual ou time</Text>
-        <View style={[styles.modeRow, (dynIsTablet || dynIsPortrait) && { flexDirection: 'column' }]}>
+        <View style={styles.modeRow}>
           {/* Livre button — cyan */}
           <TouchableOpacity
-            style={styles.modeBtn}
+            style={[styles.modeBtn, styles.modeBtnLivre]}
             activeOpacity={0.85}
             onPress={() => handlePlayPress('LIVRE')}
           >
@@ -600,13 +617,13 @@ export function HomeScreen({ navigation, route }: Props) {
               end={{ x: 1, y: 1 }}
               style={[styles.modeBtnGrad, dynIsTablet && { minHeight: 160 }]}
             >
-              <Text style={styles.modeBtnText}>Livre</Text>
+              <Text style={styles.modeBtnTextLivre}>Livre</Text>
             </LinearGradient>
           </TouchableOpacity>
 
           {/* Torneio button — yellow/gold */}
           <TouchableOpacity
-            style={styles.modeBtn}
+            style={[styles.modeBtn, styles.modeBtnTorneio]}
             activeOpacity={0.85}
             onPress={() => handlePlayPress('TORNEIO')}
           >
@@ -616,14 +633,14 @@ export function HomeScreen({ navigation, route }: Props) {
               end={{ x: 1, y: 1 }}
               style={[styles.modeBtnGrad, dynIsTablet && { minHeight: 160 }]}
             >
-              <Text style={styles.modeBtnText}>Torneio</Text>
+              <Text style={styles.modeBtnTextTorneio}>Torneio</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
       </ScrollView>
 
       {/* ── Settings Modal (Configurações) ── */}
-      <Modal visible={settingsVisible} transparent animationType="fade">
+      <BlurModal visible={settingsVisible} transparent animationType="fade">
         <Pressable
           style={styles.overlay}
           onPress={() => setSettingsVisible(false)}
@@ -704,10 +721,10 @@ export function HomeScreen({ navigation, route }: Props) {
             )}
           </Pressable>
         </Pressable>
-      </Modal>
+      </BlurModal>
 
       {/* ── Profile Modal ── */}
-      <Modal visible={profileVisible} transparent animationType="fade" onRequestClose={() => setProfileVisible(false)}>
+      <BlurModal visible={profileVisible} transparent animationType="fade" onRequestClose={() => setProfileVisible(false)}>
         <View style={styles.profileOverlay}>
           {/* Overlay touch area to close - only outside the card */}
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setProfileVisible(false)} />
@@ -782,9 +799,9 @@ export function HomeScreen({ navigation, route }: Props) {
             </View>
           </View>
         </View>
-      </Modal>
+      </BlurModal>
 
-      <Modal visible={locationBlockerVisible} transparent animationType="fade">
+      <BlurModal visible={locationBlockerVisible} transparent animationType="fade">
         <View style={styles.overlay}>
           <View style={styles.logoutCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
@@ -810,9 +827,9 @@ export function HomeScreen({ navigation, route }: Props) {
             </View>
           </View>
         </View>
-      </Modal>
+      </BlurModal>
 
-      <Modal visible={logoutVisible} transparent animationType="fade">
+      <BlurModal visible={logoutVisible} transparent animationType="fade">
         <TouchableOpacity
           style={styles.overlay}
           activeOpacity={1}
@@ -838,7 +855,7 @@ export function HomeScreen({ navigation, route }: Props) {
             </View>
           </View>
         </TouchableOpacity>
-      </Modal>
+      </BlurModal>
       </SafeAreaView>
     </ScreenBackground>
   );
@@ -883,7 +900,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: 3,
-    borderColor: '#BBFF00',
     backgroundColor: 'rgba(0,0,0,0.25)',
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0px 4px 8px rgba(0,0,0,0.40)' } as any)
@@ -896,18 +912,42 @@ const styles = StyleSheet.create({
         }),
   },
   modeBtnGrad: {
-    paddingVertical: isSmallPhone ? spacing.lg : (isShortScreen ? spacing.md : spacing.xxxl),
+    paddingVertical: isSmallPhone ? spacing.md : (isShortScreen ? spacing.sm : spacing.xl),
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    minHeight: isSmallPhone ? 90 : (isShortScreen ? 80 : 120),
+    minHeight: isSmallPhone ? 72 : (isShortScreen ? 64 : 88),
     borderRadius: radius.lg - 3,
   },
+  modeBtnLivre: {
+    borderColor: '#0e7490', // darker cyan
+  },
+  modeBtnTorneio: {
+    borderColor: '#92400e', // darker yellow/gold
+  },
   modeBtnText: {
-    fontSize: fonts.sizes.xxl,
+    fontSize: isSmallPhone ? fonts.sizes.xl : fonts.sizes.xxl,
     fontWeight: '900',
     color: '#ffffff',
     letterSpacing: 1,
+  },
+  modeBtnTextLivre: {
+    fontSize: isSmallPhone ? fonts.sizes.xl : fonts.sizes.xxl,
+    fontWeight: '900',
+    color: '#ffffff',
+    letterSpacing: 1,
+    textShadowColor: '#0e7490',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  modeBtnTextTorneio: {
+    fontSize: isSmallPhone ? fonts.sizes.xl : fonts.sizes.xxl,
+    fontWeight: '900',
+    color: '#ffffff',
+    letterSpacing: 1,
+    textShadowColor: '#92400e',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 
   // Overlay
@@ -985,12 +1025,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(74,222,128,0.12)',
+    backgroundColor: 'rgba(28,187,61,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.3)',
+    borderColor: 'rgba(28,187,61,0.3)',
   },
   locationBtnText: { color: colors.primary, fontWeight: '700', fontSize: fonts.sizes.sm },
-  locationBtnGranted: { color: '#4ade80' },
+  locationBtnGranted: { color: '#1CBB3D' },
 
   // Profile modal
   profileCardWrapper: {
@@ -1054,7 +1094,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: 3, overflow: 'hidden',
   },
-  xpBarFill: { height: '100%', backgroundColor: '#4ade80', borderRadius: 3 },
+  xpBarFill: { height: '100%', backgroundColor: '#1CBB3D', borderRadius: 3 },
 
   profileRight: { flex: 1, gap: spacing.sm },
   statLabel: { color: colors.textMuted, fontSize: fonts.sizes.xs },

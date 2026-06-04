@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet,
   ScrollView, KeyboardAvoidingView, TouchableOpacity, Pressable,
-  useWindowDimensions,
+  useWindowDimensions, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,7 +14,6 @@ import { ScreenBackground } from '../components/ScreenBackground';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Platform } from 'react-native';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -35,29 +34,30 @@ function isValidCpf(cpf: string): boolean {
   return rest === parseInt(cpf[10]);
 }
 
-const LIME = '#4ade80';
-
+const LIME = '#1CBB3D';
 
 export function RegisterScreen({ navigation, route }: Props) {
   const { width: winW } = useWindowDimensions();
-  const welcomeSize = winW < 480 ? 32 : 40;
-  const [name, setName]             = useState('');
-  const [phone, setPhone]           = useState(route.params?.phone?.replace('+55', '') || '');
-  const [cpf, setCpf]               = useState('');
-  const [email, setEmail]           = useState('');
-  const [password, setPassword]     = useState('');
-  const [confirm, setConfirm]       = useState('');
-  const [dob, setDob]               = useState('');
-  const [loading, setLoading]       = useState(false);
-  const [cpfLoading, setCpfLoading] = useState(false);
+  const isWide   = winW >= 580;
+  const isTablet = winW >= 768;
+
+  const [name, setName]               = useState('');
+  const [phone, setPhone]             = useState(route.params?.phone?.replace('+55', '') || '');
+  const [cpf, setCpf]                 = useState('');
+  const [email, setEmail]             = useState('');
+  const [password, setPassword]       = useState('');
+  const [confirm, setConfirm]         = useState('');
+  const [dob, setDob]                 = useState('');
+  const [loading, setLoading]         = useState(false);
+  const [cpfLoading, setCpfLoading]   = useState(false);
   const [cpfVerified, setCpfVerified] = useState(false);
-  const [errors, setErrors]         = useState<Record<string, string>>({});
+  const [errors, setErrors]           = useState<Record<string, string>>({});
   const { refreshUser } = useAuthStore();
-  const [hoverApple, setHoverApple] = useState(false);
+  const [hoverApple, setHoverApple]   = useState(false);
   const [hoverGoogle, setHoverGoogle] = useState(false);
 
   const rawCpf = cpf.replace(/\D/g, '');
-  const cpfComplete = rawCpf.length === 11;
+  const cpfComplete    = rawCpf.length === 11;
   const cpfFormatValid = cpfComplete && isValidCpf(rawCpf);
 
   const formatCPF = (t: string) => {
@@ -141,123 +141,90 @@ export function RegisterScreen({ navigation, route }: Props) {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* ONE frosted-glass panel */}
-            <View style={[styles.panel, { width: '100%', flexDirection: 'column' }]}>
-              {/* Left column */}
-              <View style={[styles.left, styles.leftMobile]}>
-                <Text style={[styles.welcome, styles.welcomeGradientWeb, { fontSize: welcomeSize }]}>Bem-vindo</Text>
-                <Text style={styles.subtitle}>Crie a sua conta ou faça o login</Text>
+            <View style={[styles.panel, isWide && styles.panelWide, isTablet && styles.panelTablet]}>
+
+              {/* Header */}
+              <View style={styles.header}>
+                <LinearGradient
+                  colors={['#BEF311', '#1CBB3D']}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                  style={styles.iconCircle}
+                >
+                  <IconUser size={22} color="#0a1f0a" accessibilityLabel="Usuário" />
+                </LinearGradient>
+                <View style={styles.headerText}>
+                  <Text style={[styles.welcome, Platform.OS === 'web' && styles.welcomeGradientWeb]}>
+                    Bem-vindo
+                  </Text>
+                  <Text style={styles.subtitle}>Crie a sua conta</Text>
+                </View>
               </View>
 
-              {/* Form */}
-              <View style={[styles.right, { width: '100%' }]}>
-                <View style={styles.formInner}>
-                  <LinearGradient
-                    colors={['#BEF311', '#1CBB3D']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.iconCircle}
-                  >
-                    <IconUser size={32} color={colors.textPrimary} accessibilityLabel="Usuário" />
-                  </LinearGradient>
-                  <Text style={styles.cardTitle}>Criar nova conta</Text>
+              {/* Divider */}
+              <View style={styles.divider} />
 
-                  <Input
-                    label=""
-                    placeholder="Nome completo"
-                    value={name}
-                    onChangeText={setName}
-                    autoCapitalize="words"
-                    error={errors.name}
-                  />
-                  <Input
-                    label=""
-                    placeholder="Número de telefone"
-                    value={phone}
-                    onChangeText={setPhone}
-                    keyboardType="phone-pad"
-                  />
+              {/* Fields — two columns on wide, one on narrow */}
+              <View style={[styles.fields, isWide && styles.fieldsWide]}>
+
+                {/* Left column */}
+                <View style={[styles.col, isWide && styles.colWide]}>
+                  <Input label="" placeholder="Nome completo" value={name} onChangeText={setName}
+                    autoCapitalize="words" error={errors.name} compact />
+                  <Input label="" placeholder="Número de telefone" value={phone} onChangeText={setPhone}
+                    keyboardType="phone-pad" compact />
                   <View style={styles.cpfRow}>
                     <View style={{ flex: 1 }}>
-                      <Input
-                        label=""
-                        placeholder="CPF"
-                        value={cpf}
+                      <Input label="" placeholder="CPF" value={cpf}
                         onChangeText={(t) => { setCpf(formatCPF(t)); setCpfVerified(false); }}
-                        keyboardType="number-pad"
-                        error={errors.cpf}
-                      />
+                        keyboardType="number-pad" error={errors.cpf} compact />
                     </View>
                     {cpfFormatValid && !cpfVerified && (
                       <TouchableOpacity style={styles.verifyBtn} onPress={handleVerifyCpf} disabled={cpfLoading}>
                         <Text style={styles.verifyBtnText}>{cpfLoading ? '...' : 'Verificar'}</Text>
                       </TouchableOpacity>
                     )}
-                    {cpfVerified && <IconCheck size={24} color="#4ade80" accessibilityLabel="CPF Verificado" />}
+                    {cpfVerified && <IconCheck size={22} color="#1CBB3D" accessibilityLabel="CPF Verificado" />}
                   </View>
-                  <Input
-                    label=""
-                    placeholder="Email"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                  <Input
-                    label=""
-                    placeholder="Data de nascimento (DD/MM/AAAA)"
-                    value={dob}
-                    onChangeText={(t) => setDob(formatDob(t))}
-                    keyboardType="number-pad"
-                    error={errors.dob}
-                  />
-                  <Input
-                    label=""
-                    placeholder="Senha"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                  />
-                  <Input
-                    label=""
-                    placeholder="Digite novamente a sua senha"
-                    value={confirm}
-                    onChangeText={setConfirm}
-                    secureTextEntry
-                  />
+                  <Input label="" placeholder="Email" value={email} onChangeText={setEmail}
+                    keyboardType="email-address" autoCapitalize="none" compact />
+                </View>
 
-                  {errors.general ? (
-                    <Text style={styles.generalError}>{errors.general}</Text>
-                  ) : null}
+                {/* Vertical divider (wide only) */}
+                {isWide && <View style={styles.colDivider} />}
 
-                  <Button title="Criar Conta" onPress={handleSubmit} loading={loading} style={{ ...styles.btn, width: winW >= 768 ? 320 : 220 }} />
+                {/* Right column */}
+                <View style={[styles.col, isWide && styles.colWide]}>
+                  <Input label="" placeholder="Data de nascimento (DD/MM/AAAA)" value={dob}
+                    onChangeText={(t) => setDob(formatDob(t))} keyboardType="number-pad"
+                    error={errors.dob} compact />
+                  <Input label="" placeholder="Senha" value={password} onChangeText={setPassword}
+                    secureTextEntry compact />
+                  <Input label="" placeholder="Confirme a senha" value={confirm} onChangeText={setConfirm}
+                    secureTextEntry compact />
+
+                  {errors.general ? <Text style={styles.generalError}>{errors.general}</Text> : null}
+
+                  <Button title="Criar Conta" onPress={handleSubmit} loading={loading} size="sm" style={styles.btn} />
 
                   <View style={styles.loginRow}>
-                  <Text style={[styles.linkText, styles.whiteText]}>Já tem conta? faça o </Text>
+                    <Text style={styles.linkText}>Já tem conta? </Text>
                     <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                      <Text style={[styles.linkText, styles.linkUnderline]}>login</Text>
+                      <Text style={styles.linkUnderline}>Fazer login</Text>
                     </TouchableOpacity>
                   </View>
 
-                  <View style={[styles.socialRow, { marginTop: spacing.md }]}>
-                  <Pressable
-                    onHoverIn={() => setHoverApple(true)}
-                    onHoverOut={() => setHoverApple(false)}
-                    style={[styles.socialBtn, hoverApple && styles.socialBtnHover]}
-                    accessibilityLabel="Apple"
-                  >
-                    <IconAppleLogo size={22} color="#fff" accessibilityLabel="Apple" />
-                  </Pressable>
-                  <Pressable
-                    onHoverIn={() => setHoverGoogle(true)}
-                    onHoverOut={() => setHoverGoogle(false)}
-                    style={[styles.socialBtn, hoverGoogle && styles.socialBtnHover]}
-                    accessibilityLabel="Google"
-                  >
-                    <IconGoogle size={20} accessibilityLabel="Google" />
-                  </Pressable>
+                  <View style={styles.socialRow}>
+                    <Pressable onHoverIn={() => setHoverApple(true)} onHoverOut={() => setHoverApple(false)}
+                      style={[styles.socialBtn, hoverApple && styles.socialBtnHover]} accessibilityLabel="Apple">
+                      <IconAppleLogo size={18} color="#fff" accessibilityLabel="Apple" />
+                    </Pressable>
+                    <Pressable onHoverIn={() => setHoverGoogle(true)} onHoverOut={() => setHoverGoogle(false)}
+                      style={[styles.socialBtn, hoverGoogle && styles.socialBtnHover]} accessibilityLabel="Google">
+                      <IconGoogle size={18} accessibilityLabel="Google" />
+                    </Pressable>
                   </View>
                 </View>
+
               </View>
             </View>
           </ScrollView>
@@ -276,33 +243,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
+    paddingVertical: spacing.lg,
   },
 
   panel: {
+    width: '100%',
+    maxWidth: 480,
     backgroundColor: 'rgba(34, 92, 52, 0.45)',
     borderWidth: 1,
     borderColor: 'rgba(187, 255, 0, 0.16)',
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
-  leftMobile: { width: '100%' },
-  left: {
-    flex: 1,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xl,
-    paddingLeft: spacing.xxl,
-    paddingRight: spacing.xl,
-    justifyContent: 'center',
-    alignItems: 'center',
+  panelWide:   { maxWidth: 700 },
+  panelTablet: { maxWidth: 860 },
+
+  // Header (horizontal: icon + text side by side)
+  header: {
+    flexDirection: 'row', alignItems: 'center',
     gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
   },
+  headerText: { flex: 1 },
   welcome: {
-    fontSize: 52,
-    fontWeight: '800',
+    fontSize: 26, fontWeight: '800',
     color: Platform.OS === 'web' ? '#ffffff' : '#FDD835',
     letterSpacing: 0.5,
-    textAlign: 'center',
     fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
   },
   welcomeGradientWeb: Platform.OS === 'web'
@@ -313,102 +280,64 @@ const styles = StyleSheet.create({
       } as any)
     : {},
   subtitle: {
-    fontSize: fonts.sizes.sm,
-    color: '#ffffff',
-    lineHeight: 20,
-    textAlign: 'center',
+    fontSize: fonts.sizes.xs,
+    color: 'rgba(255,255,255,0.6)',
     fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
   },
 
-  vertDivider: {
-    width: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vertGrad: { width: 3, height: 230, borderRadius: 2 },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginHorizontal: spacing.lg },
 
-  right: {
-    padding: spacing.xl,
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  formInner: {
-    width: '100%',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  iconCircle: {
-    width: 52, height: 52, borderRadius: 26,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  cardTitle: {
-    fontSize: fonts.sizes.lg,
-    fontWeight: '700',
-    color: '#ffffff',
+  // Fields area
+  fields: { padding: spacing.lg, gap: spacing.sm },
+  fieldsWide: { flexDirection: 'row', gap: spacing.lg, alignItems: 'flex-start' },
+
+  col: { gap: spacing.sm },
+  colWide: { flex: 1 },
+  colLabel: {
+    color: 'rgba(255,255,255,0.5)', fontSize: 10,
+    fontWeight: '800', letterSpacing: 1.1,
     marginBottom: spacing.xs,
+  },
+  colDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.1)', alignSelf: 'stretch' },
+
+  iconCircle: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
   },
 
   cpfRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
+    flexDirection: 'row', alignItems: 'center',
     gap: spacing.sm,
   },
   verifyBtn: {
-    backgroundColor: 'rgba(74,222,128,0.15)',
-    borderWidth: 1,
-    borderColor: LIME,
+    backgroundColor: 'rgba(28,187,61,0.15)',
+    borderWidth: 1, borderColor: LIME,
     borderRadius: radius.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
     marginTop: 2,
   },
   verifyBtnText: { color: LIME, fontSize: fonts.sizes.xs, fontWeight: '600' },
-  cpfOk: { color: LIME, fontSize: fonts.sizes.lg, fontWeight: '700', marginTop: 2 },
 
-  btn: { width: 220, alignSelf: 'center', marginTop: spacing.xs },
+  btn: { width: '100%', marginTop: spacing.xs },
 
   generalError: {
-    color: colors.error,
-    fontSize: fonts.sizes.sm,
-    textAlign: 'center',
+    color: colors.error, fontSize: fonts.sizes.sm, textAlign: 'center',
   },
 
-  linkText: {
-    color: colors.textMuted,
-    fontSize: fonts.sizes.sm,
-    marginTop: spacing.xs,
-  },
-  linkUnderline: { textDecorationLine: 'underline', color: '#fff' },
-  loginRow: { flexDirection: 'row', alignItems: 'center' },
-  whiteText: { color: '#fff' },
-  orText: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.sm,
-    marginTop: spacing.md,
-    fontWeight: '500',
-  },
+  loginRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%' },
+  linkText: { color: '#fff', fontSize: fonts.sizes.sm },
+  linkUnderline: { color: '#fff', fontSize: fonts.sizes.sm, textDecorationLine: 'underline' },
 
-  socialRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
+  socialRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs, justifyContent: 'center', width: '100%' },
   socialBtn: {
-    width: 48, height: 48, borderRadius: radius.full,
+    width: 42, height: 42, borderRadius: radius.full,
     backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(74,222,128,0.3)',
+    borderWidth: 1.5, borderColor: 'rgba(28,187,61,0.3)',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 3,
   },
   socialBtnHover: {
-    backgroundColor: 'rgba(74,222,128,0.15)',
-    borderColor: 'rgba(74,222,128,0.6)',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 5,
+    backgroundColor: 'rgba(28,187,61,0.15)',
+    borderColor: 'rgba(28,187,61,0.6)',
   },
-  socialIcon: { fontSize: 18, color: '#fff', fontWeight: '700' },
 });

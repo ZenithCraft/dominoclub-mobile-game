@@ -28,7 +28,18 @@
       "Bash(awk '{print $2}')",
       "Bash(xargs kill *)",
       "PowerShell(Get-NetTCPConnection -LocalPort 8081 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue })",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(powershell -Command ' *)",
+      "Bash(grep -v \"//\\\\|Modal'\")",
+      "Bash(sed -i \"s/ Modal,//g; s/, Modal//g\" src/components/ConsentModal.tsx)",
+      "Bash(sed -i \"/from 'react-native';/a import { BlurModal } from './BlurModal';\" src/components/ConsentModal.tsx)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('main:', d.get\\('main','N/A'\\)\\); print\\('workspaces:', d.get\\('workspaces','N/A'\\)\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('workspaces:', d.get\\('workspaces','N/A'\\)\\); print\\('name:', d.get\\('name','N/A'\\)\\)\")",
+      "Bash(node -e \"const p=require\\('./node_modules/expo-blur/package.json'\\);console.log\\('version:',p.version\\)\")",
+      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\)\\); console.log\\('name:', d.name\\); console.log\\('scripts:', JSON.stringify\\(d.scripts,null,2\\)\\); console.log\\('workspaces:', JSON.stringify\\(d.workspaces\\)\\)\")",
+      "Bash(node -e \"process.stdin.resume\\(\\);let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(d\\);console.log\\('entryPoint:',j.expo?.entryPoint\\);console.log\\('web:',JSON.stringify\\(j.expo?.web\\)\\)}catch\\(e\\){console.log\\(e.message\\)}}\\)\")",
+      "Bash(kill %1)",
+      "Bash(git -C \"C:\\\\laragon\\\\www\\\\dominoclub-mobile-game\" log --oneline -10)"
     ]
   }
 }

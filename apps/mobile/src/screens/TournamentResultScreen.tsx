@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Modal, Pressable, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Pressable, Image, Platform } from 'react-native';
+import { BlurModal } from '../components/BlurModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -82,7 +83,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
 
             <View style={styles.resultRow}>
               <Text style={styles.resultLabel}>Prêmio</Text>
-              <Text style={[styles.resultValue, hasPrize ? { color: '#4ade80' } : { color: 'rgba(255,255,255,0.4)' }]}>
+              <Text style={[styles.resultValue, hasPrize ? { color: '#1CBB3D' } : { color: 'rgba(255,255,255,0.4)' }]}>
                 {hasPrize ? `R$ ${prize.toFixed(2)}` : '—'}
               </Text>
             </View>
@@ -104,7 +105,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
               activeOpacity={0.85}
             >
               <LinearGradient
-                colors={['#4ade80', '#16a34a']}
+                colors={['#BEF311', '#1CBB3D']}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                 style={styles.homeBtnGrad}
               >
@@ -124,7 +125,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
         </Animated.View>
 
         {/* ── Settings modal ── */}
-        <Modal visible={settingsVisible} transparent animationType="fade">
+        <BlurModal visible={settingsVisible} transparent animationType="fade">
           <Pressable style={settingsStyles.overlay} onPress={() => setSettingsVisible(false)} testID="settings-overlay">
             <Pressable style={settingsStyles.card} onPress={() => {}} onStartShouldSetResponder={() => true} testID="settings-card">
               <View style={[settingsStyles.textureWrap, (Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : null)]}>
@@ -151,7 +152,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
               </View>
             </Pressable>
           </Pressable>
-        </Modal>
+        </BlurModal>
 
       </SafeAreaView>
     </ScreenBackground>

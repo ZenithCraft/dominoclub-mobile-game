@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OTPVerification'>;
 
-const LIME = '#4ade80';
+const LIME = '#1CBB3D';
 
 export function OTPVerificationScreen({ navigation, route }: Props) {
   const { width: winW } = useWindowDimensions();

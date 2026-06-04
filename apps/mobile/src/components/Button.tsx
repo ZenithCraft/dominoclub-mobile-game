@@ -115,12 +115,7 @@ export function WalletBalanceButton({
   style?: ViewStyle;
 }) {
   const content = (
-    <>
-      <Text style={walletStyles.balanceText}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</Text>
-      <View style={walletStyles.balancePlus}>
-        <Text style={walletStyles.balancePlusText}>+</Text>
-      </View>
-    </>
+    <Text style={walletStyles.balanceText}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</Text>
   );
 
   return (
@@ -222,13 +217,11 @@ const walletStyles = StyleSheet.create({
   },
   balanceText: { color: '#0a1f0a', fontWeight: '900', fontSize: fonts.sizes.sm },
   balancePlus: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    backgroundColor: '#dc2626',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'center',
     marginLeft: spacing.sm,
+    paddingBottom: 2,
+    paddingTop: 4,
   },
-  balancePlusText: { color: '#fff', fontWeight: '900', fontSize: 14, lineHeight: 16 },
+  balancePlusText: { color: '#000', fontWeight: '900', fontSize: 20 },
 });

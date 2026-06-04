@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Platform, Animated, Modal, Pressable, Image,
+  Platform, Animated, Pressable, Image,
 } from 'react-native';
+import { BlurModal } from '../components/BlurModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -249,7 +250,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
 
           {/* Countdown */}
           <LinearGradient
-            colors={['rgba(187,255,0,0.12)', 'rgba(0,0,0,0.45)', 'rgba(74,222,128,0.10)']}
+            colors={['rgba(187,255,0,0.12)', 'rgba(0,0,0,0.45)', 'rgba(28,187,61,0.10)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.countdownCard}
@@ -275,7 +276,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
               <View style={styles.infoDivider} />
               <View style={styles.infoItem}>
                 <Text style={styles.infoLabel}>Notificação</Text>
-                <Text style={[styles.infoValue, { color: notifEnabled ? '#4ade80' : 'rgba(255,255,255,0.75)' }]}>
+                <Text style={[styles.infoValue, { color: notifEnabled ? '#1CBB3D' : 'rgba(255,255,255,0.75)' }]}>
                   {notifEnabled ? 'Ativa' : 'Desativada'}
                 </Text>
               </View>
@@ -327,7 +328,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
         </View>
 
         {/* ── Settings modal ── */}
-        <Modal visible={settingsVisible} transparent animationType="fade">
+        <BlurModal visible={settingsVisible} transparent animationType="fade">
           <Pressable style={settingsStyles.overlay} onPress={() => setSettingsVisible(false)} testID="settings-overlay">
             <Pressable style={settingsStyles.card} onPress={() => {}} onStartShouldSetResponder={() => true} testID="settings-card">
               <View style={[settingsStyles.textureWrap, (Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : null)]}>
@@ -354,7 +355,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
               </View>
             </Pressable>
           </Pressable>
-        </Modal>
+        </BlurModal>
 
       </SafeAreaView>
     </ScreenBackground>
@@ -446,15 +447,15 @@ const styles = StyleSheet.create({
   },
   statusPill: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: 'rgba(74,222,128,0.15)',
+    backgroundColor: 'rgba(28,187,61,0.15)',
     borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: 5,
-    borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)',
+    borderWidth: 1, borderColor: 'rgba(28,187,61,0.3)',
     marginBottom: spacing.lg,
   },
   statusDot: {
-    width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ade80',
+    width: 8, height: 8, borderRadius: 4, backgroundColor: '#1CBB3D',
   },
-  statusText: { color: '#4ade80', fontSize: fonts.sizes.sm, fontWeight: '700' },
+  statusText: { color: '#1CBB3D', fontSize: fonts.sizes.sm, fontWeight: '700' },
 
   countdownCard: {
     width: '100%', maxWidth: 300,
@@ -481,13 +482,13 @@ const styles = StyleSheet.create({
   notifyBtn: {
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.35)',
+    borderColor: 'rgba(28,187,61,0.35)',
     paddingVertical: 12,
     paddingHorizontal: spacing.xxl,
     backgroundColor: 'rgba(255,255,255,0.08)',
     marginBottom: spacing.md,
   },
-  notifyBtnText: { color: '#4ade80', fontWeight: '800', fontSize: fonts.sizes.sm },
+  notifyBtnText: { color: '#1CBB3D', fontWeight: '800', fontSize: fonts.sizes.sm },
   leaveBtn: {
     borderRadius: radius.full,
     borderWidth: 1,
@@ -510,7 +511,7 @@ const styles = StyleSheet.create({
   goHomeBtn: {
     borderRadius: radius.full,
     paddingVertical: 14, paddingHorizontal: spacing.xxl,
-    backgroundColor: '#4ade80',
+    backgroundColor: '#1CBB3D',
   },
   goHomeBtnText: { color: '#052e16', fontWeight: '900', fontSize: fonts.sizes.md },
 });

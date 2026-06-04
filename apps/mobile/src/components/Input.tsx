@@ -15,6 +15,7 @@ interface Props {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   maxLength?: number;
   editable?: boolean;
+  compact?: boolean;
 }
 
 export function Input({
@@ -29,6 +30,7 @@ export function Input({
   autoCapitalize = 'none',
   maxLength,
   editable = true,
+  compact = false,
 }: Props) {
   const [focused, setFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -48,9 +50,9 @@ export function Input({
         onHoverOut={() => setHovered(false)}
       >
         <TextInput
-          style={[styles.input, styles.inputWeb]}
+          style={[styles.input, styles.inputWeb, compact && styles.inputCompact]}
           placeholder={placeholder}
-          placeholderTextColor={'rgba(74,222,128,0.4)'}
+          placeholderTextColor={'rgba(28,187,61,0.4)'}
           value={value}
           onChangeText={onChangeText}
           secureTextEntry={secureTextEntry && !showPassword}
@@ -70,9 +72,9 @@ export function Input({
             onHoverOut={() => setHovered(false)}
           >
             {showPassword ? (
-              <IconEyeOff size={20} color={'rgba(74,222,128,0.5)'} />
+              <IconEyeOff size={20} color={'rgba(28,187,61,0.5)'} />
             ) : (
-              <IconEye size={20} color={'rgba(74,222,128,0.5)'} />
+              <IconEye size={20} color={'rgba(28,187,61,0.5)'} />
             )}
           </Pressable>
         )}
@@ -95,7 +97,7 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#184912',
+    backgroundColor: '#0f2a0d',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
@@ -103,7 +105,7 @@ const styles = StyleSheet.create({
   },
   focused: {
     borderColor: colors.primary,
-    backgroundColor: 'rgba(74,222,128,0.05)',
+    backgroundColor: 'rgba(28,187,61,0.05)',
   },
   hovered: {
     borderColor: 'rgba(190,243,17,0.55)',
@@ -118,9 +120,13 @@ const styles = StyleSheet.create({
     color: '#e5ffe5',
     fontSize: fonts.sizes.md,
     fontFamily: Platform.OS === 'web' ? ('Inria Sans' as any) : 'System',
+    backgroundColor: 'transparent',
+  },
+  inputCompact: {
+    paddingVertical: 9,
+    fontSize: fonts.sizes.sm,
   },
   inputWeb: ({
-    backgroundColor: 'transparent',
     outlineStyle: 'none',
     outlineWidth: 0,
   } as any),

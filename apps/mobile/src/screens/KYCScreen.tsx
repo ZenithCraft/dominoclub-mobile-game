@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { SettingsModal } from '../components/SettingsModal';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Alert, ActivityIndicator, Modal,
+  Image, Alert, ActivityIndicator,
 } from 'react-native';
+import { BlurModal } from '../components/BlurModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
@@ -12,7 +14,7 @@ import { api } from '../services/api';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../store/auth.store';
 import { IconX, IconUpload } from '../components/Icons';
-import { GameTopBarMinimal } from './HomeScreen';
+import { GameTopBar } from './HomeScreen';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -41,6 +43,7 @@ const KYC_COLORS = {
 export function KYCScreen({ navigation }: Props) {
   const { user } = useAuthStore();
   const [step, setStep] = useState(0);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const [docType, setDocType] = useState<DocType | null>(null);
   const [frontUri, setFrontUri] = useState<string | null>(null);
   const [backUri, setBackUri] = useState<string | null>(null);
@@ -130,12 +133,13 @@ export function KYCScreen({ navigation }: Props) {
   return (
     <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
-        {/* Top Navigation Bar - Same as HomeScreen (no balance) */}
-        <GameTopBarMinimal
+        {/* Top Navigation Bar - Same as HomeScreen */}
+        <GameTopBar
           user={user}
-          onSettings={() => {}}
+          onWallet={() => navigation.navigate('Wallet')}
+          onSettings={() => setSettingsVisible(true)}
           onExit={() => navigation.goBack()}
-          onProfile={() => navigation.navigate('Main')}
+          onProfile={() => navigation.navigate('Main', { openModal: 'profile' })}
           exitVariant="back"
         />
 
@@ -402,16 +406,17 @@ export function KYCScreen({ navigation }: Props) {
             {/* Step 3: Uploading */}
             {step === 3 && (
               <View style={[styles.cardInner, styles.centerBox]}>
-                <ActivityIndicator size="large" color="#4ade80" />
+                <ActivityIndicator size="large" color="#1CBB3D" />
                 <Text style={styles.uploadingText}>Enviando seus documentos...</Text>
               </View>
             )}
           </View>
         </ScrollView>
+        <SettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
       </SafeAreaView>
 
       {/* Image Preview Modal */}
-      <Modal
+      <BlurModal
         visible={!!previewUri}
         transparent={true}
         animationType="fade"
@@ -441,10 +446,10 @@ export function KYCScreen({ navigation }: Props) {
             </View>
           </TouchableOpacity>
         </View>
-      </Modal>
+      </BlurModal>
 
       {/* Photo Choice Modal */}
-      <Modal
+      <BlurModal
         visible={choiceModal.visible}
         transparent={true}
         animationType="slide"
@@ -490,7 +495,7 @@ export function KYCScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </BlurModal>
     </ScreenBackground>
   );
 }
@@ -632,7 +637,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
     borderWidth: 2,
-    borderColor: '#4ade80',
+    borderColor: '#1CBB3D',
     width: '100%',
     backgroundColor: 'rgba(0,0,0,0.3)',
     aspectRatio: 1.6,
@@ -682,7 +687,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
     borderWidth: 2,
-    borderColor: '#4ade80',
+    borderColor: '#1CBB3D',
   },
   photoPreview: {
     width: '100%',
@@ -711,9 +716,9 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#4ade80',
+    borderColor: '#1CBB3D',
     borderStyle: 'dashed',
-    backgroundColor: 'rgba(74, 222, 128, 0.08)',
+    backgroundColor: 'rgba(28, 187, 61, 0.08)',
     height: 80,
     alignItems: 'center',
     justifyContent: 'center',
@@ -721,7 +726,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   photoBtnGalleryText: {
-    color: '#4ade80',
+    color: '#1CBB3D',
     fontSize: fonts.sizes.sm,
     fontWeight: '600',
   },
@@ -761,7 +766,7 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 100,
     borderWidth: 3,
-    borderColor: '#4ade80',
+    borderColor: '#1CBB3D',
     resizeMode: 'cover',
   },
   removeSelfieBtn: {
@@ -784,11 +789,11 @@ const styles = StyleSheet.create({
     height: 220,
     borderRadius: 110,
     borderWidth: 3,
-    borderColor: '#4ade80',
+    borderColor: '#1CBB3D',
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+    backgroundColor: 'rgba(28, 187, 61, 0.1)',
   },
   selfieCameraInner: {
     alignItems: 'center',

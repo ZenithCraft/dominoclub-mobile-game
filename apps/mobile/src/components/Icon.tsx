@@ -6,6 +6,7 @@ export interface IconProps {
   icon: LucideIcon;
   size?: number;
   color?: string;
+  strokeWidth?: number;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
   testID?: string;
@@ -15,6 +16,7 @@ export function Icon({
   icon: IconComponent,
   size = 24,
   color = '#ffffff',
+  strokeWidth,
   style,
   accessibilityLabel,
   testID,
@@ -23,6 +25,7 @@ export function Icon({
     <IconComponent
       size={size}
       color={color}
+      strokeWidth={strokeWidth}
       style={style}
       accessibilityLabel={accessibilityLabel}
       testID={testID}

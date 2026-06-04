@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet,
-  KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView, Pressable,
+  KeyboardAvoidingView, Platform, TouchableOpacity, Pressable,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,16 +17,15 @@ import { IconUser, IconGoogle, IconAppleLogo } from '../components/Icons';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
-const LIME = '#4ade80';
-
 export function LoginScreen({ navigation }: Props) {
-  const { width: winW } = useWindowDimensions();
-  const welcomeSize = winW < 480 ? 32 : 40;
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isShort  = winH < 700;
+  const isTablet = winW >= 768;
 
   const [identifier, setIdentifier] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
+  const [password, setPassword]     = useState('');
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState('');
   const [hoverApple, setHoverApple] = useState(false);
   const [hoverGoogle, setHoverGoogle] = useState(false);
   const { setTokens, setUser } = useAuthStore();
@@ -47,7 +46,7 @@ export function LoginScreen({ navigation }: Props) {
     setError('');
   };
 
-  const handleSendOtp = async () => {
+  const handleLogin = async () => {
     setLoading(true);
     setError('');
     try {
@@ -60,13 +59,11 @@ export function LoginScreen({ navigation }: Props) {
         navigation.replace('Main');
         return;
       }
-
       if (identifier.includes('@')) { setError('Use seu número de telefone para entrar'); return; }
       const clean = identifier.replace(/\D/g, '');
       if (clean.length < 11) { setError('Digite um número de celular válido'); return; }
-      const formattedPhone = `+55${clean}`;
-      await api.post('/auth/otp/send', { phone: formattedPhone });
-      navigation.navigate('OTPVerification', { phone: formattedPhone });
+      await api.post('/auth/otp/send', { phone: `+55${clean}` });
+      navigation.navigate('OTPVerification', { phone: `+55${clean}` });
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erro ao enviar código. Tente novamente.');
     } finally {
@@ -81,23 +78,36 @@ export function LoginScreen({ navigation }: Props) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.kav}
         >
-          <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <View style={[styles.panel, { width: '100%', flexDirection: 'column' }]}>
-              <View style={[styles.left, styles.leftMobile]}>
-                <Text style={[styles.welcome, styles.welcomeGradientWeb, { fontSize: welcomeSize }]}>Bem-vindo</Text>
-                <Text style={styles.subtitle}>A resenha da mesa, agora no seu celular</Text>
+          <View style={styles.center}>
+            <View style={[styles.panel, isTablet && styles.panelTablet]}>
+
+              {/* Header */}
+              <View style={[styles.header, isShort && styles.headerShort]}>
+                <Text style={[
+                  styles.welcome,
+                  isShort && styles.welcomeShort,
+                  Platform.OS === 'web' && styles.welcomeGradientWeb,
+                ]}>
+                  Bem-vindo
+                </Text>
+                {!isShort && (
+                  <Text style={styles.subtitle}>A resenha da mesa, agora no seu celular</Text>
+                )}
               </View>
-              <View style={[styles.right, { width: '100%' }]}>
-                <View style={styles.formInner}>
-                  <LinearGradient
-                    colors={['#BEF311', '#1CBB3D']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.iconCircle}
-                  >
-                    <IconUser size={32} color={colors.textPrimary} accessibilityLabel="Usuário" />
-                  </LinearGradient>
-                  <Text style={styles.cardTitle}>Entrar</Text>
+
+              {/* Form */}
+              <View style={[styles.form, isShort && styles.formShort]}>
+                <LinearGradient
+                  colors={['#BEF311', '#1CBB3D']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.iconCircle, isShort && styles.iconCircleShort]}
+                >
+                  <IconUser size={isShort ? 22 : 28} color="#0a1f0a" accessibilityLabel="Usuário" />
+                </LinearGradient>
+
+                <Text style={[styles.cardTitle, isShort && styles.cardTitleShort]}>Entrar</Text>
+
                 <Input
                   label=""
                   placeholder="Email ou número de telefone"
@@ -107,49 +117,59 @@ export function LoginScreen({ navigation }: Props) {
                   autoCapitalize="none"
                   error={error}
                   maxLength={isEmail ? 64 : 15}
+                  compact
                 />
-                  <Input
-                    label=""
-                    placeholder="Senha"
-                    value={password}
-                    onChangeText={(t) => setPassword(t)}
-                    secureTextEntry
-                  />
+                <Input
+                  label=""
+                  placeholder="Senha"
+                  value={password}
+                  onChangeText={(t) => setPassword(t)}
+                  secureTextEntry
+                  compact
+                />
 
-                  <View style={styles.actionRow}>
-                    <TouchableOpacity style={styles.forgotBtn} onPress={() => navigation.navigate('ForgotPassword')}>
-                      <Text style={styles.forgotText}>Esqueceu a senha?</Text>
-                    </TouchableOpacity>
-                    <Button title="Entrar" onPress={handleSendOtp} loading={loading} size="sm" style={styles.btn} />
-                  </View>
-
-                  <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-                    <Text style={styles.linkMuted}>Criar uma conta</Text>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={styles.forgotBtn}
+                    onPress={() => navigation.navigate('ForgotPassword')}
+                  >
+                    <Text style={styles.forgotText}>Esqueceu a senha?</Text>
                   </TouchableOpacity>
+                  <Button
+                    title="Entrar"
+                    onPress={handleLogin}
+                    loading={loading}
+                    size="sm"
+                    style={styles.btn}
+                  />
+                </View>
 
-                  <View style={styles.socialRow}>
-                    <Pressable
-                      onHoverIn={() => setHoverApple(true)}
-                      onHoverOut={() => setHoverApple(false)}
-                      style={[styles.socialBtn, hoverApple && styles.socialBtnHover]}
-                      accessibilityLabel="Apple"
-                    >
-                      <IconAppleLogo size={20} color="#fff" accessibilityLabel="Apple" />
-                    </Pressable>
-                    <Pressable
-                      onHoverIn={() => setHoverGoogle(true)}
-                      onHoverOut={() => setHoverGoogle(false)}
-                      style={[styles.socialBtn, hoverGoogle && styles.socialBtnHover]}
-                      accessibilityLabel="Google"
-                    >
-                      <IconGoogle size={20} accessibilityLabel="Google" />
-                    </Pressable>
-                  </View>
+                <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                  <Text style={styles.linkMuted}>Criar uma conta</Text>
+                </TouchableOpacity>
 
+                <View style={styles.socialRow}>
+                  <Pressable
+                    onHoverIn={() => setHoverApple(true)}
+                    onHoverOut={() => setHoverApple(false)}
+                    style={[styles.socialBtn, hoverApple && styles.socialBtnHover]}
+                    accessibilityLabel="Apple"
+                  >
+                    <IconAppleLogo size={18} color="#fff" accessibilityLabel="Apple" />
+                  </Pressable>
+                  <Pressable
+                    onHoverIn={() => setHoverGoogle(true)}
+                    onHoverOut={() => setHoverGoogle(false)}
+                    style={[styles.socialBtn, hoverGoogle && styles.socialBtnHover]}
+                    accessibilityLabel="Google"
+                  >
+                    <IconGoogle size={18} accessibilityLabel="Google" />
+                  </Pressable>
                 </View>
               </View>
+
             </View>
-          </ScrollView>
+          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ScreenBackground>
@@ -160,39 +180,49 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
   safe: { flex: 1 },
   kav:  { flex: 1 },
-  scroll: {
-    flexGrow: 1,
+
+  center: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
+    paddingVertical: spacing.md,
   },
+
   panel: {
+    width: '100%',
+    maxWidth: 480,
     backgroundColor: 'rgba(34, 92, 52, 0.45)',
     borderWidth: 1,
     borderColor: 'rgba(187, 255, 0, 0.16)',
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
-  leftMobile: { width: '100%' },
-  left: {
-    flex: 1,
-    justifyContent: 'center',
+  panelTablet: {
+    maxWidth: 640,
+  },
+
+  // ── Header ──
+  header: {
     alignItems: 'center',
-    gap: spacing.md,
     paddingTop: spacing.xl,
-    paddingBottom: spacing.xl,
-    paddingLeft: spacing.xxl,
-    paddingRight: spacing.xl,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    gap: spacing.xs,
+  },
+  headerShort: {
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   welcome: {
-    fontSize: 52,
+    fontSize: 36,
     fontWeight: '800',
     color: Platform.OS === 'web' ? '#ffffff' : '#FDD835',
     letterSpacing: 0.5,
     textAlign: 'center',
     fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
   },
+  welcomeShort: { fontSize: 28 },
   welcomeGradientWeb: Platform.OS === 'web'
     ? ({
         backgroundImage: 'linear-gradient(180deg, #FFFFFF 0%, #FDD835 100%)',
@@ -202,32 +232,32 @@ const styles = StyleSheet.create({
     : {},
   subtitle: {
     fontSize: fonts.sizes.sm,
-    color: '#ffffff',
-    lineHeight: 20,
+    color: 'rgba(255,255,255,0.7)',
     textAlign: 'center',
     fontFamily: Platform.OS === 'web' ? ('Poppins' as any) : 'System',
   },
-  vertDivider: {
-    width: 14,
+
+  // ── Form ──
+  form: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.sm,
   },
-  vertGrad: { width: 3, height: 230, borderRadius: 2 },
-  right: {
-    padding: spacing.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  formInner: {
-    width: '100%',
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
+  formShort: { gap: spacing.xs, paddingBottom: spacing.lg },
+
   iconCircle: {
-    width: 52, height: 52, borderRadius: 26,
+    width: 44, height: 44, borderRadius: 22,
     alignItems: 'center', justifyContent: 'center',
+    marginBottom: spacing.xs,
   },
-  cardTitle: { fontSize: fonts.sizes.lg, fontWeight: '700', color: '#ffffff', marginBottom: spacing.xs },
+  iconCircleShort: { width: 36, height: 36, borderRadius: 18 },
+
+  cardTitle: {
+    fontSize: fonts.sizes.lg, fontWeight: '700',
+    color: '#ffffff', marginBottom: spacing.xs,
+  },
+  cardTitleShort: { fontSize: fonts.sizes.md, marginBottom: 0 },
 
   actionRow: {
     flexDirection: 'row',
@@ -237,40 +267,27 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   forgotBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(250, 204, 21, 0.15)',
+    backgroundColor: 'rgba(250,204,21,0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(250, 204, 21, 0.5)',
+    borderColor: 'rgba(250,204,21,0.5)',
   },
-  forgotText: {
-    color: '#facc15',
-    fontSize: fonts.sizes.sm,
-    fontWeight: '700',
-  },
-  btn: { width: 120, alignSelf: 'center' },
-  linkMuted: { color: '#ffffff', fontSize: fonts.sizes.sm, marginTop: spacing.xs },
-  orText: { color: colors.textSecondary, fontSize: fonts.sizes.sm, marginTop: spacing.md, fontWeight: '500' },
-  socialRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
+  forgotText: { color: '#facc15', fontSize: fonts.sizes.xs, fontWeight: '700' },
+  btn: { width: 110 },
+
+  linkMuted: { color: '#ffffff', fontSize: fonts.sizes.sm },
+
+  socialRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
   socialBtn: {
-    width: 48, height: 48, borderRadius: radius.full,
+    width: 42, height: 42, borderRadius: radius.full,
     backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(74,222,128,0.3)',
+    borderWidth: 1.5, borderColor: 'rgba(28,187,61,0.3)',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 3,
   },
   socialBtnHover: {
-    backgroundColor: 'rgba(74,222,128,0.15)',
-    borderColor: 'rgba(74,222,128,0.6)',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 5,
+    backgroundColor: 'rgba(28,187,61,0.15)',
+    borderColor: 'rgba(28,187,61,0.6)',
   },
 });

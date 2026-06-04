@@ -13,9 +13,9 @@ export const colors = {
   bgTableBorder: '#0d3d0d',
 
   // Brand
-  primary: '#4ade80',      // Lime green — buttons, accents
+  primary: '#1CBB3D',      // Brand green — buttons, accents
   primaryDark: '#16a34a',  // Darker green for press states
-  primaryLight: '#86efac',
+  primaryLight: '#BEF311', // Lime — highlights
   gold: '#facc15',         // Gold — coins, prizes
   goldDark: '#ca8a04',
 
@@ -26,11 +26,11 @@ export const colors = {
   textOnPrimary: '#000000',
 
   // Borders & separators
-  border: 'rgba(74,222,128,0.2)',
-  borderStrong: 'rgba(74,222,128,0.5)',
+  border: 'rgba(28,187,61,0.2)',
+  borderStrong: 'rgba(28,187,61,0.5)',
 
   // Status
-  success: '#4ade80',
+  success: '#1CBB3D',
   error: '#f87171',
   warning: '#fbbf24',
   info: '#60a5fa',
@@ -48,7 +48,7 @@ export const colors = {
 
   // Navigation
   tabBarBg: '#071507',
-  tabBarActive: '#4ade80',
+  tabBarActive: '#1CBB3D',
   tabBarInactive: '#4b7a4b',
 };
 

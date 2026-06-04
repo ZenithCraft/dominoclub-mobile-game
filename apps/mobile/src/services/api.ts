@@ -35,7 +35,7 @@ if (envBaseUrl) {
 const IS_MOCK  = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';
 
 // Errors from these URLs are surfaced directly to the caller — don't double-toast
-const SILENT_PATHS = ['/auth/otp', '/auth/cpf/verify', '/auth/profile'];
+const SILENT_PATHS = ['/auth/otp', '/auth/cpf/verify', '/auth/profile', '/auth/logout'];
 
 export const api = axios.create({
   baseURL: BASE_URL,
@@ -96,7 +96,7 @@ export async function refreshAccessToken(): Promise<string> {
     const refreshToken = webRefresh || storageRefresh;
     if (!refreshToken) throw new Error('No refresh token');
 
-    const { data } = await axios.post(`${BASE_URL}/auth/token/refresh`, { refreshToken });
+    const { data } = await api.post('/auth/token/refresh', { refreshToken });
 
     await AsyncStorage.setItem('access_token', data.accessToken);
     await AsyncStorage.setItem('refresh_token', data.refreshToken);
@@ -124,7 +124,9 @@ api.interceptors.response.use(
     const original = error.config;
 
     // 401 — attempt token refresh (shared, deduplicated, rate-limit-safe)
-    if (error.response?.status === 401 && !original?._retry) {
+    // Skip retry for auth-management endpoints to prevent infinite loops
+    const reqUrl = original?.url ?? '';
+    if (error.response?.status === 401 && !original?._retry && !reqUrl.includes('/token/refresh') && !reqUrl.includes('/auth/logout')) {
       original._retry = true;
       try {
         const newToken = await refreshAccessToken();

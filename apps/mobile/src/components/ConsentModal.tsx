@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
   NativeScrollEvent, NativeSyntheticEvent, Animated, Alert,
 } from 'react-native';
+import { BlurModal } from './BlurModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, radius } from '../theme';
 import { IconShieldAlert } from './Icons';
@@ -91,7 +92,7 @@ export function ConsentModal({ onAccepted }: Props) {
   if (!visible) return null;
 
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent>
+    <BlurModal visible transparent animationType="none" statusBarTranslucent>
       <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
         <View style={styles.card}>
 
@@ -241,7 +242,7 @@ export function ConsentModal({ onAccepted }: Props) {
           )}
         </View>
       </Animated.View>
-    </Modal>
+    </BlurModal>
   );
 }
 

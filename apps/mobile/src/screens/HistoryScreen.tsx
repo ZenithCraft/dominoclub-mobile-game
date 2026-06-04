@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { SettingsModal } from '../components/SettingsModal';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius } from '../theme';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { api } from '../services/api';
-import { IconTrophy } from '../components/Icons';
 import { useAuthStore } from '../store/auth.store';
-import { GameTopBarMinimal } from './HomeScreen';
+import { GameTopBar } from './HomeScreen';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -17,6 +17,7 @@ type GameItem = {
   variant?: string;
   bet_amount?: number;
   prize_pool?: number;
+  started_at?: string | Date;
   finished_at?: string | Date;
   winner_id?: string;
   winnerId?: string;
@@ -24,10 +25,37 @@ type GameItem = {
   tournamentId?: string | null;
 };
 
+const MODE_LABELS: Record<string, string> = {
+  ARENA_1V1:        'Arena 1v1',
+  ARENA_2V2:        'Arena 2v2',
+  RECREATIONAL_1V1: 'Recreacional 1v1',
+  RECREATIONAL_2V2: 'Recreacional 2v2',
+  CUP_1V1:          'Copa 1v1',
+  CUP_2V2:          'Copa 2v2',
+  TOURNAMENT:       'Torneio',
+};
+
+function formatMode(raw: string): string {
+  if (MODE_LABELS[raw]) return MODE_LABELS[raw];
+  return raw.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatDuration(started: string | Date | undefined, finished: string | Date | undefined): string | null {
+  if (!started || !finished) return null;
+  const ms = new Date(finished).getTime() - new Date(started).getTime();
+  if (ms <= 0) return null;
+  const totalSec = Math.floor(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  if (min === 0) return `${sec}s`;
+  return sec > 0 ? `${min}min ${sec}s` : `${min}min`;
+}
+
 export function HistoryScreen({ navigation }: Props) {
   const user = useAuthStore((s) => s.user);
   const myUserId = user?.id ?? '';
   const [loading, setLoading] = useState(true);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [items, setItems] = useState<GameItem[]>([]);
   const [pairStats, setPairStats] = useState<Array<{ userId: string; name: string; games: number; wins: number; winRate: number; alert: boolean }>>([]);
@@ -84,8 +112,9 @@ export function HistoryScreen({ navigation }: Props) {
         variant: i % 3 === 0 ? 'CLÁSSICO' : 'CRUZADA',
         bet_amount: [2, 5, 10, 20][i % 4],
         prize_pool: [4, 10, 20, 40][i % 4],
+        started_at: new Date(now - i * 3600_000 - [8,12,15,20,10,18,9,14][i % 8] * 60_000).toISOString(),
         finished_at: new Date(now - i * 3600_000).toISOString(),
-        winnerId: 'you',
+        winnerId: i % 3 === 0 ? '' : 'you',
         tournamentId: i % 4 === 0 ? `T-${100 + i}` : null,
       }));
       setItems(fallback);
@@ -107,23 +136,47 @@ export function HistoryScreen({ navigation }: Props) {
 
   const renderItem = ({ item }: { item: GameItem }) => {
     const winner = item.winner_id ?? item.winnerId;
-    const dateStr = item.finished_at ? new Date(item.finished_at).toLocaleString('pt-BR') : '';
+    const isWin = !!winner && (winner === myUserId || winner === 'you');
+    const isLoss = !!winner && !isWin;
+    const dateStr = item.finished_at
+      ? new Date(item.finished_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+    const duration = formatDuration(item.started_at, item.finished_at);
     const isTournament = !!item.tournamentId;
-    const modeLabel = item.mode || (isTournament ? 'Torneio' : 'Partida');
+    const rawMode = item.mode || (isTournament ? 'TOURNAMENT' : 'Partida');
+    const modeLabel = formatMode(rawMode);
+    const variantLabel = item.variant ? ` · ${item.variant.charAt(0).toUpperCase() + item.variant.slice(1).toLowerCase()}` : '';
+
+    const cardStyle = isWin ? styles.cardWin : isLoss ? styles.cardLoss : styles.card;
+    const accentColor = isWin ? '#1CBB3D' : isLoss ? '#f87171' : colors.textMuted;
+    const resultLabel = isWin ? 'Vitória' : isLoss ? 'Derrota' : 'Sem resultado';
+
     return (
-      <View style={styles.card}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={styles.title}>{modeLabel}{item.variant ? ` • ${item.variant}` : ''}</Text>
-          {isTournament ? <IconTrophy size={16} color="#FFD400" /> : null}
+      <View style={cardStyle}>
+        <View style={[styles.cardAccentBar, { backgroundColor: accentColor }]} />
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title} numberOfLines={1}>{modeLabel}{variantLabel}</Text>
+            <Text style={styles.sub}>
+              {dateStr}{duration ? `  •  ${duration}` : ''}
+            </Text>
+          </View>
+          <View style={[styles.resultBadge, { backgroundColor: isWin ? 'rgba(28,187,61,0.15)' : isLoss ? 'rgba(248,113,113,0.15)' : 'rgba(255,255,255,0.06)', borderColor: accentColor }]}>
+            <Text style={[styles.resultBadgeText, { color: accentColor }]}>{resultLabel}</Text>
+          </View>
         </View>
-        <Text style={styles.sub}>{dateStr}</Text>
         <View style={styles.row}>
-          <Text style={styles.badge}>Aposta: R$ {Number(item.bet_amount ?? 0).toFixed(2)}</Text>
-          <Text style={[styles.badge, { marginLeft: spacing.sm }]}>Prêmio: R$ {Number(item.prize_pool ?? 0).toFixed(2)}</Text>
+          <View style={styles.statBox}>
+            <Text style={[styles.statLabel, styles.statLabelBet]}>Aposta</Text>
+            <Text style={styles.statValue}>R$ {Number(item.bet_amount ?? 0).toFixed(2)}</Text>
+          </View>
+          {(item.prize_pool ?? 0) > 0 && (
+            <View style={[styles.statBox, isWin && styles.statBoxHighlight]}>
+              <Text style={[styles.statLabel, styles.statLabelPrize]}>Prêmio</Text>
+              <Text style={styles.statValue}>R$ {Number(item.prize_pool ?? 0).toFixed(2)}</Text>
+            </View>
+          )}
         </View>
-        <Text style={[styles.result, { color: winner ? '#4ade80' : colors.textMuted }]}>
-          {winner ? 'Vitória registrada' : 'Sem vencedor'}
-        </Text>
       </View>
     );
   };
@@ -131,23 +184,24 @@ export function HistoryScreen({ navigation }: Props) {
   return (
     <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe}>
-        <GameTopBarMinimal
+        <GameTopBar
           user={user}
           exitVariant="back"
+          onWallet={() => navigation.navigate('Wallet')}
           onExit={() => navigation.goBack()}
-          onSettings={() => navigation.navigate('Main', { openModal: 'settings' })}
+          onSettings={() => setSettingsVisible(true)}
           onProfile={() => navigation.navigate('Main', { openModal: 'profile' })}
         />
 
         {loading ? (
-          <ActivityIndicator color="#4ade80" style={{ marginTop: spacing.xl }} />
+          <ActivityIndicator color="#1CBB3D" style={{ marginTop: spacing.xl }} />
         ) : (
           <FlatList
             data={items}
             keyExtractor={(g) => g.id}
             renderItem={renderItem}
             contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.xl }}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4ade80" />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1CBB3D" />}
             ListHeaderComponent={pairStats.length > 0 ? (
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryTitle}>Confrontos (1v1 pago)</Text>
@@ -168,6 +222,7 @@ export function HistoryScreen({ navigation }: Props) {
             ListEmptyComponent={<Text style={styles.empty}>Nenhuma partida finalizada encontrada.</Text>}
           />
         )}
+        <SettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
       </SafeAreaView>
     </ScreenBackground>
   );
@@ -191,24 +246,65 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.lg },
   card: {
-    backgroundColor: 'rgba(24, 73, 18, 0.92)',
+    backgroundColor: 'rgba(20, 20, 20, 0.85)',
     borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.28)',
+    borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: radius.lg,
     padding: spacing.md,
     marginBottom: spacing.md,
+    overflow: 'hidden',
   },
-  title: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md },
-  sub: { color: colors.textMuted, fontSize: fonts.sizes.xs, marginTop: 2 },
-  row: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm },
-  badge: {
-    color: '#0a1f0a',
-    fontWeight: '800',
-    backgroundColor: '#BEF311',
+  cardWin: {
+    backgroundColor: 'rgba(10, 40, 15, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(28, 187, 61, 0.45)',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+  },
+  cardLoss: {
+    backgroundColor: 'rgba(40, 10, 10, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.45)',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+  },
+  cardAccentBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderTopLeftRadius: radius.lg,
+    borderBottomLeftRadius: radius.lg,
+  },
+  title: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.md, paddingLeft: 8 },
+  sub: { color: 'rgba(255,255,255,0.55)', fontSize: fonts.sizes.xs, marginTop: 2, paddingLeft: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, gap: spacing.sm, paddingLeft: 8 },
+  resultBadge: {
+    borderWidth: 1,
+    borderRadius: 8,
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingVertical: 3,
   },
+  resultBadgeText: { fontWeight: '800', fontSize: fonts.sizes.xs },
+  statBox: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 80,
+  },
+  statBoxHighlight: {
+    backgroundColor: 'rgba(28, 187, 61, 0.1)',
+  },
+  statLabel: { fontSize: fonts.sizes.xs, fontWeight: '600' },
+  statLabelBet: { color: 'rgb(250, 204, 21)' },
+  statLabelPrize: { color: 'rgb(28, 187, 61)' },
+  statValue: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm, marginTop: 2 },
   result: { marginTop: spacing.sm, fontWeight: '700' },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl },
   summaryCard: {
@@ -221,8 +317,8 @@ const styles = StyleSheet.create({
   },
   summaryTitle: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.md, marginBottom: spacing.sm },
   summaryRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
-  summaryName: { color: '#fff', fontWeight: '700' },
-  summarySub: { color: colors.textMuted, marginTop: 2, fontSize: fonts.sizes.xs },
+  summaryName: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+  summarySub: { color: 'rgba(255,255,255,0.65)', marginTop: 3, fontSize: fonts.sizes.sm },
   alert: {
     marginLeft: spacing.md,
     color: '#0a1f0a',

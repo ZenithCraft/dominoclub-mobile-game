@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as Location from 'expo-location';
+import { BlurModal } from '../components/BlurModal';
 import { getIntegrityToken } from '../services/integrity';
 import {
   View, Text, StyleSheet, ScrollView, useWindowDimensions,
-  TouchableOpacity, Modal, ActivityIndicator, RefreshControl,
+  TouchableOpacity, ActivityIndicator, RefreshControl,
   Platform, Animated, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -520,7 +521,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
         showsVerticalScrollIndicator={false}
         refreshControl={
           isTorneio
-            ? <RefreshControl refreshing={tourRefreshing} onRefresh={() => fetchTournaments(true)} tintColor="#4ade80" />
+            ? <RefreshControl refreshing={tourRefreshing} onRefresh={() => fetchTournaments(true)} tintColor="#1CBB3D" />
             : undefined
         }
       >
@@ -595,7 +596,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
             <View style={styles.tourPanelWrap}>
               <View style={styles.tourGlow} />
               <LinearGradient
-                colors={['rgba(187,255,0,0.18)', 'rgba(0,0,0,0.28)', 'rgba(74,222,128,0.12)']}
+                colors={['rgba(187,255,0,0.18)', 'rgba(0,0,0,0.28)', 'rgba(28,187,61,0.12)']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.tourPanel}
@@ -608,7 +609,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
               </View>
               {tourLoading ? (
                 <View style={styles.tourLoading}>
-                  <ActivityIndicator color="#4ade80" />
+                  <ActivityIndicator color="#1CBB3D" />
                 </View>
               ) : tournaments.length === 0 ? (
                 <View style={styles.tourEmptyBox}>
@@ -650,13 +651,13 @@ export function ModeSelectScreen({ navigation, route }: Props) {
               ]}
             />
             <LinearGradient
-              colors={['rgba(34,211,238,0.14)', 'rgba(0,0,0,0.58)', 'rgba(74,222,128,0.16)']}
+              colors={['rgba(34,211,238,0.14)', 'rgba(0,0,0,0.58)', 'rgba(28,187,61,0.16)']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.searchCard}
             >
               <View style={styles.searchSpinnerRow}>
-                <ActivityIndicator color="#4ade80" size="large" />
+                <ActivityIndicator color="#1CBB3D" size="large" />
               </View>
               <Text style={styles.searchTitle}>Procurando partida...</Text>
               <Text style={styles.searchSubtitle}>Aguardando jogadores e criando a sala</Text>
@@ -680,7 +681,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       )}
 
       {/* Tournament confirm modal */}
-      <Modal visible={!!confirmTour} transparent animationType="fade">
+      <BlurModal visible={!!confirmTour} transparent animationType="fade">
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => !joining && setConfirmTour(null)}>
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             {confirmTour && (
@@ -697,7 +698,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                   </View>
                   <View style={styles.modalRow}>
                     <Text style={styles.modalLabel}>Saldo após entrar</Text>
-                    <Text style={[styles.modalValue, { color: '#4ade80' }]}>
+                    <Text style={[styles.modalValue, { color: '#1CBB3D' }]}>
                       R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) - Number(confirmTour.entry_fee)).toFixed(2)}
                     </Text>
                   </View>
@@ -724,10 +725,10 @@ export function ModeSelectScreen({ navigation, route }: Props) {
             )}
           </View>
         </TouchableOpacity>
-      </Modal>
+      </BlurModal>
 
       {/* Match confirm modal */}
-      <Modal visible={!!confirmRoom} transparent animationType="fade">
+      <BlurModal visible={!!confirmRoom} transparent animationType="fade">
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => !searching && setConfirmRoom(null)}>
           <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             {confirmRoom && (
@@ -750,7 +751,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                       </View>
                       <View style={styles.modalRow}>
                         <Text style={styles.modalLabel}>Saldo após entrar</Text>
-                        <Text style={[styles.modalValue, { color: '#4ade80' }]}>
+                        <Text style={[styles.modalValue, { color: '#1CBB3D' }]}>
                           R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) - Number(confirmRoom.room.buyIn)).toFixed(2)}
                         </Text>
                       </View>
@@ -784,9 +785,9 @@ export function ModeSelectScreen({ navigation, route }: Props) {
             )}
           </View>
         </TouchableOpacity>
-      </Modal>
+      </BlurModal>
       {/* In-person tournament modal */}
-      <Modal visible={!!inPersonTour} transparent animationType="fade">
+      <BlurModal visible={!!inPersonTour} transparent animationType="fade">
         <View style={styles.overlay} pointerEvents="box-none">
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => !joining && setInPersonTour(null)} />
           <ScrollView
@@ -895,10 +896,10 @@ export function ModeSelectScreen({ navigation, route }: Props) {
             </View>
           </ScrollView>
         </View>
-      </Modal>
+      </BlurModal>
 
       {/* ── Settings modal ── */}
-      <Modal visible={settingsVisible} transparent animationType="fade">
+      <BlurModal visible={settingsVisible} transparent animationType="fade">
         <Pressable style={settingsStyles.overlay} onPress={() => setSettingsVisible(false)} testID="settings-overlay">
           <Pressable style={settingsStyles.card} onPress={() => {}} onStartShouldSetResponder={() => true} testID="settings-card">
             <View style={[settingsStyles.textureWrap, (Platform.OS === 'web' ? ({ pointerEvents: 'none' } as any) : null)]}>
@@ -925,7 +926,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
             </View>
           </Pressable>
         </Pressable>
-      </Modal>
+      </BlurModal>
 
       </SafeAreaView>
     </ScreenBackground>
@@ -984,7 +985,7 @@ const settingsStyles = StyleSheet.create({
   },
 });
 
-const LIME = '#4ade80';
+const LIME = '#1CBB3D';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a1f0a' },
@@ -1271,7 +1272,7 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center' },
   modalCard: {
     width: '88%',
-    maxWidth: 620,
+    maxWidth: 360,
     maxHeight: '88%',
     backgroundColor: '#082006',
     borderRadius: radius.xl,

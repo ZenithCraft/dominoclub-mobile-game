@@ -170,7 +170,7 @@ export function SplashScreen({ navigation }: Props) {
           </View>
 
           <View style={styles.loadingRow}>
-            <ActivityIndicator color="#4ade80" size={isTabletSize ? 'large' : 'small'} />
+            <ActivityIndicator color="#1CBB3D" size={isTabletSize ? 'large' : 'small'} />
             <Text style={[styles.loadingText, isTabletSize && styles.loadingTextTablet]}>Carregando...</Text>
           </View>
         </Animated.View>

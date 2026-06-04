@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: 'rgba(0,0,0,0.78)',
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.35)',
+    borderColor: 'rgba(28,187,61,0.35)',
   },
   title: { color: '#fff', fontSize: 13, fontWeight: '800' },
   subtitle: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '600', marginTop: 2 },

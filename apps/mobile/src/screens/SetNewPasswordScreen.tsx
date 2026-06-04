@@ -18,7 +18,7 @@ type Props = {
   route: { params?: { token?: string } };
 };
 
-const LIME = '#4ade80';
+const LIME = '#1CBB3D';
 
 export function SetNewPasswordScreen({ navigation, route }: Props) {
   const { width: winW } = useWindowDimensions();
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
   panel: {
     backgroundColor: 'rgba(8, 20, 8, 0.88)',
     borderWidth: 1,
-    borderColor: 'rgba(74, 222, 128, 0.28)',
+    borderColor: 'rgba(28, 187, 61, 0.28)',
     borderRadius: radius.xl,
     overflow: 'hidden',
   },
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
 
   vertDivider: {
     width: 1,
-    backgroundColor: 'rgba(74, 222, 128, 0.25)',
+    backgroundColor: 'rgba(28, 187, 61, 0.25)',
     marginVertical: spacing.xl,
   },
 
