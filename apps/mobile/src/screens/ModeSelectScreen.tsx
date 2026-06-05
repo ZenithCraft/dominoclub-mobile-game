@@ -289,6 +289,10 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const [soundOn, setSoundOn]           = useState(true);
   const [musicOn, setMusicOn]           = useState(true);
   const searchPulseAnim = useRef(new Animated.Value(0)).current;
+  const outerScrollRef = useRef<ScrollView>(null);
+  const scrollRef1v1 = useRef<ScrollView>(null);
+  const scrollRef2v2 = useRef<ScrollView>(null);
+  const [section2v2Y, setSection2v2Y] = useState(0);
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'test') return;
@@ -500,7 +504,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const MIN_CARD_W = 140;
   const calcW = (n: number) => Math.max(1, Math.floor((sectionInnerWidth - rowGap * (n - 1)) / n));
   const cardColumns = calcW(4) >= MIN_CARD_W ? 4 : calcW(3) >= MIN_CARD_W ? 3 : 2;
-  const roomCardWidth = isPortrait ? sectionInnerWidth : calcW(cardColumns);
+  const roomCardWidth = isPortrait ? Math.floor((sectionInnerWidth - rowGap) / 2) : calcW(cardColumns);
 
   return (
     <ScreenBackground style={styles.root}>
@@ -516,6 +520,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
       {/* Content */}
       <ScrollView
+        ref={outerScrollRef}
         style={{ flex: 1 }}
         contentContainerStyle={[styles.content, { flexGrow: 1 }]}
         showsVerticalScrollIndicator={false}
@@ -528,13 +533,40 @@ export function ModeSelectScreen({ navigation, route }: Props) {
         {/* ── Livre mode ── */}
         {!isTorneio && (
           <>
+            {/* Mode navigation pills */}
+            <View style={styles.modeNavRow}>
+              <TouchableOpacity
+                style={styles.modeNavChip}
+                onPress={() => outerScrollRef.current?.scrollTo({ y: 0, animated: true })}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modeNavChipText}>Individual (1x1)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modeNavChip}
+                onPress={() => outerScrollRef.current?.scrollTo({ y: section2v2Y, animated: true })}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modeNavChipText}>Duplas (2x2)</Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.sectionContainer}>
               <View style={styles.sectionTitleRow}>
                 <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
-                {!isPortrait && <IconChevronRight size={18} color="rgba(255,255,255,0.45)" accessibilityLabel="Arraste para ver mais" />}
+                {!isPortrait && (
+                  <TouchableOpacity
+                    onPress={() => scrollRef1v1.current?.scrollToEnd({ animated: true })}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: fonts.sizes.xs, fontWeight: '700' }}>mais opções</Text>
+                    <IconChevronRight size={16} color="rgba(255,255,255,0.45)" accessibilityLabel="Arraste para ver mais" />
+                  </TouchableOpacity>
+                )}
               </View>
               {isPortrait ? (
-                <View style={[styles.cardsRow, { flexDirection: 'column' }]}>
+                <View style={styles.cardsGrid}>
                   {LIVRE_1V1.map((r) => {
                     const betAmount = r.buyIn ?? 0;
                     const queuedCount = queueStats['ARENA_1V1']?.byBet?.[String(betAmount)] ?? 0;
@@ -545,7 +577,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                   })}
                 </View>
               ) : (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
+                <ScrollView ref={scrollRef1v1} horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
                   {LIVRE_1V1.map((r) => {
                     const betAmount = r.buyIn ?? 0;
                     const queuedCount = queueStats['ARENA_1V1']?.byBet?.[String(betAmount)] ?? 0;
@@ -558,13 +590,25 @@ export function ModeSelectScreen({ navigation, route }: Props) {
               )}
             </View>
 
-            <View style={styles.sectionContainer}>
+            <View
+              style={styles.sectionContainer}
+              onLayout={e => setSection2v2Y(e.nativeEvent.layout.y)}
+            >
               <View style={styles.sectionTitleRow}>
                 <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
-                {!isPortrait && <IconChevronRight size={18} color="rgba(255,255,255,0.45)" accessibilityLabel="Arraste para ver mais" />}
+                {!isPortrait && (
+                  <TouchableOpacity
+                    onPress={() => scrollRef2v2.current?.scrollToEnd({ animated: true })}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: fonts.sizes.xs, fontWeight: '700' }}>mais opções</Text>
+                    <IconChevronRight size={16} color="rgba(255,255,255,0.45)" accessibilityLabel="Arraste para ver mais" />
+                  </TouchableOpacity>
+                )}
               </View>
               {isPortrait ? (
-                <View style={[styles.cardsRow, { flexDirection: 'column' }]}>
+                <View style={styles.cardsGrid}>
                   {LIVRE_2V2.map((r) => {
                     const betAmount = r.buyIn ?? 0;
                     const queuedCount = queueStats['RECREATIONAL_2V2']?.byBet?.[String(betAmount)] ?? 0;
@@ -575,7 +619,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                   })}
                 </View>
               ) : (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
+                <ScrollView ref={scrollRef2v2} horizontal showsHorizontalScrollIndicator={false} style={{ width: '100%' }} contentContainerStyle={styles.cardsRow}>
                   {LIVRE_2V2.map((r) => {
                     const betAmount = r.buyIn ?? 0;
                     const queuedCount = queueStats['RECREATIONAL_2V2']?.byBet?.[String(betAmount)] ?? 0;
@@ -1021,6 +1065,30 @@ const styles = StyleSheet.create({
     marginTop: -spacing.xs,
     marginBottom: spacing.sm,
   },
+  modeNavRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  modeNavChip: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: radius.full,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  modeNavChipText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: fonts.sizes.sm,
+  },
+  cardsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.lg,
+    justifyContent: 'center',
+  },
   cardsRow: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
@@ -1070,7 +1138,7 @@ const styles = StyleSheet.create({
           elevation: 6,
         }),
   },
-  roomCardInner: { padding: spacing.md, gap: spacing.sm, minHeight: 140 },
+  roomCardInner: { padding: spacing.sm, gap: spacing.xs, minHeight: 100 },
   cardTop: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, width: '100%' },
   playersIconWrap: { width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.18)', alignItems: 'center', justifyContent: 'center' },
   playersMeta: { flexDirection: 'column', gap: 2, alignItems: 'center' },
@@ -1082,7 +1150,7 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: radius.md,
     backgroundColor: '#E5E7EB',
-    paddingVertical: 6,
+    paddingVertical: 4,
     alignItems: 'center',
     gap: 2,
   },

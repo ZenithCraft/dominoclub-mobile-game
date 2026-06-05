@@ -615,7 +615,7 @@ export function HomeScreen({ navigation, route }: Props) {
               colors={['#22d3ee', '#0891b2']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[styles.modeBtnGrad, dynIsTablet && { minHeight: 160 }]}
+              style={[styles.modeBtnGrad, dynIsTablet && { minHeight: 100 }]}
             >
               <Text style={styles.modeBtnTextLivre}>Livre</Text>
             </LinearGradient>
@@ -631,7 +631,7 @@ export function HomeScreen({ navigation, route }: Props) {
               colors={['#fbbf24', '#d97706']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[styles.modeBtnGrad, dynIsTablet && { minHeight: 160 }]}
+              style={[styles.modeBtnGrad, dynIsTablet && { minHeight: 100 }]}
             >
               <Text style={styles.modeBtnTextTorneio}>Torneio</Text>
             </LinearGradient>
@@ -912,11 +912,11 @@ const styles = StyleSheet.create({
         }),
   },
   modeBtnGrad: {
-    paddingVertical: isSmallPhone ? spacing.md : (isShortScreen ? spacing.sm : spacing.xl),
+    paddingVertical: isSmallPhone ? spacing.sm : (isShortScreen ? spacing.xs : spacing.md),
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    minHeight: isSmallPhone ? 72 : (isShortScreen ? 64 : 88),
+    minHeight: isSmallPhone ? 52 : (isShortScreen ? 48 : 60),
     borderRadius: radius.lg - 3,
   },
   modeBtnLivre: {
@@ -926,13 +926,13 @@ const styles = StyleSheet.create({
     borderColor: '#92400e', // darker yellow/gold
   },
   modeBtnText: {
-    fontSize: isSmallPhone ? fonts.sizes.xl : fonts.sizes.xxl,
+    fontSize: isSmallPhone ? fonts.sizes.md : fonts.sizes.xl,
     fontWeight: '900',
     color: '#ffffff',
     letterSpacing: 1,
   },
   modeBtnTextLivre: {
-    fontSize: isSmallPhone ? fonts.sizes.xl : fonts.sizes.xxl,
+    fontSize: isSmallPhone ? fonts.sizes.md : fonts.sizes.xl,
     fontWeight: '900',
     color: '#ffffff',
     letterSpacing: 1,
@@ -941,7 +941,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
   modeBtnTextTorneio: {
-    fontSize: isSmallPhone ? fonts.sizes.xl : fonts.sizes.xxl,
+    fontSize: isSmallPhone ? fonts.sizes.md : fonts.sizes.xl,
     fontWeight: '900',
     color: '#ffffff',
     letterSpacing: 1,

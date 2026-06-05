@@ -276,6 +276,8 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     width: '100%',
     maxWidth: 420,
+    maxHeight: 520,
+    flex: 1,
     borderWidth: 2,
     borderColor: '#0F400B',
   },
@@ -301,7 +303,7 @@ const styles = StyleSheet.create({
   ageBtnTextSecondary: { color: '#ffffff' },
   legalNote: { fontSize: fonts.sizes.xs, color: colors.textMuted, textAlign: 'center', lineHeight: 16 },
   scrollWrapper: {
-    maxHeight: 420,
+    flex: 1,
     flexDirection: 'row',
   },
   ageScroll: { flex: 1 },
