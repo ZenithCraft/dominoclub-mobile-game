@@ -109,17 +109,19 @@ export function WalletBalanceButton({
   balance,
   onPress,
   style,
+  height,
 }: {
   balance: number;
   onPress?: () => void;
   style?: ViewStyle;
+  height?: number;
 }) {
   const content = (
     <Text style={walletStyles.balanceText}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</Text>
   );
 
   return (
-    <TouchableOpacity style={[walletStyles.wrap, style]} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity style={[walletStyles.wrap, height != null && { height }, style]} onPress={onPress} activeOpacity={0.85}>
       {Platform.OS === 'web' ? (
         <View
           style={[
@@ -209,11 +211,11 @@ const walletStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   pill: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 14,
-    paddingRight: 10,
-    paddingVertical: 8,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
   },
   balanceText: { color: '#0a1f0a', fontWeight: '900', fontSize: fonts.sizes.sm },
   balancePlus: {

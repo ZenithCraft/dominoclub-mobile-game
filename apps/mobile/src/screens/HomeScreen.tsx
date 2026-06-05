@@ -209,7 +209,7 @@ export function GameTopBar({
       ) : (
         /* Landscape / tablet: full right bar */
         <View style={topBar.right}>
-          <WalletBalanceButton balance={balance} onPress={onWallet} />
+          <WalletBalanceButton balance={balance} onPress={onWallet} height={isTablet ? 48 : 36} />
 
           <TouchableOpacity style={topBar.iconBtn} onPress={onSettings} testID="topbar-settings" accessibilityLabel="Abrir configurações">
             <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={topBar.iconBtnGrad}>
