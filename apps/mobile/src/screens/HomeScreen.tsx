@@ -731,7 +731,7 @@ export function HomeScreen({ navigation, route }: Props) {
 
           {/* Card container - centered and non-touchable */}
           <View style={styles.profileCardWrapper} pointerEvents="box-none">
-            <View style={[styles.profileCard, { maxHeight: Math.round(windowH * 0.82) }]} pointerEvents="auto">
+            <View style={[styles.profileCard, { height: Math.round(windowH * 0.82) }]} pointerEvents="auto">
               <View style={styles.modalHeader}>
                 <View style={{ width: 26 }} />
                 <Text style={styles.settingsTitle}>Perfil</Text>
