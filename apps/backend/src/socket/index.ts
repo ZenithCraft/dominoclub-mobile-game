@@ -187,7 +187,14 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       }
 
       // ── Device integrity check (paid games only) ────────────────────────────
-      if (isPaidGame && config.integrity.requireForPaidGames) {
+      // TEMP: while DEV_AUTH_BYPASS is on (pre-launch testing) the dev/super
+      // user has no Play Integrity / App Attest token, so skip the check
+      // instead of blocking matches. Remove this guard before going live.
+      const skipIntegrityForDev = isPaidGame && config.devAuthBypass;
+      if (skipIntegrityForDev) {
+        logger.warn('[Socket] Integrity check skipped — DEV_AUTH_BYPASS active', { userId: user.id });
+      }
+      if (isPaidGame && config.integrity.requireForPaidGames && !skipIntegrityForDev) {
         if (!data.integrityToken || !data.platform) {
           socket.emit('queue:error', { message: 'Verificação do dispositivo necessária', code: 'INTEGRITY_REQUIRED' });
           return;
