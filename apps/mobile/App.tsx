@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaInsetsContext, SafeAreaFrameContext } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
@@ -46,8 +46,11 @@ export default function App() {
   }, []);
 
   // Android: keep the system navigation bar hidden across the whole app.
-  // Re-hide whenever the app returns to the foreground (the system shows it
-  // again after backgrounding or after the user swipes it in).
+  // Re-hide on every signal that could re-show it: AppState 'active' (return
+  // from background) AND Dimensions 'change' (camera/keyboard/system overlay
+  // mutated the window). ImagePicker's camera intent reliably fires
+  // Dimensions but NOT always AppState on every OEM, which is why KYC was
+  // leaving the nav bar visible and shrinking the window everywhere else.
   useEffect(() => {
     if (Platform.OS !== 'android' || !NavigationBar) return;
     const hide = () => {
@@ -55,16 +58,26 @@ export default function App() {
       NavigationBar!.setBehaviorAsync('overlay-swipe').catch(() => {});
     };
     hide();
-    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') hide(); });
-    return () => sub.remove();
+    const appSub = AppState.addEventListener('change', (s) => { if (s === 'active') hide(); });
+    const dimSub = Dimensions.addEventListener('change', () => hide());
+    return () => { appSub.remove(); dimSub.remove(); };
   }, []);
 
   // Force every screen's safe-area insets to zero so the layout extends under
   // the camera notch / status bar / nav bar on all platforms (the game already
   // hides the system bars).  Components that read useSafeAreaInsets() inside
   // this subtree will see zeros, and `<SafeAreaView />` will apply no padding.
+  //
+  // Subscribe to Dimensions changes so the zero-frame width/height track the
+  // current window. Without this, KYC's camera intent (which transiently
+  // shrinks the window) would leave a stale frame in context — every screen
+  // would then keep rendering at the shrunken size after the camera closes.
   const zeroInsets = useMemo(() => ({ top: 0, right: 0, bottom: 0, left: 0 }), []);
-  const win = Dimensions.get('window');
+  const [win, setWin] = useState(() => Dimensions.get('window'));
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ window }) => setWin(window));
+    return () => sub.remove();
+  }, []);
   const zeroFrame = useMemo(() => ({ x: 0, y: 0, width: win.width, height: win.height }), [win.width, win.height]);
 
   return (

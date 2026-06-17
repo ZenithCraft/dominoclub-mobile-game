@@ -739,7 +739,12 @@ function buildFullBoardLayout(
   const shiftY = -minY;
   for (const p of allPlaced) { p.x += shiftX; p.y += shiftY; }
 
-  return { placed: allPlaced, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), horizCount, rightEndRowParity, leftEndRowParity, leftEndSnakeIdx, snakeLeftEndIdx: snake.leftEndIdx, snakeRightEndIdx: snake.rightEndIdx };
+  // Use leftEndSnakeIdx (counted in the loop above) instead of snake.leftEndIdx.
+  // snake.leftEndIdx only tracks tiles, not corner pushes, so when the chain
+  // extends leftward into a row corner (no tiles yet in that row) it points to
+  // the next tile down — the left ghost then renders one row off from where
+  // the actual tile will land.
+  return { placed: allPlaced, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), horizCount, rightEndRowParity, leftEndRowParity, leftEndSnakeIdx, snakeLeftEndIdx: leftEndSnakeIdx, snakeRightEndIdx: snake.rightEndIdx };
 }
 
 // ─── Domino piece images ──────────────────────────────────────────────────────
@@ -2596,9 +2601,17 @@ export function GameScreen({ navigation, route }: Props) {
                   const cornerL_px = Math.round(L_u * boardScale);
                   const cornerS_px = Math.round(S_u * boardScale);
 
-                  // Y: center on endpoint tile; for corners, place ghost directly below.
-                  const ghostY = (endP: typeof leftEndP): number => {
-                    if (endP.isCorner) return endP.y + cornerL_px + gapPx;
+                  // Y: center on endpoint tile; for corners, place ghost on the
+                  // side the chain will extend toward.
+                  //   - right ghost on a corner → next tile is in the row BELOW
+                  //   - left  ghost on a corner → chain wraps BACKWARD, so the
+                  //     next tile is in the row ABOVE the corner
+                  const ghostY = (endP: typeof leftEndP, fromSide: 'left' | 'right' = 'right'): number => {
+                    if (endP.isCorner) {
+                      return fromSide === 'left'
+                        ? endP.y - ghostH_px - gapPx
+                        : endP.y + cornerL_px + gapPx;
+                    }
                     const endTileH_u = endP.horizontal ? S_u : L_u;
                     const centerOffset = Math.round(((endTileH_u - ghostH_u) / 2) * boardScale);
                     return endP.y + centerOffset;
@@ -2630,10 +2643,13 @@ export function GameScreen({ navigation, route }: Props) {
                       : rightEndTileLeft_px - ghostW_px - gapPx;
 
                   // Extend container height if corner ghosts extend below the laid-out board.
+                  // (Left ghost on a corner goes ABOVE — handled by extraAboveH so the
+                  // container grows up instead of getting clipped.)
                   let extraBelowH = 0;
-                  if (leftPlay  && leftEndIsCorner)  extraBelowH = Math.max(extraBelowH, ghostY(leftEndP)  + ghostH_px - layoutH + gapPx);
-                  if (rightPlay && rightEndIsCorner) extraBelowH = Math.max(extraBelowH, ghostY(rightEndP) + ghostH_px - layoutH + gapPx);
-                  const extH = layoutH + Math.max(0, extraBelowH);
+                  let extraAboveH = 0;
+                  if (leftPlay  && leftEndIsCorner)  extraAboveH = Math.max(extraAboveH, -ghostY(leftEndP, 'left') + gapPx);
+                  if (rightPlay && rightEndIsCorner) extraBelowH = Math.max(extraBelowH, ghostY(rightEndP, 'right') + ghostH_px - layoutH + gapPx);
+                  const extH = layoutH + Math.max(0, extraBelowH) + Math.max(0, extraAboveH);
 
                   // Top/bottom ghost dimensions and positions
                   const topbottomGhostW_u = ghostHoriz ? L_u : S_u;
@@ -2695,7 +2711,7 @@ export function GameScreen({ navigation, route }: Props) {
                           <TouchableOpacity
                             onPress={() => handlePlayTile('left')}
                             activeOpacity={0.75}
-                            style={{ position: 'absolute', left: leftGhostX_px, top: ghostY(leftEndP), zIndex: 50 }}
+                            style={{ position: 'absolute', left: leftGhostX_px, top: ghostY(leftEndP, 'left'), zIndex: 50 }}
                           >
                             <View style={{ position: 'absolute', top: -11, left: 0, right: 0, alignItems: 'center' }}>
                               <View style={[styles.ghostArrow, dragTargetSide === 'left' && styles.ghostArrowActive]} />
@@ -2717,7 +2733,7 @@ export function GameScreen({ navigation, route }: Props) {
                           <TouchableOpacity
                             onPress={() => handlePlayTile('right')}
                             activeOpacity={0.75}
-                            style={{ position: 'absolute', left: rightGhostX_px, top: ghostY(rightEndP), zIndex: 50 }}
+                            style={{ position: 'absolute', left: rightGhostX_px, top: ghostY(rightEndP, 'right'), zIndex: 50 }}
                           >
                             <View style={{ position: 'absolute', top: -11, left: 0, right: 0, alignItems: 'center' }}>
                               <View style={[styles.ghostArrow, dragTargetSide === 'right' && styles.ghostArrowActive]} />
