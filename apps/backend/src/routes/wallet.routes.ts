@@ -16,6 +16,6 @@ router.post('/deposit', authMiddleware, depositHandler);
 router.post('/withdraw', authMiddleware, withdrawHandler);
 router.post('/redeem-coupon', authMiddleware, redeemCouponHandler);
 router.get('/transaction/:id', authMiddleware, getTransactionHandler);
-router.post('/pix/webhook', pixWebhookHandler); // No auth — called by Banco Inter
+router.post('/pix/webhook', pixWebhookHandler);
 
 export default router;

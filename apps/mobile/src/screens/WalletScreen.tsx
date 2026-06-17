@@ -37,7 +37,7 @@ const POLL_INTERVAL_MS = 3000;
 const PAGE_SIZE = 6;
 
 const TYPE_LABEL: Record<string, string> = {
-  DEPOSIT: 'Depósito', WITHDRAWAL: 'Saque', BET: 'Aposta',
+  DEPOSIT: 'Depósito', WITHDRAWAL: 'Saque', BET: 'Entrada',
   WIN: 'Prêmio', BONUS: 'Bônus', REFUND: 'Reembolso', FEE: 'Taxa',
 };
 
@@ -458,7 +458,7 @@ export function WalletScreen() {
 
   return (
     <ScreenBackground style={styles.root}>
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={[]}>
 
         <GameTopBar
           user={user}

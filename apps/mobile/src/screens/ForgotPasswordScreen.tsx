@@ -40,7 +40,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
 
   return (
     <ScreenBackground style={styles.root}>
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={[]}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.kav}

@@ -2,7 +2,6 @@ import http from 'http';
 import app from './app';
 import { createSocketServer } from './socket';
 import { prisma } from './services/prisma.service';
-import { registerPixWebhook } from './services/pix.service';
 import { connectRedis, disconnectRedis } from './services/redis.service';
 import { cleanupExpiredNonces } from './services/nonce.service';
 import { cleanupVelocityStore } from './middleware/antifraud.middleware';
@@ -48,8 +47,6 @@ async function main() {
     logger.info(`API: http://localhost:${config.port}${config.apiPrefix}`);
   });
 
-  // Register PIX webhook with Banco Inter (idempotent, safe to call on every start)
-  registerPixWebhook();
 
   // Periodic cleanup for in-memory stores (no-ops when Redis is available)
   setInterval(() => {

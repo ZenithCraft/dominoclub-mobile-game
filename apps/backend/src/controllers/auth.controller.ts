@@ -87,7 +87,12 @@ export async function updateProfileHandler(req: Request, res: Response) {
     const userId = (req as any).user?.userId;
     const { name, cpf, avatar, gps_lat, gps_lng, date_of_birth } = req.body;
 
-    // If CPF is being submitted, verify it via Serpro before saving
+    if (avatar && typeof avatar === 'string') {
+      if (avatar.length > 500 || !/^https?:\/\//.test(avatar)) {
+        return res.status(400).json({ error: 'URL de avatar inválida' });
+      }
+    }
+
     if (cpf) {
       const rawCpf = cpf.replace(/\D/g, '');
       cpfSchema.parse(rawCpf); // throws ZodError if format/checksum invalid

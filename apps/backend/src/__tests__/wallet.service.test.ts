@@ -94,6 +94,7 @@ describe('deductBet', () => {
 
 describe('creditWin', () => {
   it('increments real_balance by the prize amount', async () => {
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({ rollover_remaining: 0 });
     (prisma.wallet.update as jest.Mock).mockResolvedValue({ ...mockWallet, real_balance: 150 });
     (prisma.transaction.create as jest.Mock).mockResolvedValue({});
 
@@ -107,6 +108,7 @@ describe('creditWin', () => {
   });
 
   it('records a WIN transaction', async () => {
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({ rollover_remaining: 0 });
     (prisma.wallet.update as jest.Mock).mockResolvedValue({ ...mockWallet, real_balance: 150 });
     (prisma.transaction.create as jest.Mock).mockResolvedValue({});
 
@@ -128,7 +130,7 @@ describe('deposit', () => {
   it('delegates to createPixCharge for valid amounts', async () => {
     (createPixCharge as jest.Mock).mockResolvedValue({ qrCode: 'abc', txid: 'x1' });
     await deposit('u1', 50);
-    expect(createPixCharge).toHaveBeenCalledWith('u1', 50);
+    expect(createPixCharge).toHaveBeenCalledWith('u1', 50, undefined);
   });
 });
 

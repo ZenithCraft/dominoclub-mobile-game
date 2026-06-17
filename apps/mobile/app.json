@@ -35,14 +35,19 @@
         "backgroundColor": "#0a1f0a"
       },
       "package": "com.dominoclub.app",
-      "versionCode": 13,
+      "versionCode": 25,
       "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.RECORD_AUDIO"
       ],
       "blockedPermissions": [
+        "com.google.android.gms.permission.AD_ID",
         "com.google.android.gms.permission.AD_ID"
       ]
     },
@@ -61,15 +66,14 @@
       "termsUrl": "https://dominoclub.com.br/termos",
       "supportEmail": "suporte@dominoclub.com.br",
       "eas": {
-        "projectId": "a1bd4eff-ab83-4101-825d-1972317f28c9"
+        "projectId": "f90acc6c-8d9c-4fb2-bead-29d4f9bb5c7e"
       }
     },
     "updates": {
       "enabled": true,
       "fallbackToCacheTimeout": 0,
       "checkAutomatically": "ON_LOAD",
-      "url": "https://u.expo.dev/a1bd4eff-ab83-4101-825d-1972317f28c9"
-    },
-    "owner": "jojoyoro"
+      "url": "https://u.expo.dev/f90acc6c-8d9c-4fb2-bead-29d4f9bb5c7e"
+    }
   }
 }

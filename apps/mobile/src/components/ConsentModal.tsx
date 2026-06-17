@@ -111,11 +111,9 @@ export function ConsentModal({ onAccepted }: Props) {
                 </View>
                 <Text style={styles.cardTitle}>Verificação de Idade</Text>
                 <Text style={styles.cardBody}>
-                  O DominoClub é uma plataforma de jogos com apostas em dinheiro real.{'\n\n'}
-                  O acesso é <Text style={styles.bold}>exclusivo para maiores de 18 anos</Text> residentes no Brasil,
-                  conforme exigido pela Lei nº 14.790/2023.{'\n\n'}
-                  Esta plataforma opera em conformidade com a Lei nº 14.790/2023, que regulamenta jogos de apostas de
-                  valor fixo no Brasil. O uso por menores de 18 anos é estritamente proibido e sujeito a penalidades legais.
+                  O DominoClub é uma plataforma de jogos de habilidade com prêmios em dinheiro real.{'\n\n'}
+                  O acesso é <Text style={styles.bold}>exclusivo para maiores de 18 anos</Text> residentes no Brasil.{'\n\n'}
+                  O uso por menores de 18 anos é estritamente proibido e sujeito a penalidades legais.
                 </Text>
 
                 <View style={styles.ageButtons}>
@@ -182,7 +180,7 @@ export function ConsentModal({ onAccepted }: Props) {
                 )}
 
                 <TermsSummarySection title="1. Natureza do Serviço">
-                  O DominoClub é uma plataforma de dominó com apostas em dinheiro real via PIX. Perdas financeiras são possíveis.
+                  O DominoClub é uma plataforma de dominó com prêmios em dinheiro real via PIX. Perdas financeiras são possíveis.
                 </TermsSummarySection>
 
                 <TermsSummarySection title="2. Conta Única">

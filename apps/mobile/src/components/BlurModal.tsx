@@ -1,6 +1,5 @@
 import React from 'react';
-import { Modal, ModalProps, StyleSheet, Platform } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { Modal, ModalProps, StyleSheet, View } from 'react-native';
 
 interface BlurModalProps extends ModalProps {
   children: React.ReactNode;
@@ -8,16 +7,12 @@ interface BlurModalProps extends ModalProps {
 }
 
 export function BlurModal({ children, intensity = 22, ...modalProps }: BlurModalProps) {
+  const opacity = Math.min(0.85, intensity / 100 + 0.6);
   return (
     <Modal transparent statusBarTranslucent {...modalProps}>
-      <BlurView
-        intensity={intensity}
-        tint="dark"
-        style={StyleSheet.absoluteFillObject}
-        experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
-      >
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: `rgba(0,0,0,${opacity})` }]}>
         {children}
-      </BlurView>
+      </View>
     </Modal>
   );
 }

@@ -13,6 +13,7 @@ function makeEntry(overrides: Partial<QueueEntry> = {}): QueueEntry {
     socketId: overrides.socketId || 's1',
     betAmount: overrides.betAmount ?? 10,
     mode: overrides.mode || 'ARENA_1V1',
+    variant: overrides.variant || 'CARROCA',
     joinedAt: Date.now(),
     isBot: overrides.isBot,
   };
@@ -40,8 +41,9 @@ describe('Fluxo 1v1 — aposta → partida → prêmio', () => {
 
     (prisma.wallet.findUnique as jest.Mock)
       .mockResolvedValueOnce({ id: 'w1', real_balance: 100, bonus_balance: 0 })
-      .mockResolvedValueOnce({ id: 'w2', real_balance: 80, bonus_balance: 0 });
-    (prisma.wallet.update as jest.Mock).mockResolvedValue({});
+      .mockResolvedValueOnce({ id: 'w2', real_balance: 80, bonus_balance: 0 })
+      .mockResolvedValueOnce({ id: 'w1', rollover_remaining: 0 });
+    (prisma.wallet.update as jest.Mock).mockResolvedValue({ real_balance: 100, bonus_balance: 0 });
     (prisma.transaction.create as jest.Mock).mockResolvedValue({});
 
     await deductBet('w1', bet);

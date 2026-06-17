@@ -66,7 +66,8 @@
       "**/__tests__/**/*.test.ts"
     ],
     "moduleNameMapper": {
-      "prisma\\.service": "<rootDir>/src/__mocks__/prisma.service.ts"
+      "prisma\\.service": "<rootDir>/src/__mocks__/prisma.service.ts",
+      "expo-server-sdk": "<rootDir>/src/__mocks__/expo-server-sdk.ts"
     },
     "collectCoverageFrom": [
       "src/**/*.ts",

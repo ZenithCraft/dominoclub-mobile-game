@@ -41,7 +41,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
 
   return (
     <ScreenBackground style={styles.bg}>
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={[]}>
         <View style={styles.topBar}>
           <View style={{ flex: 1 }} />
           <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)} accessibilityLabel="Configurações">

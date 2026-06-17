@@ -12,6 +12,7 @@ function makeEntry(overrides: Partial<QueueEntry> = {}): QueueEntry {
     socketId: 's' + Math.random(),
     betAmount: 10,
     mode: 'ARENA_1V1',
+    variant: 'CARROCA',
     joinedAt: Date.now(),
     ...overrides,
   };

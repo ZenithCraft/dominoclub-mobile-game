@@ -2,6 +2,7 @@ import { Server as HttpServer } from 'http';
 import { Server as SocketServer, Socket } from 'socket.io';
 import { config } from '../config';
 import { verifyAccessToken } from '../utils/jwt';
+import { isTokenBlacklisted } from '../services/token-blacklist.service';
 import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
 import { setupGameSocket, activeGames, initTournamentScheduler } from './gameSocket';
@@ -64,6 +65,9 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
 
     try {
       const payload = verifyAccessToken(token);
+      if (payload.jti && await isTokenBlacklisted(payload.jti)) {
+        return next(new Error('Token revoked'));
+      }
       try {
         const user = await prisma.user.findUnique({
           where: { id: payload.userId },
@@ -119,7 +123,8 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       }
 
       // Validate betAmount
-      if (typeof data.betAmount !== 'number' || data.betAmount < 0) {
+      const ALLOWED_BETS = [0, 5, 10, 20, 50, 100, 200, 500, 1000];
+      if (typeof data.betAmount !== 'number' || !ALLOWED_BETS.includes(data.betAmount)) {
         socket.emit('queue:error', { message: 'Valor de aposta inválido' });
         return;
       }
@@ -297,7 +302,7 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
 
       enqueue(entry);
       const runtimeCfg = await getRuntimeConfig();
-      const botWaitSeconds = data.betAmount > 0 ? 0 : runtimeCfg.botInjectWaitSeconds;
+      const botWaitSeconds = runtimeCfg.botInjectWaitSeconds;
       const botTimer = startBotInjectionTimer(entry, botWaitSeconds);
       const position = getQueuePosition(user.id, data.mode);
 
@@ -338,10 +343,17 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
     setupGameSocket(socket, io, user);
   });
 
-  // When matchmaking creates a game, notify all players
   matchmakingEvents.on('match_created', ({ gameId, players, betAmount, mode }) => {
     players.forEach((p: any) => {
       io.to(`user:${p.userId}`).emit('game:found', { gameId, betAmount, mode });
+    });
+  });
+
+  matchmakingEvents.on('match_failed', ({ players }) => {
+    players.forEach((p: any) => {
+      if (!p.isBot) {
+        io.to(`user:${p.userId}`).emit('queue:error', { message: 'Erro ao criar partida. Tente novamente.' });
+      }
     });
   });
 

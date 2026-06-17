@@ -19,15 +19,10 @@ export const config = {
     refreshExpires: process.env.JWT_REFRESH_EXPIRES || '7d',
   },
 
-  inter: {
-    clientId: process.env.INTER_CLIENT_ID || '96703fe2d355c5d53fa606e364f241a6c6b95664',
-    clientSecret: process.env.INTER_CLIENT_SECRET || 'b6e37717d9cdbc8f3a0654eb4162e502377af7fe',
-    baseUrl: process.env.INTER_BASE_URL || 'https://cdpj-sandbox.partners.uatinter.co',
-    certPath: process.env.INTER_CERT_PATH || './certs/inter.crt',
-    keyPath: process.env.INTER_KEY_PATH || './certs/inter.key',
-    pixKey: process.env.INTER_PIX_KEY || '',
-    webhookUrl: process.env.INTER_WEBHOOK_URL || '',
-    webhookSecret: process.env.INTER_WEBHOOK_SECRET || '',
+  woovi: {
+    appId: process.env.WOOVI_APP_ID || '',
+    baseUrl: process.env.WOOVI_BASE_URL || 'https://api.openpix.com.br/api/v1',
+    webhookSecret: process.env.WOOVI_WEBHOOK_SECRET || '',
   },
 
   serpro: {

@@ -171,15 +171,6 @@ export async function refreshTokens(token: string) {
 
     await prisma.user.update({ where: { id: user.id }, data: { refresh_token: newRefreshToken } });
 
-    // Blacklist the incoming access token JTI so the old token cannot be reused
-    // after rotation (best-effort — failure should not block the refresh)
-    try {
-      const oldPayload = verifyRefreshToken(token) as any;
-      if (oldPayload?.jti && oldPayload?.exp) {
-        await blacklistToken(oldPayload.jti, oldPayload.exp);
-      }
-    } catch { /* ignore — old token may have already expired */ }
-
     return { accessToken, refreshToken: newRefreshToken };
   } catch {
     const stored = getDevRefreshToken(payload.userId);

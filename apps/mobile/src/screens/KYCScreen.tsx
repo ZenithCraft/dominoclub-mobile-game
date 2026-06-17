@@ -107,14 +107,14 @@ export function KYCScreen({ navigation }: Props) {
         name: 'selfie.jpg',
       } as any);
 
-      console.log('Uploading KYC documents:', { docType, frontUri, backUri, selfieUri });
+      if (__DEV__) console.log('Uploading KYC documents:', { docType, frontUri, backUri, selfieUri });
 
       const response = await api.post('/kyc/documents', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 60000, // 60 segundos para upload de arquivos
+        timeout: 60000,
       });
 
-      console.log('Upload success:', response.data);
+      if (__DEV__) console.log('Upload success:', response.data);
 
       Alert.alert(
         'Documentos enviados!',
@@ -132,7 +132,7 @@ export function KYCScreen({ navigation }: Props) {
 
   return (
     <ScreenBackground style={styles.root}>
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={[]}>
         {/* Top Navigation Bar - Same as HomeScreen */}
         <GameTopBar
           user={user}

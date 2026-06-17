@@ -167,7 +167,7 @@ export function HistoryScreen({ navigation }: Props) {
         </View>
         <View style={styles.row}>
           <View style={styles.statBox}>
-            <Text style={[styles.statLabel, styles.statLabelBet]}>Aposta</Text>
+            <Text style={[styles.statLabel, styles.statLabelBet]}>Entrada</Text>
             <Text style={styles.statValue}>R$ {Number(item.bet_amount ?? 0).toFixed(2)}</Text>
           </View>
           {(item.prize_pool ?? 0) > 0 && (
@@ -183,7 +183,7 @@ export function HistoryScreen({ navigation }: Props) {
 
   return (
     <ScreenBackground style={styles.root}>
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={[]}>
         <GameTopBar
           user={user}
           exitVariant="back"

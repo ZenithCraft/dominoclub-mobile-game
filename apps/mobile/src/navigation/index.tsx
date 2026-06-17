@@ -132,11 +132,11 @@ export function AppNavigator() {
   const mockGame = !!url && (url.searchParams.get('mockGame') === '1' || url.searchParams.get('mock') === '1');
   const gameIdFromUrl = url?.searchParams.get('gameId') || url?.searchParams.get('id') || null;
 
-  if (mockGame && typeof window !== 'undefined') {
+  const allowDirect = process.env.NODE_ENV !== 'production';
+
+  if (mockGame && allowDirect && typeof window !== 'undefined') {
     (window as any).__MOCK_GAME__ = true;
   }
-
-  const allowDirect = process.env.NODE_ENV !== 'production';
   const initialRouteName: keyof RootStackParamList =
     allowDirect && (process.env.EXPO_PUBLIC_MOCK_GAME === 'true' || directGame || mockGame)
       ? 'Game'

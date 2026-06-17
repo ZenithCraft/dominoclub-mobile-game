@@ -1,24 +1,36 @@
+# EAS Build archive ignore — keep upload small.
+
+# Dependencies (re-installed on the EAS builder)
 node_modules/
 **/node_modules/
+
+# VCS / IDE / OS junk
 .git/
-.home/
-.userprofile/
-.localappdata/
-.user/
-AppData/
 .expo/
 .trae/
 .claude/
 .github/
 .vscode/
 .idea/
-dist/
-docs/
-nginx/
-*.pem
-*.log
-*.map
 
+# Stray home-dir folders that ended up inside the project root
+.home/
+.userprofile/
+.localappdata/
+.user/
+AppData/
+
+# Build outputs / caches (the big ones)
+**/.next/
+**/.turbo/
+**/dist/
+**/build/
+**/coverage/
+**/logs/
+**/.cache/
+**/storybook-static/
+
+# Native build outputs (mobile)
 apps/mobile/android/.gradle/
 apps/mobile/android/.kotlin/
 apps/mobile/android/build/
@@ -28,4 +40,13 @@ apps/mobile/ios/build/
 apps/mobile/ios/Pods/
 apps/mobile/ios/DerivedData/
 
-apps/backend/
+# Misc
+nginx/
+docs/
+screenshot-screens.mjs
+DEPLOYMENT_REPORT.md
+LICENSE
+*.pem
+*.log
+*.map
+*.tsbuildinfo

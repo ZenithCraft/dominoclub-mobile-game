@@ -68,6 +68,8 @@ export interface RoundBanner {
   targetScore: number;
   matchOver: boolean;
   matchWinnerTeam: number | null;
+  blocked?: boolean;
+  teamPips?: Record<number, number>;
 }
 
 interface GameStoreState {

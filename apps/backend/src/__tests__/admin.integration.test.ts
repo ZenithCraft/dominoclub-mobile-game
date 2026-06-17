@@ -5,6 +5,8 @@ jest.mock('../utils/logger', () => ({
 jest.mock('../services/tournament.service', () => ({
   createTournament: jest.fn(),
   startTournament: jest.fn(),
+  cancelAndRefundTournament: jest.fn().mockResolvedValue(undefined),
+  emergencyCancelTournament: jest.fn().mockResolvedValue(undefined),
 }));
 
 import supertest from 'supertest';
@@ -325,16 +327,9 @@ describe('Admin API — integration', () => {
   });
 
   it('POST /admin/tournaments/:id/cancel refunds players and cancels', async () => {
-    (prisma.tournament.findUnique as jest.Mock).mockResolvedValueOnce({
-      id: 'tr3',
-      status: 'SCHEDULED',
-      entry_fee: 5,
-      players: [{ userId: 'u1' }, { userId: 'u2' }],
-    });
-    (prisma.wallet.findUnique as jest.Mock)
-      .mockResolvedValueOnce({ id: 'w1', userId: 'u1' })
-      .mockResolvedValueOnce({ id: 'w2', userId: 'u2' });
-    (prisma.tournament.update as jest.Mock).mockResolvedValueOnce({ id: 'tr3', status: 'CANCELLED' });
+    const { cancelAndRefundTournament } = require('../services/tournament.service');
+    (prisma.tournament.findUnique as jest.Mock)
+      .mockResolvedValueOnce({ id: 'tr3', status: 'OPEN' });
 
     const token = await getAdminToken();
     const res = await request
@@ -342,10 +337,6 @@ describe('Admin API — integration', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(prisma.tournament.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'tr3' },
-      data: expect.objectContaining({ status: 'CANCELLED' }),
-    }));
-    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(cancelAndRefundTournament).toHaveBeenCalledWith('tr3');
   });
 });

@@ -22,6 +22,7 @@
         "EXPO_PUBLIC_API_URL": "https://backend-production-5fdb.up.railway.app/api/v1",
         "EXPO_PUBLIC_SOCKET_URL": "https://backend-production-5fdb.up.railway.app",
         "EXPO_PUBLIC_DEV_AUTH_BYPASS": "true",
+        "EXPO_PUBLIC_FORCE_DEV_LOGIN": "true",
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
       }
     },
@@ -37,7 +38,7 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "http://34.233.108.8:3001/api/v1",
-        "EXPO_PUBLIC_MOCK_MODE": "true",
+        "EXPO_PUBLIC_MOCK_MODE": "false",
         "EXPO_PUBLIC_DEV_AUTH_BYPASS": "true",
         "EXPO_PUBLIC_FORCE_DEV_LOGIN": "true",
         "EXPO_PUBLIC_SOCKET_URL": "http://34.233.108.8:3001",

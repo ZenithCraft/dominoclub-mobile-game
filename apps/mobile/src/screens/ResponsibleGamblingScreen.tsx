@@ -109,7 +109,7 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
           <Text style={styles.heroTitle}>Jogue com responsabilidade</Text>
           <Text style={styles.heroDesc}>
             O DominoClub é uma plataforma de entretenimento. Jogue pelo prazer — nunca como fonte de renda
-            ou fuga de problemas. Apostar dinheiro que você não pode perder é um sinal de alerta.
+            ou fuga de problemas. Arriscar dinheiro que você não pode perder é um sinal de alerta.
           </Text>
         </View>
 
@@ -117,7 +117,7 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
         <View style={styles.infoCard}>
           <Text style={styles.infoLabel}>Seu saldo atual</Text>
           <Text style={styles.infoValue}>
-            R$ {Number(user?.wallet?.real_balance || 0).toFixed(2)}
+            R$ {(Number(user?.wallet?.real_balance || 0) + Number(user?.wallet?.bonus_balance || 0)).toFixed(2)}
           </Text>
           <Text style={styles.infoHint}>Defina limites antes de jogar. Nunca aposte mais do que está disposto a perder.</Text>
         </View>

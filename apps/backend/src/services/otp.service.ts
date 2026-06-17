@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { createHash, timingSafeEqual } from 'crypto';
+import { createHash, randomInt, timingSafeEqual } from 'crypto';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
@@ -26,7 +26,7 @@ function hashOtp(code: string): string {
 export function generateOtp(): string {
   const min = Math.pow(10, config.otp.length - 1);
   const max = Math.pow(10, config.otp.length) - 1;
-  return Math.floor(min + Math.random() * (max - min + 1)).toString();
+  return randomInt(min, max + 1).toString();
 }
 
 // ─── Send ─────────────────────────────────────────────────────────────────────

@@ -1,3 +1,5 @@
+import { randomInt } from 'crypto';
+
 // ─────────────────────────────────────────────────────────────────
 // DominoClub — Brazilian Domino Engine
 //
@@ -88,7 +90,7 @@ export function generateTiles(): Tile[] {
 export function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = randomInt(i + 1);
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -340,8 +342,13 @@ export function applyMove(
 
   // Check win condition: player emptied hand
   if (player.hand.length === 0) {
-    // detectWinType uses POST-MOVE open ends (s.leftOpen / s.rightOpen already updated above)
-    const winType = detectWinType(tile, s.leftOpen, s.rightOpen, boardWasEmpty);
+    // IMPORTANT: detectWinType MUST receive POST-MOVE open ends.
+    // Lá e Lô / Cruzada are decided by what the board looks like AFTER the
+    // winning tile is placed (e.g. playing 2:6 with pre-move ends 2,6 leaves
+    // both ends at 6 → lelo). Reading pre-move ends scores it as simples.
+    const postLeftOpen  = s.leftOpen;
+    const postRightOpen = s.rightOpen;
+    const winType = detectWinType(tile, postLeftOpen, postRightOpen, boardWasEmpty);
     const points  = WIN_POINTS[winType];
     s.status     = 'finished';
     s.winnerId   = player.userId;

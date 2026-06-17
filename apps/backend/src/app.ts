@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { config } from './config';
 import { antifraudMiddleware } from './middleware/antifraud.middleware';
+import { adminMiddleware } from './middleware/admin.middleware';
 import routes from './routes';
 import type { CorsOptions } from 'cors';
 
@@ -18,7 +19,7 @@ app.set('trust proxy', 1);
 app.get('/health', (_req, res) => res.json({ status: 'ok', env: config.env }));
 
 app.use(helmet());
-const corsOrigin: CorsOptions['origin'] = config.env !== 'production' ? true : config.cors.origins;
+const corsOrigin: CorsOptions['origin'] = config.env === 'development' ? true : config.cors.origins;
 app.use(cors({ origin: corsOrigin, credentials: true }));
 
 // Capture raw body for PIX webhook HMAC verification.
@@ -41,7 +42,7 @@ const authLimiter = rateLimit({
   message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => process.env.NODE_ENV !== 'production',
+  skip: () => process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test',
 });
 
 // PIX webhook: very loose — called by Banco Inter servers
@@ -59,6 +60,7 @@ const adminLoginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: false,
+  skip: () => process.env.NODE_ENV === 'test',
 });
 
 // Admin API: tighter than general API but looser than login
@@ -88,8 +90,7 @@ app.use(generalLimiter);
 app.use(antifraudMiddleware);
 app.use(config.apiPrefix, routes);
 
-// Serve uploaded KYC documents (admin reviews via direct URL, behind auth in prod)
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use('/uploads', adminMiddleware as any, express.static(path.join(process.cwd(), 'uploads')));
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 

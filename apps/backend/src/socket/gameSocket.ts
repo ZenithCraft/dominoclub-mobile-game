@@ -2,6 +2,7 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import { prisma } from '../services/prisma.service';
 import { deductBet, creditWin } from '../services/wallet.service';
 import { advanceTournamentBracket, setTournamentIo, cancelAndRefundTournament, startTournament } from '../services/tournament.service';
+import { getHouseEdgePercent } from '../services/runtime-config.service';
 import { config } from '../config';
 import { logger, matchLogger } from '../utils/logger';
 import { checkGpsProximity, updateBotScore } from '../middleware/antifraud.middleware';
@@ -405,10 +406,14 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     }
   });
 
-  // Player reaction (emoji)
+  let lastEmojiAt = 0;
   socket.on('game:emoji', ({ gameId, emoji }: { gameId: string; emoji: string }) => {
     if (!activeGames.has(gameId)) return;
-    io.to(`game:${gameId}`).emit('game:emoji', { userId: user.id, emoji, at: Date.now() });
+    if (typeof emoji !== 'string' || emoji.length > 8) return;
+    const now = Date.now();
+    if (now - lastEmojiAt < 2000) return;
+    lastEmojiAt = now;
+    io.to(`game:${gameId}`).emit('game:emoji', { userId: user.id, emoji, at: now });
   });
 
   socket.on('game:leave', async ({ gameId }: { gameId: string }) => {
@@ -453,17 +458,34 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
 // ─── Game lifecycle ───────────────────────────────────────────────────────────
 
 async function startGame(gameId: string, variant: DominoVariant, players: any[], betAmount: number, io: SocketServer) {
-  // Deduct bets
   if (betAmount > 0) {
+    const deducted: string[] = [];
+    let failed = false;
+
     for (const player of players) {
-      if (!player.is_bot) {
-        try {
-          const wallet = await prisma.wallet.findUnique({ where: { userId: player.userId } });
-          if (wallet) {
-            await deductBet(wallet.id, betAmount);
-          }
-        } catch {}
+      if (player.is_bot) continue;
+      try {
+        const wallet = await prisma.wallet.findUnique({ where: { userId: player.userId } });
+        if (!wallet) throw new Error('Wallet not found');
+        await deductBet(wallet.id, betAmount);
+        deducted.push(wallet.id);
+      } catch (err: any) {
+        logger.error('[startGame] Failed to deduct bet — aborting game', { userId: player.userId, gameId, betAmount, error: err?.message });
+        failed = true;
+        break;
       }
+    }
+
+    if (failed) {
+      for (const walletId of deducted) {
+        try { await creditWin(walletId, betAmount); } catch {}
+      }
+      for (const player of players) {
+        if (!player.is_bot) {
+          io.to(`user:${player.userId}`).emit('queue:error', { message: 'Não foi possível iniciar a partida. Saldo insuficiente de um jogador.' });
+        }
+      }
+      return;
     }
   }
 
@@ -662,6 +684,22 @@ async function handleGameEnd(
     game = null;
   }
 
+  // Fallback to the in-memory volatile match if the DB row is missing — otherwise
+  // finalizeMatch is skipped and the winner never gets credited (R$ 0,00 payout).
+  if (!game) {
+    const v = volatileMatches.get(gameId);
+    if (v) {
+      game = {
+        id: v.gameId,
+        mode: v.mode,
+        bet_amount: v.betAmount,
+        prize_pool: 0, // finalizeMatch will recompute from bet_amount
+        tournamentId: null,
+      };
+      logger.warn('[handleGameEnd] DB game missing — using volatile match for finalize', { gameId });
+    }
+  }
+
   // ── Forfeit / Abandoned — end match immediately ──────────────────────────
   if (opts?.status === 'ABANDONED') {
     activeGames.delete(gameId);
@@ -677,6 +715,17 @@ async function handleGameEnd(
   const points    = state.winnerTeam ? (WIN_POINTS[winType] ?? 1) : 0;
   const matchOver = !!state.matchWinnerTeam;
 
+  // Pip totals per team — surfaced so blocked-game outcomes can be explained on the client.
+  const teamPips: Record<number, number> = { 1: 0, 2: 0 };
+  for (const p of state.players) {
+    let pips = p.hand.reduce((sum, t) => sum + t[0] + t[1], 0);
+    if (state.variant === 'L_E_L') {
+      pips += p.hand.filter((t) => t[0] === t[1]).reduce((s, t) => s + t[0] + t[1], 0);
+    }
+    teamPips[p.team] = (teamPips[p.team] || 0) + pips;
+  }
+  const blocked = state.players.every((p) => p.hand.length > 0);
+
   // Notify clients of round result
   io.to(`game:${gameId}`).emit('game:round_ended', {
     roundNumber:     state.roundNumber,
@@ -688,6 +737,8 @@ async function handleGameEnd(
     targetScore:     state.targetScore,
     matchOver,
     matchWinnerTeam: state.matchWinnerTeam ?? null,
+    blocked,
+    teamPips,
   });
 
   logger.info('Round ended', {
@@ -740,9 +791,21 @@ async function finalizeMatch(
   io: SocketServer,
   status: 'FINISHED' | 'ABANDONED'
 ) {
-  const prizePool = Number(game.prize_pool);
+  const betAmount  = Number(game.bet_amount) || 0;
+  let   prizePool  = Number(game.prize_pool);
 
-  // The overall match winner is whoever reached 7 pts (or team that didn't forfeit)
+  // Defensive fallback: if the stored prize_pool is missing/NaN/0 but the match
+  // was paid, recompute from bet_amount so the winner is still credited. Prevents
+  // R$ 0,00 payouts caused by stale rows or Decimal serialization quirks.
+  if ((!Number.isFinite(prizePool) || prizePool <= 0) && betAmount > 0) {
+    const houseEdge = await getHouseEdgePercent().catch(() => 0);
+    prizePool = betAmount * state.players.length * (1 - houseEdge / 100);
+    logger.warn('[finalizeMatch] prize_pool missing/zero — recomputed from bet', {
+      gameId, betAmount, players: state.players.length, houseEdge, prizePool,
+    });
+  }
+
+  // The overall match winner is whoever reached the target (or the team that didn't forfeit)
   const matchWinnerTeam = state.matchWinnerTeam ?? state.winnerTeam;
   const winningPlayers  = matchWinnerTeam
     ? state.players.filter((p) => p.team === matchWinnerTeam && !p.isBot)
@@ -752,29 +815,39 @@ async function finalizeMatch(
 
   for (const winner of winningPlayers) {
     const wallet = await prisma.wallet.findUnique({ where: { userId: winner.userId } });
-    if (wallet) await creditWin(wallet.id, prizePerWinner);
+    if (wallet && prizePerWinner > 0) {
+      await creditWin(wallet.id, prizePerWinner);
+      logger.info('[finalizeMatch] credited winner', { gameId, userId: winner.userId, amount: prizePerWinner });
+    } else if (!wallet) {
+      logger.warn('[finalizeMatch] winner has no wallet — skipping credit', { gameId, userId: winner.userId });
+    }
   }
 
   const replay = gameReplays.get(gameId) ?? null;
   gameReplays.delete(gameId);
 
-  await prisma.game.update({
-    where: { id: gameId },
-    data: {
-      status,
-      winner_id:    state.winnerId    || null,
-      winning_team: matchWinnerTeam   || null,
-      finished_at:  new Date(),
-      replay_data:  replay as any,
-    },
-  });
-
-  for (const player of state.players) {
-    const pips = player.hand.reduce((s, t) => s + t[0] + t[1], 0);
-    await prisma.gamePlayer.updateMany({
-      where: { gameId, userId: player.userId },
-      data: { final_score: pips },
+  try {
+    await prisma.game.update({
+      where: { id: gameId },
+      data: {
+        status,
+        winner_id:    state.winnerId    || null,
+        winning_team: matchWinnerTeam   || null,
+        finished_at:  new Date(),
+        replay_data:  replay as any,
+      },
     });
+
+    for (const player of state.players) {
+      const pips = player.hand.reduce((s, t) => s + t[0] + t[1], 0);
+      await prisma.gamePlayer.updateMany({
+        where: { gameId, userId: player.userId },
+        data: { final_score: pips },
+      });
+    }
+  } catch (err: any) {
+    // Volatile / missing DB rows shouldn't block the wallet credit or the game:ended emit.
+    logger.warn('[finalizeMatch] DB write skipped', { gameId, err: err?.message });
   }
 
   // Update partner-cooldown counters for 2v2 modes

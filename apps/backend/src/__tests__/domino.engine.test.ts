@@ -130,6 +130,9 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
     consecutivePasses: 0,
     status: 'playing',
     firstPlayMade: false,
+    matchScores: { 1: 0, 2: 0 },
+    roundNumber: 1,
+    targetScore: 6,
     ...overrides,
   };
 }
@@ -172,18 +175,65 @@ describe('canPlayTile', () => {
     expect(plays).toHaveLength(0);
   });
 
-  it('CRUZADA: topOpen and bottomOpen are checked when set', () => {
-    const state = makeState({
-      variant: 'CRUZADA',
-      firstPlayMade: true,
-      leftOpen: 3,
-      rightOpen: 6,
-      topOpen: 4,
-      bottomOpen: 4,
-    });
-    const plays = canPlayTile(state, [4, 0]);
-    expect(plays.some((p) => p.side === 'top')).toBe(true);
-    expect(plays.some((p) => p.side === 'bottom')).toBe(true);
+});
+
+// ─── win-type scoring (Simples / Carroça / Lá-e-Lô / Cruzada) ────────────────
+//
+// These rules apply to the FINAL board state after the last tile is placed:
+//   simples (1)  — plain win
+//   carroca (2)  — last tile is a double
+//   lelo    (3)  — last tile is NOT a double, post-move ends are equal
+//   cruzada (4)  — last tile is a double, post-move ends are equal
+//
+// Bug regression guard: the scoring previously read PRE-move open ends, so a
+// 2:6 played with ends [2,6] was scored as simples (since 2 ≠ 6 pre-move)
+// instead of lelo (post-move both ends become 6).
+
+describe('applyMove — win-type scoring', () => {
+  const winState = (hand: Tile[], leftOpen: number, rightOpen: number): GameState => makeState({
+    firstPlayMade: true,
+    leftOpen,
+    rightOpen,
+    players: [
+      { userId: 'p1', team: 1, seat: 0, hand, isBot: false, connected: true, passedLastTurn: false },
+      { userId: 'p2', team: 2, seat: 1, hand: [[0, 0]], isBot: false, connected: true, passedLastTurn: false },
+    ],
+    board: [{ tile: [leftOpen, rightOpen] as Tile, side: 'left', flipped: false }],
+  });
+
+  it('scores Lá-e-Lô (3 pts) when the bridging tile makes both ends equal — played on left', () => {
+    // ends: 2 | 6, hand: [2,6]. Play left flipped: 2 connects to left, leftOpen becomes 6.
+    const s = applyMove(winState([[2, 6]], 2, 6), 0, [2, 6], 'left', true);
+    expect(s.winType).toBe('lelo');
+    expect(s.matchScores[1]).toBe(3);
+  });
+
+  it('scores Lá-e-Lô (3 pts) when the bridging tile makes both ends equal — played on right', () => {
+    // ends: 2 | 6, hand: [2,6]. Play right flipped: 6 connects to right, rightOpen becomes 2.
+    const s = applyMove(winState([[2, 6]], 2, 6), 0, [2, 6], 'right', true);
+    expect(s.winType).toBe('lelo');
+    expect(s.matchScores[1]).toBe(3);
+  });
+
+  it('scores Cruzada (4 pts) when a double matches both ends', () => {
+    // ends: 6 | 6, hand: [6,6]. Both ends remain 6, tile is a double.
+    const s = applyMove(winState([[6, 6]], 6, 6), 0, [6, 6], 'left', false);
+    expect(s.winType).toBe('cruzada');
+    expect(s.matchScores[1]).toBe(4);
+  });
+
+  it('scores Carroça (2 pts) when the last tile is a double but ends differ post-move', () => {
+    // ends: 3 | 5, hand: [3,3]. Play 3:3 on left. leftOpen stays 3, rightOpen stays 5.
+    const s = applyMove(winState([[3, 3]], 3, 5), 0, [3, 3], 'left', false);
+    expect(s.winType).toBe('carroca');
+    expect(s.matchScores[1]).toBe(2);
+  });
+
+  it('scores Simples (1 pt) when ends differ post-move and the tile is not a double', () => {
+    // ends: 1 | 4, hand: [1,2]. Play 1:2 on left flipped: leftOpen becomes 2 (≠4).
+    const s = applyMove(winState([[1, 2]], 1, 4), 0, [1, 2], 'left', true);
+    expect(s.winType).toBe('simples');
+    expect(s.matchScores[1]).toBe(1);
   });
 });
 
@@ -314,18 +364,6 @@ describe('applyMove', () => {
     expect(next.consecutivePasses).toBe(0);
   });
 
-  it('CRUZADA: first double opens topOpen and bottomOpen', () => {
-    const state: GameState = {
-      ...makeState({ variant: 'CRUZADA', firstPlayMade: true, leftOpen: 4, rightOpen: 2 }),
-      players: [
-        { userId: 'u1', team: 1, seat: 0, isBot: false, hand: [[4, 4], [1, 1]], connected: true, passedLastTurn: false },
-        { userId: 'u2', team: 2, seat: 1, isBot: false, hand: [[0, 0]], connected: true, passedLastTurn: false },
-      ],
-    };
-    const next = applyMove(state, 0, [4, 4], 'left', false);
-    expect(next.topOpen).toBe(4);
-    expect(next.bottomOpen).toBe(4);
-  });
 });
 
 // ─── applyPass ────────────────────────────────────────────────────────────────

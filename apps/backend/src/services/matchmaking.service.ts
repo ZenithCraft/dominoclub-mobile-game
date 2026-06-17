@@ -369,7 +369,8 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
     matchmakingEvents.emit('match_created', { gameId, players: playerData, betAmount, mode, variant });
   } catch (err) {
     logger.error('Failed to create match', { err });
-    matchmakingEvents.emit('match_created', { gameId, players: playerData, betAmount, mode, variant });
+    matchmakingEvents.emit('match_failed', { gameId, players: playerData, error: 'DB write failed' });
+    return;
   }
 }
 

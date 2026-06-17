@@ -791,7 +791,7 @@ function TileHandImage({ tile, selected, playable, onPress }: {
   return (
     <DominoTile
       tile={tile}
-      size="board"
+      size="hand"
       selected={selected}
       style={!playable ? { opacity: 0.38 } : undefined}
       onPress={onPress}
@@ -799,57 +799,67 @@ function TileHandImage({ tile, selected, playable, onPress }: {
   );
 }
 
-function DraggableTile({ tile, isPlayable, isSelected, onPress, onDragUp, onWebDragStart, onNativeDragStart, onNativeDragMove, onNativeDragEnd }: {
+function DraggableTile({ tile, isPlayable, isSelected, dragActive, onPress, onDragUp, onWebDragStart, onNativeDragStart, onNativeDragMove, onNativeDragEnd, onTouchLock, onTouchUnlock }: {
   tile: Tile;
   isPlayable: boolean;
   isSelected: boolean;
+  dragActive: boolean;
   onPress: () => void;
   onDragUp: (moveX?: number) => void;
   onWebDragStart?: (clientX: number, clientY: number) => void;
   onNativeDragStart?: (pageX: number, pageY: number) => void;
   onNativeDragMove?: (pageX: number, pageY: number) => void;
   onNativeDragEnd?: (pageX: number, pageY: number) => void;
+  onTouchLock?: () => void;
+  onTouchUnlock?: () => void;
 }) {
-  const pan = useRef(new Animated.ValueXY()).current;
   const [isDragging, setIsDragging] = useState(false);
-  // Refs keep PanResponder callbacks up-to-date without recreating the responder
+  const isDraggingRef        = useRef(false);
   const isPlayableRef        = useRef(isPlayable);
+  const dragActiveRef        = useRef(dragActive);
   const onDragUpRef          = useRef(onDragUp);
   const onNativeDragStartRef = useRef(onNativeDragStart);
   const onNativeDragMoveRef  = useRef(onNativeDragMove);
   const onNativeDragEndRef   = useRef(onNativeDragEnd);
+  const onTouchLockRef       = useRef(onTouchLock);
+  const onTouchUnlockRef     = useRef(onTouchUnlock);
   isPlayableRef.current        = isPlayable;
+  dragActiveRef.current        = dragActive;
   onDragUpRef.current          = onDragUp;
   onNativeDragStartRef.current = onNativeDragStart;
   onNativeDragMoveRef.current  = onNativeDragMove;
   onNativeDragEndRef.current   = onNativeDragEnd;
+  onTouchLockRef.current       = onTouchLock;
+  onTouchUnlockRef.current     = onTouchUnlock;
+
+  const canStart = () => Platform.OS !== 'web' && isPlayableRef.current && !dragActiveRef.current;
 
   const panResponder = useRef(
     PanResponder.create({
-      // Native only — on web we use pointer events to escape the ScrollView overflow clip
-      onStartShouldSetPanResponder: () => Platform.OS !== 'web' && isPlayableRef.current,
-      onMoveShouldSetPanResponder:  (_, gs) => Platform.OS !== 'web' && isPlayableRef.current && Math.abs(gs.dy) > Math.abs(gs.dx) && Math.abs(gs.dy) > 6,
+      onStartShouldSetPanResponder: () => canStart(),
+      onMoveShouldSetPanResponder:  (_, gs) => canStart() && (Math.abs(gs.dy) > 6 || Math.abs(gs.dx) > 6),
+      onMoveShouldSetPanResponderCapture: (_, gs) => canStart() && (Math.abs(gs.dy) > 6 || Math.abs(gs.dx) > 6),
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e, gs) => {
+        isDraggingRef.current = true;
         setIsDragging(true);
-        pan.setValue({ x: 0, y: 0 });
         const pageX = gs.moveX || e.nativeEvent.pageX;
         const pageY = gs.moveY || e.nativeEvent.pageY;
         onNativeDragStartRef.current?.(pageX, pageY);
       },
       onPanResponderMove: (_, gs) => {
-        // Ghost tile tracks finger at root level — don't move the local tile
         onNativeDragMoveRef.current?.(gs.moveX, gs.moveY);
       },
       onPanResponderRelease: (_, gs) => {
+        isDraggingRef.current = false;
         setIsDragging(false);
-        pan.setValue({ x: 0, y: 0 });
+        onTouchUnlockRef.current?.();
         onNativeDragEndRef.current?.(gs.moveX, gs.moveY);
       },
       onPanResponderTerminate: (_, gs) => {
-        // Gesture was stolen (e.g. system interrupt) — clean up state
+        isDraggingRef.current = false;
         setIsDragging(false);
-        pan.setValue({ x: 0, y: 0 });
+        onTouchUnlockRef.current?.();
         onNativeDragEndRef.current?.(gs.moveX, gs.moveY);
       },
     })
@@ -868,13 +878,21 @@ function DraggableTile({ tile, isPlayable, isSelected, onPress, onDragUp, onWebD
   // Dim the source tile while dragging on native (ghost takes over visually)
   const opacity = isDragging && Platform.OS !== 'web' ? 0.2 : 1;
 
+  const handleTouchStart = useCallback(() => {
+    if (Platform.OS !== 'web' && isPlayableRef.current) onTouchLockRef.current?.();
+  }, []);
+  const handleTouchEnd = useCallback(() => {
+    if (Platform.OS !== 'web' && !isDraggingRef.current) onTouchUnlockRef.current?.();
+  }, []);
+
   return (
     <Animated.View
-      {...(Platform.OS !== 'web' ? panResponder.panHandlers : {})}
+      {...panResponder.panHandlers}
       {...(webHandlers as any)}
-      style={[
-        { transform: pan.getTranslateTransform(), zIndex: isDragging ? 9999 : (isSelected ? 10 : 1), opacity }
-      ]}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      style={{ zIndex: isDragging ? 9999 : (isSelected ? 10 : 1), opacity }}
     >
       <TileHandImage
         tile={tile}
@@ -898,16 +916,16 @@ type DominoTileProps = {
   style?: any;
 };
 
-const tabletScale = isTablet ? 1.05 : 1;
-const T = (n: number) => Math.round(n * deviceTileScale * (isSmallPhone ? 0.66 : isPhone ? 0.70 : tabletScale));
+const tabletScale = isTablet ? 0.92 : 1;
+const T = (n: number) => Math.round(n * deviceTileScale * (isSmallPhone ? 0.78 : isPhone ? 0.82 : tabletScale));
 const TILE_DIMS: Record<DominoTileSize, { short: number; long: number; pip: number; corner: number }> = {
   icon:  { short: T(16), long: T(25), pip: T(2),  corner: 2 },
-  hand:  { short: T(28), long: T(44), pip: T(4),  corner: T(6) },
+  hand:  { short: T(36), long: T(64), pip: T(5),  corner: T(5) },
   xxs:   { short: T(19), long: T(30), pip: T(4),  corner: T(3) },
   xs:    { short: T(22), long: T(35), pip: T(4),  corner: T(4) },
   sm:    { short: T(34), long: T(54), pip: T(5),  corner: T(5) },
   md:    { short: T(44), long: T(70), pip: T(7),  corner: T(8) },
-  board: { short: T(23), long: T(41), pip: T(4),  corner: T(5) }, // Tamanho intermediário para o tabuleiro
+  board: { short: T(28), long: T(50), pip: T(4),  corner: T(5) },
 };
 
 function DominoTile({ tile, size = 'md', horizontal, tileScale = 1, selected, onPress, style }: DominoTileProps) {
@@ -1084,11 +1102,12 @@ function usePulse(active: boolean) {
 }
 
 function OpponentCard({ player, tileCount, isTurn, team = 0, isOpponent = false }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number; isOpponent?: boolean }) {
+  // Hooks must run unconditionally — call usePulse before any early return.
+  const scale = usePulse(isTurn);
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
   const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
-  const scale = usePulse(isTurn);
   const gradientColors: [string, string] = isOpponent
     ? ['rgba(38,8,8,0.97)', 'rgba(100,22,22,0.93)']
     : ['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)'];
@@ -1108,8 +1127,8 @@ function OpponentCard({ player, tileCount, isTurn, team = 0, isOpponent = false 
           )}
         </View>
         <View style={oppStyles.textWrap}>
-          <Text style={oppStyles.name} numberOfLines={1}>{name}</Text>
-          <Text style={oppStyles.sub}>{tileCount} peças</Text>
+          <Text style={oppStyles.name} numberOfLines={1} ellipsizeMode="tail">{name}</Text>
+          <Text style={oppStyles.sub} numberOfLines={1} ellipsizeMode="tail">{tileCount} peças</Text>
         </View>
       </LinearGradient>
     </Animated.View>
@@ -1120,22 +1139,22 @@ const oppStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: radius.full,
-    paddingVertical: isSmallPhone ? 5 : isPhone ? 7 : 10,
-    paddingLeft: isSmallPhone ? 8 : isPhone ? 12 : 16,
-    paddingRight: isSmallPhone ? 6 : isPhone ? 10 : 12,
-    gap: isSmallPhone ? 4 : isPhone ? 6 : 10,
+    paddingVertical: isSmallPhone ? 6 : isPhone ? 8 : 12,
+    paddingLeft: isSmallPhone ? 9 : isPhone ? 13 : 18,
+    paddingRight: isSmallPhone ? 7 : isPhone ? 11 : 14,
+    gap: isSmallPhone ? 5 : isPhone ? 7 : 11,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: isSmallPhone ? 105 : isPhone ? 135 : isTablet ? 320 : 170,
-    minHeight: isSmallPhone ? 34 : isPhone ? 40 : isTablet ? 80 : 48,
+    minWidth: isSmallPhone ? 118 : isPhone ? 150 : isTablet ? 350 : 190,
+    minHeight: isSmallPhone ? 39 : isPhone ? 47 : isTablet ? 88 : 56,
   },
-  textWrap: { flex: 1, justifyContent: 'center', paddingLeft: isPhone ? 4 : isTablet ? 10 : 6 },
-  name: { color: '#fff', fontWeight: '800', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.md : fonts.sizes.xs },
-  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.sm : fonts.sizes.xs },
+  textWrap: { flex: 1, minWidth: 0, justifyContent: 'center', paddingLeft: isPhone ? 5 : isTablet ? 11 : 7 },
+  name: { color: '#fff', fontWeight: '800', fontSize: isSmallPhone ? 10 : isPhone ? 12 : isTablet ? fonts.sizes.md : fonts.sizes.sm },
+  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: isSmallPhone ? 9 : isPhone ? 11 : isTablet ? fonts.sizes.sm : fonts.sizes.xs },
   avatar: {
-    width: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
-    height: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
-    borderRadius: isSmallPhone ? 13 : isPhone ? 16 : isTablet ? 28 : 20,
+    width: isSmallPhone ? 30 : isPhone ? 37 : isTablet ? 62 : 45,
+    height: isSmallPhone ? 30 : isPhone ? 37 : isTablet ? 62 : 45,
+    borderRadius: isSmallPhone ? 15 : isPhone ? 19 : isTablet ? 31 : 23,
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -1144,7 +1163,7 @@ const oppStyles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { color: '#fff', fontWeight: '900', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.sm : fonts.sizes.xs },
+  avatarText: { color: '#fff', fontWeight: '900', fontSize: isSmallPhone ? 13 : isPhone ? 16 : isTablet ? fonts.sizes.lg : fonts.sizes.md },
 });
 
 // ─── Opponent Timer (same style as player timer) ──────────────────────────────
@@ -1165,11 +1184,12 @@ function OpponentTimer({ timer, isTurn }: { timer: number; isTurn: boolean }) {
 // ─── Side player card (4p left/right) — horizontal pill, same as OpponentCard ─
 
 function SidePlayerCard({ player, tileCount, isTurn, team = 0, isOpponent = false }: { player: any; tileCount: number; isTurn: boolean; team?: number; matchScore?: number; isOpponent?: boolean }) {
+  // Hooks must run unconditionally — call usePulse before any early return.
+  const scale = usePulse(isTurn);
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
   const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
-  const scale = usePulse(isTurn);
   const gradientColors: [string, string] = isOpponent
     ? ['rgba(38,8,8,0.97)', 'rgba(100,22,22,0.93)']
     : ['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)'];
@@ -1198,20 +1218,22 @@ const sideStyles = StyleSheet.create({
   card: {
     flexDirection: 'column',
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radius.xl,
-    paddingVertical: isSmallPhone ? 4 : isPhone ? 6 : 10,
-    paddingHorizontal: isSmallPhone ? 6 : isPhone ? 8 : 14,
-    gap: 4,
+    paddingVertical: isSmallPhone ? 6 : isPhone ? 8 : 12,
+    paddingHorizontal: isSmallPhone ? 8 : isPhone ? 10 : 14,
+    gap: isSmallPhone ? 3 : isPhone ? 4 : 6,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: isSmallPhone ? 58 : isPhone ? 74 : isTablet ? 160 : 100,
+    minWidth: isSmallPhone ? 60 : isPhone ? 72 : isTablet ? 140 : 96,
+    minHeight: isSmallPhone ? 64 : isPhone ? 78 : isTablet ? 150 : 110,
   },
   name: { color: '#fff', fontWeight: '800', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.md : fonts.sizes.xs, textAlign: 'center' },
-  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.sm : fonts.sizes.xs, textAlign: 'center' },
+  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: isPhone ? 9 : isTablet ? fonts.sizes.sm : fonts.sizes.xs, textAlign: 'center' },
   avatar: {
-    width: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
-    height: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
-    borderRadius: isSmallPhone ? 13 : isPhone ? 16 : isTablet ? 28 : 20,
+    width: isSmallPhone ? 26 : isPhone ? 30 : isTablet ? 48 : 38,
+    height: isSmallPhone ? 26 : isPhone ? 30 : isTablet ? 48 : 38,
+    borderRadius: isSmallPhone ? 13 : isPhone ? 15 : isTablet ? 24 : 19,
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -1240,8 +1262,8 @@ function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji, team = 0
         style={[myCardStyles.card, { borderColor: idleBorder }, isMyTurn && teamTurnStyle(team)]}
       >
         <View style={myCardStyles.nameWrap}>
-          <Text style={myCardStyles.name} numberOfLines={1}>{name}</Text>
-          <Text style={myCardStyles.sub}>{hand} peças</Text>
+          <Text style={myCardStyles.name} numberOfLines={1} ellipsizeMode="tail">{name}</Text>
+          <Text style={myCardStyles.sub} numberOfLines={1} ellipsizeMode="tail">{hand} peças</Text>
         </View>
 
         <View>
@@ -1283,22 +1305,22 @@ const myCardStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: radius.full,
-    paddingVertical: isSmallPhone ? 5 : isPhone ? 7 : 10,
-    paddingLeft: isSmallPhone ? 8 : isPhone ? 12 : 16,
-    paddingRight: isSmallPhone ? 6 : isPhone ? 10 : 12,
-    gap: isSmallPhone ? 4 : isPhone ? 6 : 10,
+    paddingVertical: isSmallPhone ? 6 : isPhone ? 8 : 12,
+    paddingLeft: isSmallPhone ? 9 : isPhone ? 13 : 18,
+    paddingRight: isSmallPhone ? 7 : isPhone ? 11 : 14,
+    gap: isSmallPhone ? 5 : isPhone ? 7 : 11,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.55)',
-    minWidth: isSmallPhone ? 115 : isPhone ? 140 : isTablet ? 330 : 175,
-    minHeight: isSmallPhone ? 34 : isPhone ? 40 : isTablet ? 80 : 48,
+    minWidth: isSmallPhone ? 118 : isPhone ? 150 : isTablet ? 350 : 190,
+    minHeight: isSmallPhone ? 39 : isPhone ? 47 : isTablet ? 88 : 56,
   },
-  nameWrap: { flex: 1, justifyContent: 'center', paddingLeft: isPhone ? 4 : isTablet ? 10 : 6 },
-  name: { color: '#fff', fontWeight: '800', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.md : fonts.sizes.xs },
-  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.sm : fonts.sizes.xs },
+  nameWrap: { flex: 1, minWidth: 0, justifyContent: 'center', paddingLeft: isPhone ? 5 : isTablet ? 11 : 7 },
+  name: { color: '#fff', fontWeight: '800', fontSize: isSmallPhone ? 10 : isPhone ? 12 : isTablet ? fonts.sizes.md : fonts.sizes.sm },
+  sub:  { color: 'rgba(255,255,255,0.7)', fontSize: isSmallPhone ? 9 : isPhone ? 11 : isTablet ? fonts.sizes.sm : fonts.sizes.xs },
   avatar: {
-    width: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
-    height: isSmallPhone ? 26 : isPhone ? 32 : isTablet ? 56 : 40,
-    borderRadius: isSmallPhone ? 13 : isPhone ? 16 : isTablet ? 28 : 20,
+    width: isSmallPhone ? 30 : isPhone ? 37 : isTablet ? 62 : 45,
+    height: isSmallPhone ? 30 : isPhone ? 37 : isTablet ? 62 : 45,
+    borderRadius: isSmallPhone ? 15 : isPhone ? 19 : isTablet ? 31 : 23,
     backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.20)',
@@ -1372,7 +1394,7 @@ function ResultCard({
 
 export function GameScreen({ navigation, route }: Props) {
   const { gameId } = route.params;
-  const { user } = useAuthStore();
+  const { user, refreshUser } = useAuthStore();
   const { currentGame, selectedTile, gameResult, roundBanner, lastQueue, setGame, setSelectedTile, setGameResult, setRoundBanner, clearGame } = useGameStore();
 
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
@@ -1530,9 +1552,16 @@ export function GameScreen({ navigation, route }: Props) {
   const is2v2 = currentGame?.mode?.includes('2V2') ?? false;
   const boardTileSize: DominoTileSize = 'board';
   const boardTilePreset = TILE_DIMS[boardTileSize];
-  const tableHeight = isTablet
-    ? Math.round(Math.min(viewportWidth * 0.72, 1366) / 1.45)
-    : Math.round(Math.min(viewportWidth * 0.88, 940) / 2.05);
+  // Derive table size from BOTH width and height so the oval never overflows the
+  // viewport in landscape (where width >> height) or on very short phones.
+  // Reserve vertical room for: top bar (~80), hand strip (~150 phone / 200 tablet),
+  // and a small breathing margin so the felt sits centered.
+  const _vReserve = isTablet ? 150 : 78;
+  const _maxByH   = Math.max(140, viewportHeight - _vReserve);
+  const _maxByW   = isTablet
+    ? Math.round(Math.min(viewportWidth * 0.78, 1400) / 1.45)
+    : Math.round(Math.min(viewportWidth * 0.94, 980) / 1.50);
+  const tableHeight = Math.min(_maxByW, _maxByH);
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
   const myPlayerIndex = (() => {
     const players = currentGame?.players ?? [];
@@ -1835,11 +1864,10 @@ export function GameScreen({ navigation, route }: Props) {
           const me = normalized.players.find((p) => p.userId === myUserId) ?? normalized.players.find((p) => p.seat === 0);
           const newHand = me?.hand ?? [];
           const prevMe = prev?.players?.find((p) => p.userId === myUserId);
-          // Log on every state update for debugging
-          console.log(`[GAME STATE] Round ${normalized.roundNumber}, Hand size: ${newHand?.length}, Status: ${normalized.status}`);
+          if (__DEV__) console.log(`[GAME STATE] Round ${normalized.roundNumber}, Hand size: ${newHand?.length}, Status: ${normalized.status}`);
           // CRITICAL: On round change, ensure we completely replace the hand, never accumulate
           if (normalized.roundNumber !== prev?.roundNumber) {
-            console.log(`[ROUND CHANGE] Round ${prev?.roundNumber} -> ${normalized.roundNumber}`);
+            if (__DEV__) console.log(`[ROUND CHANGE] Round ${prev?.roundNumber} -> ${normalized.roundNumber}`);
             // Force hand replacement by clearing selected tile
             setSelectedTile(null);
             // If server sent wrong hand size, log error
@@ -1897,7 +1925,7 @@ export function GameScreen({ navigation, route }: Props) {
           prevStateRef.current = normalized;
         };
 
-        const onEnded = (result: any) => { if (timerRef.current) clearInterval(timerRef.current); setGameResult(result); setResultModal(true); };
+        const onEnded = (result: any) => { if (timerRef.current) clearInterval(timerRef.current); setGameResult(result); setResultModal(true); refreshUser(); };
         const onRoundEnded = (data: any) => {
           // Advance currentRoundRef so any stale same-round states are hard-dropped.
           // Do NOT reset lastSeqRef here: the server seq counter never resets between
@@ -1916,7 +1944,9 @@ export function GameScreen({ navigation, route }: Props) {
             targetScore:     data.targetScore,
             matchOver:       data.matchOver,
             matchWinnerTeam: data.matchWinnerTeam,
-          });
+            blocked:         data.blocked,
+            teamPips:        data.teamPips,
+          } as any);
           // Auto-hide banner after 3.5s (server starts next round in 4s)
           setTimeout(() => setRoundBanner(null), 3500);
         };
@@ -2201,7 +2231,7 @@ export function GameScreen({ navigation, route }: Props) {
 
   // Gap negativo para compensar a sombra embutida nas imagens das peças
   // Valor ajustado para manter peças próximas mas com espaçamento visual mínimo
-  const SNAKE_GAP_BASE = 3;
+  const SNAKE_GAP_BASE = 4;
   const SNAKE_GAP = SNAKE_GAP_BASE;
   const snakeMaxW = feltWidth
     ? Math.max(0, feltWidth * (is4Player ? 0.92 : 0.94))
@@ -2308,7 +2338,7 @@ export function GameScreen({ navigation, route }: Props) {
   return (
     <ScreenBackground style={styles.bg}>
       <DominoImagePreloader />
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
 
       {/* Loading overlay — 10 second countdown at game start */}
       {loadingTimer > 0 && !currentGame && (
@@ -2357,7 +2387,7 @@ export function GameScreen({ navigation, route }: Props) {
         {/* Table */}
         <View style={styles.tableWrap}>
           <View style={styles.tableArea}>
-            <View style={[styles.tableFrame, { height: tableHeight, width: is4Player ? (isTablet ? '96%' : '85%') : (isTablet ? '99%' : '90%') }]}>
+            <View style={[styles.tableFrame, { height: tableHeight, width: is4Player ? (isTablet ? '90%' : '80%') : (isTablet ? '97%' : '92%') }]}>
               {topOpponent && (
                 <View style={styles.oppCardOverlay}>
                   <View
@@ -2378,7 +2408,7 @@ export function GameScreen({ navigation, route }: Props) {
                 </View>
               )}
 
-              {/* Side players anchored to table edges */}
+              {/* Side players anchored to table edges (card center sits ON the border) */}
               {is4Player && leftOpponent && (
                 <View style={styles.sideCardLeft}>
                   <View
@@ -2390,9 +2420,9 @@ export function GameScreen({ navigation, route }: Props) {
                       });
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <OpponentTimer timer={opponentTimer} isTurn={turnUserId === leftOpponent.userId} />
+                    <View style={styles.sideCardStack}>
                       <SidePlayerCard player={leftOpponent} tileCount={leftOpponent.hand.length} isTurn={turnUserId === leftOpponent.userId} team={leftOpponent.team} matchScore={currentGame.matchScores?.[leftOpponent.team] ?? 0} isOpponent={leftOpponent.team !== myTeam} />
+                      <OpponentTimer timer={opponentTimer} isTurn={turnUserId === leftOpponent.userId} />
                     </View>
                     {renderPlayerFx(leftOpponent.userId, 'left')}
                   </View>
@@ -2409,7 +2439,7 @@ export function GameScreen({ navigation, route }: Props) {
                       });
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={styles.sideCardStack}>
                       <SidePlayerCard player={rightOpponent} tileCount={rightOpponent.hand.length} isTurn={turnUserId === rightOpponent.userId} team={rightOpponent.team} matchScore={currentGame.matchScores?.[rightOpponent.team] ?? 0} isOpponent={rightOpponent.team !== myTeam} />
                       <OpponentTimer timer={opponentTimer} isTurn={turnUserId === rightOpponent.userId} />
                     </View>
@@ -2813,8 +2843,13 @@ export function GameScreen({ navigation, route }: Props) {
                   const key = tileKey(tile);
                   const isPlayable = isMyTurn && validMovesMap.has(key);
                   const isSelected = selectedTile?.handIndex === i;
+                  const isSelfDragging = nativeDrag && tileKey(nativeDrag.tile) === key;
                   return (
-                    <View key={`${key}-${i}`} style={[styles.handTileWrap, isSelected && styles.handTileSelected]}>
+                    <View
+                      key={`${key}-${i}`}
+                      style={[styles.handTileWrap, isSelected && styles.handTileSelected]}
+                      pointerEvents={nativeDrag && !isSelfDragging ? 'none' : 'auto'}
+                    >
                       {isMyTurn && isPlayable && !isSelected && (
                         <View style={styles.handTileArrow} />
                       )}
@@ -2822,6 +2857,7 @@ export function GameScreen({ navigation, route }: Props) {
                         tile={tile}
                         isSelected={isSelected}
                         isPlayable={!isMyTurn || isPlayable}
+                        dragActive={!!nativeDrag}
                         onPress={() => handleTileSelect(tile, i)}
                         onDragUp={(moveX?: number) => {
                           const plays = validMovesMap.get(tileKey(tile)) || [];
@@ -2905,6 +2941,8 @@ export function GameScreen({ navigation, route }: Props) {
                         } : undefined}
                         onNativeDragMove={Platform.OS !== 'web' ? updateNativeDragPos : undefined}
                         onNativeDragEnd={Platform.OS !== 'web' ? endNativeDrag : undefined}
+                        onTouchLock={() => handScrollRef.current?.setNativeProps?.({ scrollEnabled: false })}
+                        onTouchUnlock={() => { if (!nativeDrag) handScrollRef.current?.setNativeProps?.({ scrollEnabled: true }); }}
                       />
                     </View>
                   );
@@ -3062,7 +3100,7 @@ export function GameScreen({ navigation, route }: Props) {
               <Text style={styles.confirmTitle}>Abandonar partida</Text>
               <Text style={styles.confirmText}>Tem certeza que deseja sair?</Text>
               <View style={styles.confirmWarningBox}>
-                <Text style={styles.confirmWarningText}>⚠️ Você perderá a aposta!</Text>
+                <Text style={styles.confirmWarningText}>⚠️ Você perderá o valor da entrada!</Text>
               </View>
               <View style={[styles.confirmActions, { marginTop: isPhone ? 4 : spacing.lg }]}>
                 <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => setLeaveConfirmVisible(false)}>
@@ -3085,7 +3123,7 @@ export function GameScreen({ navigation, route }: Props) {
             userId={myEffectiveUserId}
             playAgainLoading={playAgainSearching}
             onPlayAgain={handlePlayAgain}
-            onExit={() => { setResultModal(false); setPlayAgainSearching(false); clearGame(); navigation.replace('Main'); }}
+            onExit={() => { setResultModal(false); setPlayAgainSearching(false); clearGame(); refreshUser(); navigation.replace('Main'); }}
           />
         </View>
       </BlurModal>
@@ -3161,6 +3199,8 @@ export function GameScreen({ navigation, route }: Props) {
           <View style={styles.roundBannerCard}>
             {roundBanner.winnerTeam === null ? (
               <Text style={styles.roundBannerTitle}>Empate!</Text>
+            ) : roundBanner.blocked ? (
+              <Text style={styles.roundBannerTitle}>Trancou!</Text>
             ) : (
               <Text style={styles.roundBannerTitle}>
                 {roundBanner.winType ? WIN_TYPE_LABEL[roundBanner.winType as keyof typeof WIN_TYPE_LABEL] : 'Simples'}!
@@ -3169,6 +3209,15 @@ export function GameScreen({ navigation, route }: Props) {
             {roundBanner.winnerTeam !== null && roundBanner.points > 0 && (
               <Text style={styles.roundBannerPoints}>+{roundBanner.points} ponto{roundBanner.points !== 1 ? 's' : ''}</Text>
             )}
+            {roundBanner.blocked && roundBanner.teamPips && (() => {
+              const myTeamPips = roundBanner.teamPips[myTeam] ?? 0;
+              const oppTeamPips = roundBanner.teamPips[myTeam === 1 ? 2 : 1] ?? 0;
+              return (
+                <Text style={styles.roundBannerPips}>
+                  Pontos nas mãos — Nós: {myTeamPips}   Eles: {oppTeamPips}
+                </Text>
+              );
+            })()}
             <View style={styles.roundBannerScores}>
               <Text style={styles.roundBannerScoreLabel}>Nós</Text>
               <Text style={styles.roundBannerScoreValue}>{roundBanner.matchScores?.[1] ?? 0}</Text>
@@ -3180,7 +3229,7 @@ export function GameScreen({ navigation, route }: Props) {
           </View>
         </View>
       )}
-      </SafeAreaView>
+      </View>
 
       {/* ── Native drag ghost — rendered OUTSIDE SafeAreaView to use raw screen coords ── */}
       {Platform.OS !== 'web' && nativeDrag && (() => {
@@ -3314,7 +3363,13 @@ const styles = StyleSheet.create({
   errorToastText: { color: '#fff', fontWeight: '600', fontSize: fonts.sizes.sm },
 
   // ── Top bar ──
+  // Absolute so it overlays the full-screen `middle` without pushing the table
+  // down — the table can then centre on the SCREEN, not on the area below the bar.
   topBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: spacing.md,
@@ -3370,21 +3425,33 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   tableWrap: { flex: 1, minWidth: 0, position: 'relative' },
+  // Card horizontal center sits on the table border (translateX -50% offsets by own width).
   sideCardLeft: {
     position: 'absolute',
     left: 0,
     top: '50%',
     zIndex: 20,
-    transform: [{ translateX: -60 }, { translateY: -30 }],
+    transform: [{ translateX: '-50%' as any }, { translateY: '-50%' as any }],
   },
   sideCardRight: {
     position: 'absolute',
     right: 0,
     top: '50%',
     zIndex: 20,
-    transform: [{ translateX: 60 }, { translateY: -30 }],
+    transform: [{ translateX: '50%' as any }, { translateY: '-50%' as any }],
   },
-  tableArea: { flex: 1, justifyContent: 'center', alignItems: 'center', position: 'relative', paddingTop: isSmallPhone ? 6 : isPhone ? 10 : 16, paddingBottom: isSmallPhone ? 80 : isPhone ? 100 : isTablet ? 180 : 120 },
+  sideCardStack: { flexDirection: 'column', alignItems: 'center', gap: 6 },
+  // The top bar is absolute so `middle` fills the whole screen — symmetric
+  // padding here puts the table's centre on the screen's centre.
+  tableArea: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    paddingTop: isSmallPhone ? 8 : isPhone ? 12 : 16,
+    paddingBottom: isSmallPhone ? 8 : isPhone ? 12 : 16,
+  },
+  // Top opponent: vertical center sits on the table's top border (same approach as sides).
   oppCardOverlay: {
     position: 'absolute',
     top: 0,
@@ -3392,7 +3459,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 10,
-    transform: [{ translateY: isSmallPhone ? -10 : -20 }],
+    transform: [{ translateY: '-50%' as any }],
   },
   tableSideBadgeLeft: {
     position: 'absolute',
@@ -3598,9 +3665,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: spacing.xs,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
     paddingTop: 8,
-    paddingBottom: 4,
+    paddingBottom: 14,
   },
   handTileWrap: {
     alignItems: 'center',
@@ -3819,6 +3887,13 @@ const styles = StyleSheet.create({
     fontSize: fonts.sizes.xxl,
     fontWeight: '800',
     textAlign: 'center',
+  },
+  roundBannerPips: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: fonts.sizes.sm,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 2,
   },
   roundBannerScores: {
     flexDirection: 'row',

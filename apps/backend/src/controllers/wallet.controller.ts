@@ -79,14 +79,15 @@ export async function getTransactionHandler(req: Request, res: Response) {
   }
 }
 
-// POST /wallet/pix/webhook — called by Banco Inter when a PIX payment is received.
-// Banco Inter sends an array of PIX events in req.body.pix.
-// The raw body (captured before JSON parsing) is used to verify the HMAC signature.
 export async function pixWebhookHandler(req: Request, res: Response) {
   try {
-    // Signature verification — header sent by Banco Inter
-    const signature = req.headers['x-inter-ae-in-ativa'] as string || '';
-    const rawBody = (req as any).rawBody as string || JSON.stringify(req.body);
+    const signature = req.headers['x-openpix-signature'] as string || '';
+    const rawBody = (req as any).rawBody as string;
+
+    if (!rawBody) {
+      logger.warn('[PIX Webhook] Missing rawBody — cannot verify signature', { ip: req.ip });
+      return res.sendStatus(400);
+    }
 
     if (!verifyPixWebhookSignature(rawBody, signature)) {
       logger.warn('[PIX Webhook] Invalid signature — request rejected', {
@@ -96,24 +97,22 @@ export async function pixWebhookHandler(req: Request, res: Response) {
       return res.sendStatus(401);
     }
 
-    const { pix } = req.body;
-    if (!pix || !Array.isArray(pix)) {
-      logger.warn('[PIX Webhook] Unexpected payload shape', { body: req.body });
-      return res.sendStatus(400);
+    const { event, charge } = req.body;
+
+    if (!charge && !event) {
+      logger.info('[PIX Webhook] Test ping received');
+      return res.sendStatus(200);
     }
 
-    for (const pixEvent of pix) {
-      const { txid } = pixEvent;
-      if (txid) {
-        await confirmPixDeposit(txid);
-      } else {
-        logger.warn('[PIX Webhook] Event missing txid', { pixEvent });
-      }
+    if (event === 'OPENPIX:CHARGE_COMPLETED' && charge?.correlationID) {
+      await confirmPixDeposit(charge.correlationID);
+    } else {
+      logger.info('[PIX Webhook] Ignored event', { event });
     }
 
     res.sendStatus(200);
   } catch (err: any) {
     logger.error('[PIX Webhook] Processing error', { error: err.message });
-    res.status(500).json({ error: err.message });
+    res.sendStatus(500);
   }
 }

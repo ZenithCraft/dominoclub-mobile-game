@@ -26,10 +26,10 @@ if (envBaseUrl) {
   // Web
   BASE_URL = isLocalhostWeb ? 'http://localhost:3001/api/v1' : `${location.origin}/api/v1`;
 } else {
-  // Mobile - precisa de IP real da máquina ou ngrok
-  // Use: EXPO_PUBLIC_API_URL=http://SEU_IP:3001/api/v1
-  // IP detectado: 192.168.0.83
-  BASE_URL = 'http://192.168.0.83:3001/api/v1';
+  if (__DEV__) {
+    console.warn('EXPO_PUBLIC_API_URL not set — using localhost fallback. Set it in .env or app.json.');
+  }
+  BASE_URL = 'http://localhost:3001/api/v1';
 }
 
 const IS_MOCK  = process.env.EXPO_PUBLIC_MOCK_MODE === 'true';

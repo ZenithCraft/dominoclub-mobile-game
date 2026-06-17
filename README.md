@@ -1,6 +1,6 @@
 # DominoClub — Project Documentation
 
-DominoClub is a monorepo with a **backend (Node/Express + Socket.io + Prisma/Postgres)**, a **mobile app (Expo/React Native)**, and an **admin panel (Next.js)**. It provides real-money domino matches in BRL with **PIX (Banco Inter)** deposits/withdrawals, matchmaking, replays and an admin dashboard.
+DominoClub is a monorepo with a **backend (Node/Express + Socket.io + Prisma/Postgres)**, a **mobile app (Expo/React Native)**, and an **admin panel (Next.js)**. It provides real-money domino matches in BRL with **PIX (Woovi/OpenPix)** deposits/withdrawals, matchmaking, replays and an admin dashboard.
 
 ---
 
@@ -19,7 +19,7 @@ DominoClub is a monorepo with a **backend (Node/Express + Socket.io + Prisma/Pos
 - Backend: Express + Socket.io + Prisma
 - Database: PostgreSQL
 - Cache/horizontal scale: Redis (optional; enables Socket.io Redis adapter)
-- Payments (PIX): Banco Inter (mTLS + HMAC-signed webhook)
+- Payments (PIX): Woovi/OpenPix (AppID auth + HMAC-SHA1 webhook)
 - SMS OTP: `mock` (dev), `zenvia` (recommended prod), `twilio` (fallback)
 - CPF: Serpro (with mock mode)
 - Mobile: Expo (React Native)
@@ -101,15 +101,11 @@ Required (production):
 - `ADMIN_JWT_SECRET` (≥ 32 chars)
 - `CORS_ORIGINS` (allowed admin/web app origins)
 
-PIX Banco Inter (production):
+PIX Woovi/OpenPix (production):
 
-- `INTER_CLIENT_ID`
-- `INTER_CLIENT_SECRET`
-- `INTER_BASE_URL` (production/sandbox)
-- `INTER_CERT_PATH` and `INTER_KEY_PATH` (mTLS)
-- `INTER_PIX_KEY` (receiving PIX key)
-- `INTER_WEBHOOK_URL` (public webhook URL)
-- `INTER_WEBHOOK_SECRET` (webhook HMAC secret)
+- `WOOVI_APP_ID` (AppID token from Woovi dashboard)
+- `WOOVI_WEBHOOK_SECRET` (HMAC secret for webhook signature verification)
+- `WOOVI_BASE_URL` (default: `https://api.openpix.com.br/api/v1`)
 
 CPF (Serpro):
 
@@ -177,11 +173,11 @@ LGPD / Responsible gambling:
 - `GET /transaction/:id` (Bearer) → transaction (for deposit polling)
 - `POST /withdraw` (Bearer) `{ amount, pixKey }` → `{ transactionId, message }`
 
-Banco Inter webhook (no auth):
+Woovi/OpenPix webhook (no auth):
 
-- `POST /wallet/pix/webhook` body `{ pix: [{ txid }] }`
-  - Header: `x-inter-ae-in-ativa: <hex-hmac>`
-  - Idempotency: same `txid` will not be credited twice (only processes `PENDING` transactions)
+- `POST /wallet/pix/webhook` body `{ event: "OPENPIX:CHARGE_COMPLETED", charge: { correlationID, value, status } }`
+  - Header: `x-openpix-signature: <hmac-sha1>`
+  - Idempotency: same `correlationID` will not be credited twice (only processes `PENDING` transactions)
 
 ### Game (`/api/v1/game`)
 
@@ -249,8 +245,7 @@ Connection: socket requires `token` (JWT accessToken) in the handshake.
 ### Option A — Docker Compose (simplest)
 
 1. Fill `apps/backend/.env` for production (strong secrets, real URLs).
-2. Ensure `apps/backend/certs/` contains `inter.crt` and `inter.key` (mTLS).
-3. Bring services up:
+2. Bring services up:
 
 ```bash
 docker compose up -d --build
@@ -271,13 +266,14 @@ If you don’t use Cloudflare:
 - disable that logic (not recommended), or
 - configure any CDN/proxy that injects an equivalent header.
 
-### PIX (Banco Inter) — what the client must do
+### PIX (Woovi/OpenPix) — what the client must do
 
-- Open/use Banco Inter PJ account + Inter Developers access.
--,Generate/register mTLS certificate (`.crt` and `.key`).
-- Set the public webhook URL: `https://api.yourdomain.com/api/v1/wallet/pix/webhook`
-- Define HMAC secret and set `INTER_WEBHOOK_SECRET`.
-- Configure `INTER_CLIENT_ID`, `INTER_CLIENT_SECRET`, `INTER_PIX_KEY`.
+1. Create/use a Woovi account at [woovi.com](https://woovi.com).
+2. Generate an AppID in the Woovi dashboard (API/Plugins section).
+3. Set `WOOVI_APP_ID` in `apps/backend/.env`.
+4. Register the webhook URL in Woovi dashboard: `https://api.yourdomain.com/api/v1/wallet/pix/webhook`
+5. Copy the webhook HMAC secret from Woovi and set `WOOVI_WEBHOOK_SECRET` in `.env`.
+6. No certificates or mTLS required — Woovi uses simple token-based auth.
 
 ---
 
@@ -285,7 +281,7 @@ If you don’t use Cloudflare:
 
 ### Accounts/external
 
-- Banco Inter (PIX): credentials + mTLS cert + PIX key + webhook secret
+- Woovi/OpenPix (PIX): AppID token + webhook secret (no certificates needed)
 - Serpro (CPF): API key (if enabling real CPF verification)
 - SMS: Zenvia or Twilio credentials
 - Infra: domain/DNS/SSL, server (VPS/K8s), managed Postgres or container

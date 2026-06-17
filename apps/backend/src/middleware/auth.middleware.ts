@@ -34,7 +34,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
 
       req.user = { userId: user.id, phone: user.phone };
     } catch {
-      if (!config.devAuthBypass && config.env === 'production') {
+      if (config.env === 'production') {
         return res.status(401).json({ error: 'Invalid or expired token' });
       }
       req.user = { userId: payload.userId, phone: payload.phone };

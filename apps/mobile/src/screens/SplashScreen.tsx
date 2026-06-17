@@ -114,7 +114,7 @@ export function SplashScreen({ navigation }: Props) {
         resizeMode="cover"
       />
       <View style={styles.overlay} />
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={[]}>
         <Animated.View style={[styles.card, isTabletSize && styles.cardTablet, { opacity, transform: [{ scale }] }]}>
           <Image
             source={require('../../assets/b9e1ca54722e75c0419489ace1bdc6e4b752369c.png')}

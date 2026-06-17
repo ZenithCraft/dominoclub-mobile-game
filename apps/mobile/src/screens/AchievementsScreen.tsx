@@ -195,7 +195,7 @@ export function AchievementsScreen({ navigation }: Props) {
 
   return (
     <ScreenBackground style={styles.root}>
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={[]}>
         <GameTopBar
           user={user}
           exitVariant="back"

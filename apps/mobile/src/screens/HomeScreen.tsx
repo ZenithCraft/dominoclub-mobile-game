@@ -149,7 +149,7 @@ export function GameTopBar({
   const { height: tbH, width: tbW } = useWindowDimensions();
   const tbPortrait = tbH > tbW;
   const [menuOpen, setMenuOpen] = React.useState(false);
-  const balance = user?.wallet?.real_balance ?? 0;
+  const balance = (Number(user?.wallet?.real_balance ?? 0) + Number(user?.wallet?.bonus_balance ?? 0));
   const level   = levelProp ?? 2;
 
   return (
@@ -417,12 +417,14 @@ export function HomeScreen({ navigation, route }: Props) {
   }, [route?.params?.openModal]);
 
   useEffect(() => {
+    let sock: any;
     (async () => {
       try {
-        const socket = await connectSocket();
-        socket.on('online:count', ({ count }: { count: number }) => setOnlineCount(count));
+        sock = await connectSocket();
+        sock.on('online:count', ({ count }: { count: number }) => setOnlineCount(count));
       } catch {}
     })();
+    return () => { if (sock) sock.off('online:count'); };
   }, []);
 
   useEffect(() => {
@@ -587,7 +589,7 @@ export function HomeScreen({ navigation, route }: Props) {
 
   return (
     <ScreenBackground style={styles.root}>
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={[]}>
       <ConsentModal onAccepted={() => {}} />
 
       {/* Top bar */}

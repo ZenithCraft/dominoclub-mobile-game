@@ -39,7 +39,23 @@
       "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\)\\); console.log\\('name:', d.name\\); console.log\\('scripts:', JSON.stringify\\(d.scripts,null,2\\)\\); console.log\\('workspaces:', JSON.stringify\\(d.workspaces\\)\\)\")",
       "Bash(node -e \"process.stdin.resume\\(\\);let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(d\\);console.log\\('entryPoint:',j.expo?.entryPoint\\);console.log\\('web:',JSON.stringify\\(j.expo?.web\\)\\)}catch\\(e\\){console.log\\(e.message\\)}}\\)\")",
       "Bash(kill %1)",
-      "Bash(git -C \"C:\\\\laragon\\\\www\\\\dominoclub-mobile-game\" log --oneline -10)"
+      "Bash(git -C \"C:\\\\laragon\\\\www\\\\dominoclub-mobile-game\" log --oneline -10)",
+      "Bash(xargs du -h)",
+      "Bash(npm ls *)",
+      "PowerShell($root = \"C:\\\\laragon\\\\www\\\\dominoclub-mobile-game\\\\apps\\\\mobile\\\\src\\\\screens\"; $files = @\\(\"ForgotPasswordScreen.tsx\",\"KYCScreen.tsx\",\"HistoryScreen.tsx\",\"AchievementsScreen.tsx\",\"HomeScreen.tsx\",\"LoginScreen.tsx\",\"OTPVerificationScreen.tsx\",\"SetNewPasswordScreen.tsx\",\"LeaderboardScreen.tsx\",\"RegisterScreen.tsx\",\"TournamentResultScreen.tsx\",\"TournamentBracketScreen.tsx\",\"ModeSelectScreen.tsx\",\"SplashScreen.tsx\",\"TournamentWaitingScreen.tsx\",\"WalletScreen.tsx\"\\); foreach \\($f in $files\\) { $p = Join-Path $root $f; $c = Get-Content -Raw $p; $new = $c -replace '<SafeAreaView style=\\\\{styles\\\\.safe\\\\}>','<SafeAreaView style={styles.safe} edges={[]}>'; if \\($new -ne $c\\) { Set-Content -NoNewline -Encoding UTF8 $p $new; Write-Output \"patched: $f\" } else { Write-Output \"skip:    $f\" } })",
+      "Bash(npx jest *)",
+      "PowerShell(npx ts-node -e \"const { PrismaClient } = require\\('@prisma/client'\\); const p = new PrismaClient\\(\\); p.wallet.findMany\\({ select: { userId: true, real_balance: true, bonus_balance: true, rollover_remaining: true } }\\).then\\(r => console.log\\(JSON.stringify\\(r, null, 2\\)\\)\\).finally\\(\\(\\) => p.`$disconnect\\(\\)\\)\")",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://34.233.108.8:3001/api/v1/health\" -TimeoutSec 5 -UseBasicParsing; $r.StatusCode; $r.Content } catch { $_.Exception.Message })",
+      "Bash(curl -s --connect-timeout 5 -X POST http://34.233.108.8:3001/api/v1/auth/dev/login -H \"Content-Type: application/json\" -d '{\"phone\":\"+5599999999999\",\"name\":\"Super Admin\"}')",
+      "WebFetch(domain:developers.openpix.com.br)",
+      "WebSearch",
+      "Bash(xargs grep -l \"game:move\")",
+      "Bash(cp /tmp/test-winType-ts.ts apps/backend/src/test-winType-debug.ts)",
+      "Bash(npx ts-node *)",
+      "Bash(wait)",
+      "Read(//tmp/claude/C--laragon-www-dominoclub-mobile-game/0a7625b5-e65f-4b0f-8587-e4a3b7448b5d/tasks/**)",
+      "Bash(git status *)",
+      "Bash(git check-ignore *)"
     ]
   }
 }

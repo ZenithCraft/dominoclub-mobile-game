@@ -137,6 +137,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({ user: null, accessToken: null, refreshToken: null });
           }
         }
+      } else if (process.env.EXPO_PUBLIC_FORCE_DEV_LOGIN === 'true') {
+        try {
+          const { data } = await api.post('/auth/dev/login', {
+            phone: '+5599999999999',
+            name: 'Super Admin',
+          });
+          get().setTokens(data.accessToken, data.refreshToken);
+          const avatarUri = await AsyncStorage.getItem('profile_avatar_uri');
+          set({ user: avatarUri ? { ...data.user, avatar: avatarUri } : data.user });
+        } catch {}
       }
     } finally {
       set({ isLoading: false });

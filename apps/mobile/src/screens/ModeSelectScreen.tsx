@@ -508,7 +508,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
 
   return (
     <ScreenBackground style={styles.root}>
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={[]}>
       <GameTopBar
         user={user}
         onWallet={() => navigation.navigate('Wallet')}
@@ -746,6 +746,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                       R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) - Number(confirmTour.entry_fee)).toFixed(2)}
                     </Text>
                   </View>
+                  <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 10, textAlign: 'center' }}>Bônus não pode ser usado em torneios</Text>
                 </View>
                 <View style={styles.modalActions}>
                   <TouchableOpacity
@@ -791,12 +792,12 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                       <View style={styles.modalDivider} />
                       <View style={styles.modalRow}>
                         <Text style={styles.modalLabel}>Saldo atual</Text>
-                        <Text style={styles.modalValue}>R$ {Number(user?.wallet?.real_balance ?? 0).toFixed(2)}</Text>
+                        <Text style={styles.modalValue}>R$ {(Number(user?.wallet?.real_balance ?? 0) + Number(user?.wallet?.bonus_balance ?? 0)).toFixed(2)}</Text>
                       </View>
                       <View style={styles.modalRow}>
                         <Text style={styles.modalLabel}>Saldo após entrar</Text>
                         <Text style={[styles.modalValue, { color: '#1CBB3D' }]}>
-                          R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) - Number(confirmRoom.room.buyIn)).toFixed(2)}
+                          R$ {Math.max(0, Number(user?.wallet?.real_balance ?? 0) + Number(user?.wallet?.bonus_balance ?? 0) - Number(confirmRoom.room.buyIn)).toFixed(2)}
                         </Text>
                       </View>
                     </>

@@ -99,7 +99,7 @@ export function TournamentBracketScreen({ navigation, route }: Props) {
   if (loading || !data) {
     return (
       <ScreenBackground style={styles.bg}>
-        <SafeAreaView style={styles.safe}>
+        <SafeAreaView style={styles.safe} edges={[]}>
           <View style={styles.centered}>
             <ActivityIndicator color="#1CBB3D" size="large" />
           </View>
@@ -117,7 +117,7 @@ export function TournamentBracketScreen({ navigation, route }: Props) {
 
   return (
     <ScreenBackground style={styles.bg}>
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={[]}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
           {/* Header */}

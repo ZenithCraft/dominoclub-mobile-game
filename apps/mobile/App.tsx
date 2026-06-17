@@ -1,10 +1,15 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaInsetsContext, SafeAreaFrameContext } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
-import { Platform } from 'react-native';
+import { Platform, AppState, Dimensions } from 'react-native';
 import { AppNavigator } from './src/navigation';
 import { ToastContainer } from './src/components/Toast';
+
+// expo-navigation-bar is a native module — guard the import so the app boots
+// even on a dev client where the native side hasn't been rebuilt yet.
+let NavigationBar: typeof import('expo-navigation-bar') | null = null;
+try { NavigationBar = require('expo-navigation-bar'); } catch { NavigationBar = null; }
 
 SplashScreen.preventAutoHideAsync();
 
@@ -40,11 +45,37 @@ export default function App() {
     SplashScreen.hideAsync();
   }, []);
 
+  // Android: keep the system navigation bar hidden across the whole app.
+  // Re-hide whenever the app returns to the foreground (the system shows it
+  // again after backgrounding or after the user swipes it in).
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !NavigationBar) return;
+    const hide = () => {
+      NavigationBar!.setVisibilityAsync('hidden').catch(() => {});
+      NavigationBar!.setBehaviorAsync('overlay-swipe').catch(() => {});
+    };
+    hide();
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') hide(); });
+    return () => sub.remove();
+  }, []);
+
+  // Force every screen's safe-area insets to zero so the layout extends under
+  // the camera notch / status bar / nav bar on all platforms (the game already
+  // hides the system bars).  Components that read useSafeAreaInsets() inside
+  // this subtree will see zeros, and `<SafeAreaView />` will apply no padding.
+  const zeroInsets = useMemo(() => ({ top: 0, right: 0, bottom: 0, left: 0 }), []);
+  const win = Dimensions.get('window');
+  const zeroFrame = useMemo(() => ({ x: 0, y: 0, width: win.width, height: win.height }), [win.width, win.height]);
+
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" backgroundColor="#0a1f0a" />
-      <AppNavigator />
-      <ToastContainer />
+      <StatusBar hidden translucent backgroundColor="transparent" />
+      <SafeAreaFrameContext.Provider value={zeroFrame}>
+        <SafeAreaInsetsContext.Provider value={zeroInsets}>
+          <AppNavigator />
+          <ToastContainer />
+        </SafeAreaInsetsContext.Provider>
+      </SafeAreaFrameContext.Provider>
     </SafeAreaProvider>
   );
 }

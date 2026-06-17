@@ -59,7 +59,7 @@ export function TermsScreen({ navigation, route }: Props) {
         </Section>
 
         <Section title="3. Natureza do Serviço">
-          O DominoClub é uma plataforma de jogos de dominó com apostas em dinheiro real via PIX.
+          O DominoClub é uma plataforma de jogos de dominó com prêmios em dinheiro real via PIX.
           As partidas envolvem habilidade, mas também elemento aleatório. Perdas financeiras são
           possíveis. Jogue com responsabilidade.
         </Section>
