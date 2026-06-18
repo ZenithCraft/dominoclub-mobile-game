@@ -45,15 +45,24 @@ export default function App() {
     SplashScreen.hideAsync();
   }, []);
 
-  // Android: keep the system navigation bar hidden across the whole app.
-  // Re-hide on every signal that could re-show it: AppState 'active' (return
-  // from background) AND Dimensions 'change' (camera/keyboard/system overlay
-  // mutated the window). ImagePicker's camera intent reliably fires
-  // Dimensions but NOT always AppState on every OEM, which is why KYC was
-  // leaving the nav bar visible and shrinking the window everywhere else.
+  // Android: keep the system navigation bar hidden AND in "absolute" position
+  // (overlay mode). The absolute position is the critical part for the
+  // post-ImagePicker layout bug:
+  //   - Without absolute, when the nav bar reappears for even a frame after
+  //     the camera/gallery returns, Android RESIZES our window and RN's
+  //     useWindowDimensions() captures the smaller height. The follow-up
+  //     hide call shrinks the nav bar back to zero but RN never gets a
+  //     second resize event, so every screen stays rendered at the
+  //     shrunken height until cold restart.
+  //   - With absolute, the nav bar OVERLAYS our content rather than pushing
+  //     the layout up. The window stays full-size regardless of nav-bar
+  //     visibility, so RN dimensions are stable across the picker round-trip.
+  // We still hide it for the visual, and re-apply on every signal that the
+  // system might have reset our preference (AppState, Dimensions change).
   useEffect(() => {
     if (Platform.OS !== 'android' || !NavigationBar) return;
     const hide = () => {
+      NavigationBar!.setPositionAsync('absolute').catch(() => {});
       NavigationBar!.setVisibilityAsync('hidden').catch(() => {});
       NavigationBar!.setBehaviorAsync('overlay-swipe').catch(() => {});
     };
