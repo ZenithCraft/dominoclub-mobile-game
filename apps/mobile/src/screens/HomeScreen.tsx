@@ -528,10 +528,16 @@ export function HomeScreen({ navigation, route }: Props) {
         toast.warning('Permissão para fotos negada.');
         return;
       }
+      // IMPORTANT: do NOT pass allowsEditing here. On Android the editor opens
+      // as a separate cropper Activity in PORTRAIT, which ignores our app-wide
+      // landscape lock. When it returns, React Native's Dimensions module
+      // stays stuck on the portrait values it captured during the cropper,
+      // and every screen renders for a narrow window until cold restart.
+      // Skipping the cropper round-trip avoids the foreign Activity entirely;
+      // the avatar uploads as-picked and the server / display stylesheets
+      // handle the framing (we square-crop via objectFit:'cover' anyway).
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: 'images',
-        allowsEditing: true,
-        aspect: [1, 1],
         quality: 0.85,
       });
       if (result.canceled) return;
