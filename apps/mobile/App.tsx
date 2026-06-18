@@ -76,29 +76,52 @@ export default function App() {
   // the camera notch / status bar / nav bar on all platforms (the game already
   // hides the system bars).  Components that read useSafeAreaInsets() inside
   // this subtree will see zeros, and `<SafeAreaView />` will apply no padding.
-  //
-  // Subscribe to Dimensions changes so the zero-frame width/height track the
-  // current window. Without this, KYC's camera intent (which transiently
-  // shrinks the window) would leave a stale frame in context — every screen
-  // would then keep rendering at the shrunken size after the camera closes.
   const zeroInsets = useMemo(() => ({ top: 0, right: 0, bottom: 0, left: 0 }), []);
   const [win, setWin] = useState(() => Dimensions.get('window'));
+
+  // ── Orientation-snapback (the real ImagePicker layout bug) ────────────────
+  //
+  // The app is locked to LANDSCAPE in app.json + AndroidManifest. ImagePicker
+  // launches its cropper as a separate Activity that runs in PORTRAIT (system
+  // intents on Android ignore the calling app's orientation lock). When that
+  // Activity returns, Android puts our MainActivity back in landscape, but
+  // RN's Dimensions module is stuck reporting the portrait values it captured
+  // during the cropper — every component reading useWindowDimensions() then
+  // renders for a narrow screen (the top bar collapses into a hamburger, etc).
+  //
+  // Cold-restart fixes it because the JS bridge re-initialises Dimensions
+  // from scratch. We can't add expo-screen-orientation here without an APK
+  // rebuild, but we CAN detect the mismatch: Dimensions.get('screen') reports
+  // the physical screen (always landscape for our app) while .get('window')
+  // reports what RN thinks the app is using. When those disagree on
+  // orientation we bump a key on the subtree, which remounts every screen
+  // and forces a fresh useWindowDimensions read. By the time the remount
+  // happens RN has usually settled, so the new render gets the correct
+  // landscape values.
+  const [remountKey, setRemountKey] = useState(0);
   useEffect(() => {
-    // Belt-and-suspenders: refresh `win` from THREE signals.
-    //   1. Dimensions 'change' — the official RN signal. Most OEMs fire it
-    //      when ImagePicker returns from the camera/gallery activity, but
-    //      some (Samsung One UI, MIUI) drop it intermittently and leave the
-    //      app rendered at the shrunken size used during the picker.
-    //   2. AppState 'active' — fired when our activity is foregrounded
-    //      again. Always reliable, so re-read Dimensions here as backup.
-    //   3. A no-op fallback timer — covers the rare case where neither
-    //      signal fires for ~1s after returning from the picker.
     const refresh = () => {
       const w = Dimensions.get('window');
       setWin((cur) => (cur.width === w.width && cur.height === w.height ? cur : w));
+
+      // Detect the stuck-portrait state and trigger a remount.
+      const s = Dimensions.get('screen');
+      const winLandscape = w.width >= w.height;
+      const screenLandscape = s.width >= s.height;
+      if (winLandscape !== screenLandscape) {
+        setRemountKey((k) => k + 1);
+      }
     };
-    const dimSub = Dimensions.addEventListener('change', refresh);
-    const appSub = AppState.addEventListener('change', (s) => { if (s === 'active') refresh(); });
+    // Run a delayed refresh on every signal — RN's Dimensions module sometimes
+    // takes a tick to settle after the foreign Activity returns. Reading too
+    // early gets the same stuck values we're trying to escape.
+    const scheduleRefresh = () => {
+      refresh();
+      setTimeout(refresh, 150);
+      setTimeout(refresh, 500);
+    };
+    const dimSub = Dimensions.addEventListener('change', scheduleRefresh);
+    const appSub = AppState.addEventListener('change', (s) => { if (s === 'active') scheduleRefresh(); });
     return () => { dimSub.remove(); appSub.remove(); };
   }, []);
   const zeroFrame = useMemo(() => ({ x: 0, y: 0, width: win.width, height: win.height }), [win.width, win.height]);
@@ -108,8 +131,10 @@ export default function App() {
       <StatusBar hidden translucent backgroundColor="transparent" />
       <SafeAreaFrameContext.Provider value={zeroFrame}>
         <SafeAreaInsetsContext.Provider value={zeroInsets}>
-          <AppNavigator />
-          <ToastContainer />
+          <React.Fragment key={remountKey}>
+            <AppNavigator />
+            <ToastContainer />
+          </React.Fragment>
         </SafeAreaInsetsContext.Provider>
       </SafeAreaFrameContext.Provider>
     </SafeAreaProvider>
