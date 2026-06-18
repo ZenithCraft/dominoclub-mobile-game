@@ -24,6 +24,14 @@ import { volatileMatches, updatePartnerCooldownsAfterGame } from '../services/ma
 export const activeGames = new Map<string, GameState>();
 const turnTimers = new Map<string, NodeJS.Timeout>();
 const disconnectTimers = new Map<string, NodeJS.Timeout>();
+// gameId -> Set<userId> currently within their disconnect grace window.
+// Used so opponents can see "Player X disconnected, forfeit in N" and so the
+// reconnect handler knows whether to broadcast a `player_reconnected` event.
+const disconnectedInGame = new Map<string, Set<string>>();
+// gameId -> remaining ms on the turn timer, captured when the CURRENT player
+// disconnected mid-turn. Restored on reconnect so they don't lose their turn
+// and don't get a fresh full clock either.
+const pausedTurnRemainingMs = new Map<string, number>();
 
 // Per-game monotonically increasing sequence counter.
 // Included in every game:state emission so clients can discard stale events.
@@ -269,6 +277,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
 
     const k = `${gameId}:${user.id}`;
     const pending = disconnectTimers.get(k);
+    const wasInGrace = disconnectedInGame.get(gameId)?.has(user.id) ?? false;
     if (pending) {
       clearTimeout(pending);
       disconnectTimers.delete(k);
@@ -284,6 +293,20 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       const seq = gameStateSeq.get(gameId) ?? 0;
       const playerState = getPlayerView(state, user.id);
       socket.emit('game:state', { ...playerState, seq });
+
+      // Came back inside the grace window? Tell everyone in the room and resume
+      // the (possibly paused) turn timer with whatever time was left.
+      if (wasInGrace) {
+        disconnectedInGame.get(gameId)?.delete(user.id);
+        io.to(`game:${gameId}`).emit('game:player_reconnected', { userId: user.id });
+
+        const currentPlayer = state.players[state.currentPlayerIndex];
+        if (state.status === 'playing' && currentPlayer.userId === user.id) {
+          const remaining = pausedTurnRemainingMs.get(gameId);
+          pausedTurnRemainingMs.delete(gameId);
+          startTurnTimer(gameId, state, io, remaining);
+        }
+      }
     }
   });
 
@@ -439,11 +462,44 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
             data: { connected: false },
           });
         } catch {}
+
+      // Track in the per-game set so the reconnect handler can detect a
+      // "came back from grace" event and emit the right broadcast.
+      let set = disconnectedInGame.get(gameId);
+      if (!set) { set = new Set(); disconnectedInGame.set(gameId, set); }
+      set.add(user.id);
+
+      // If it's THIS player's turn, freeze the turn timer with whatever ms
+      // were left — the match shouldn't keep moving while they're offline.
+      const state = activeGames.get(gameId);
+      if (state && state.status === 'playing') {
+        const currentPlayer = state.players[state.currentPlayerIndex];
+        if (currentPlayer.userId === user.id) {
+          const fullTimeoutMs = config.game.turnTimeoutSeconds * 1000;
+          const elapsed = state.turnStartedAt ? Date.now() - state.turnStartedAt : 0;
+          const remaining = Math.max(1000, fullTimeoutMs - elapsed);
+          pausedTurnRemainingMs.set(gameId, remaining);
+          clearTurnTimer(gameId);
+        }
+      }
+
+      const graceMs = config.game.disconnectGraceSeconds * 1000;
+      const deadlineAt = Date.now() + graceMs;
+
+      // Let opponents see a "Player X disconnected — forfeit em N" banner.
+      io.to(`game:${gameId}`).emit('game:player_disconnected', {
+        userId: user.id,
+        deadlineAt,
+        graceMs,
+      });
+
       const k = `${gameId}:${user.id}`;
       const t = setTimeout(() => {
         disconnectTimers.delete(k);
+        disconnectedInGame.get(gameId)?.delete(user.id);
+        pausedTurnRemainingMs.delete(gameId);
         forfeitGame(gameId, user.id, io, 'disconnect').catch(() => {});
-      }, config.game.disconnectGraceSeconds * 1000);
+      }, graceMs);
       disconnectTimers.set(k, t);
       logger.info('Grace period started for disconnected player', {
         gameId,
@@ -538,10 +594,19 @@ async function startGame(gameId: string, variant: DominoVariant, players: any[],
   });
 }
 
-function startTurnTimer(gameId: string, state: GameState, io: SocketServer) {
+function startTurnTimer(gameId: string, state: GameState, io: SocketServer, overrideMs?: number) {
   clearTurnTimer(gameId);
   const currentPlayer = state.players[state.currentPlayerIndex];
   if (currentPlayer.isBot) return;
+
+  // Don't start the timer if the current player is currently in their
+  // disconnect grace window — the match is paused until they're back or
+  // the forfeit fires.
+  const disconnectedSet = disconnectedInGame.get(gameId);
+  if (disconnectedSet?.has(currentPlayer.userId)) return;
+
+  const fullTimeoutMs = config.game.turnTimeoutSeconds * 1000;
+  const timeoutMs = Math.max(1000, overrideMs ?? fullTimeoutMs);
 
   const timer = setTimeout(() => {
     const currentState = activeGames.get(gameId);
@@ -596,7 +661,7 @@ function startTurnTimer(gameId: string, state: GameState, io: SocketServer) {
       startTurnTimer(gameId, newState, io);
       scheduleBotTurn(gameId, newState, io);
     }
-  }, config.game.turnTimeoutSeconds * 1000);
+  }, timeoutMs);
 
   turnTimers.set(gameId, timer);
 }
@@ -704,6 +769,8 @@ async function handleGameEnd(
   if (opts?.status === 'ABANDONED') {
     activeGames.delete(gameId);
     gameStateSeq.delete(gameId);
+    disconnectedInGame.delete(gameId);
+    pausedTurnRemainingMs.delete(gameId);
     if (game) {
       await finalizeMatch(gameId, state, game, io, 'ABANDONED');
     }
@@ -766,6 +833,8 @@ async function handleGameEnd(
     // Match is over — pay out and close the DB game
     activeGames.delete(gameId);
     gameStateSeq.delete(gameId);
+    disconnectedInGame.delete(gameId);
+    pausedTurnRemainingMs.delete(gameId);
     if (game) {
       await finalizeMatch(gameId, state, game, io, 'FINISHED');
     }

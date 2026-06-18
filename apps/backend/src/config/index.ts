@@ -57,7 +57,7 @@ export const config = {
     turnTimeoutSeconds: parseInt(process.env.TURN_TIMEOUT_SECONDS || '15', 10),
     botInjectWaitSeconds: parseInt(process.env.BOT_INJECT_WAIT_SECONDS || '5', 10),
     houseEdgePercent: parseFloat(process.env.HOUSE_EDGE_PERCENT || '10'),
-    disconnectGraceSeconds: parseInt(process.env.DISCONNECT_GRACE_SECONDS || '15', 10),
+    disconnectGraceSeconds: parseInt(process.env.DISCONNECT_GRACE_SECONDS || '300', 10),
   },
 
   admin: {

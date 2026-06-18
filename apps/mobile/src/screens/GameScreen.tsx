@@ -36,6 +36,17 @@ const SETTINGS_CARD_PAD = Platform.OS === 'web' ? 24 : 16;
 const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
 
 type NoiseDot = { x: number; y: number; s: number; o: number };
+// Format a unix-ms deadline as a "M:SS" countdown relative to now. Clamped at
+// 0:00 so the banner doesn't display negative time if the server's forfeit
+// event takes a beat to arrive.
+function fmtCountdown(deadlineAt: number): string {
+  const ms = Math.max(0, deadlineAt - Date.now());
+  const totalSec = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function makeNoise(seed: number) {
   let x = seed | 0;
   return () => {
@@ -1509,6 +1520,14 @@ export function GameScreen({ navigation, route }: Props) {
   const [playAgainSearching, setPlayAgainSearching] = useState(false);
   const [gameError, setGameError]       = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
+  // Set of opponent userIds currently in their disconnect grace window, mapped
+  // to the unix-ms deadline at which the backend will forfeit them.
+  const [opponentDisconnects, setOpponentDisconnects] = useState<Record<string, number>>({});
+  // Unix-ms deadline at which THIS player will be forfeited if they don't
+  // reconnect. Set when the socket drops; cleared on reconnect or match end.
+  const [myForfeitDeadline, setMyForfeitDeadline] = useState<number | null>(null);
+  // Ticks once a second so the countdown banners re-render.
+  const [, setCountdownTick] = useState(0);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [leaveConfirmVisible, setLeaveConfirmVisible] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
@@ -1958,14 +1977,47 @@ export function GameScreen({ navigation, route }: Props) {
         const onGameError = ({ message }: { message: string }) => showError(message);
         const onTimeout = ({ userId }: { userId: string }) => { if (String(userId) === myUserId) showError('Tempo esgotado — sua vez foi pulada'); };
         const onEmoji = ({ userId, emoji }: { userId: string; emoji: string }) => triggerEmojiFx(String(userId), String(emoji));
+        const onPlayerDisconnected = (data: { userId: string; deadlineAt: number; graceMs: number }) => {
+          const uid = String(data.userId);
+          if (uid === myUserId) {
+            // Mirror the deadline so my own banner can show a countdown if
+            // I somehow stay subscribed while my socket is offline (unlikely
+            // but harmless — kept in case AppState background firing differs
+            // from socket.io's disconnect event).
+            setMyForfeitDeadline(data.deadlineAt);
+          } else {
+            setOpponentDisconnects((prev) => ({ ...prev, [uid]: data.deadlineAt }));
+          }
+        };
+        const onPlayerReconnected = (data: { userId: string }) => {
+          const uid = String(data.userId);
+          if (uid === myUserId) {
+            setMyForfeitDeadline(null);
+          } else {
+            setOpponentDisconnects((prev) => {
+              if (!(uid in prev)) return prev;
+              const next = { ...prev };
+              delete next[uid];
+              return next;
+            });
+          }
+        };
         let disconnectTimeout: ReturnType<typeof setTimeout> | null = null;
         const onDisconnect = () => {
           // Só mostra o banner após 1.5s de desconexão (evita flicker em reconexões rápidas)
-          disconnectTimeout = setTimeout(() => setDisconnected(true), 1500);
+          disconnectTimeout = setTimeout(() => {
+            setDisconnected(true);
+            // Pre-fill the local forfeit deadline so the countdown renders
+            // even before the (impossible to receive while offline) server
+            // event arrives. The server-emitted deadline overrides this on
+            // reconnect via onPlayerDisconnected.
+            setMyForfeitDeadline((d) => d ?? Date.now() + 5 * 60 * 1000);
+          }, 1500);
         };
         const onConnect = () => {
           if (disconnectTimeout) clearTimeout(disconnectTimeout);
           setDisconnected(false);
+          setMyForfeitDeadline(null);
           // Request full state sync after reconnect — we may have missed
           // the round-start broadcast while the socket was offline.
           socket.emit('game:sync_request', { gameId });
@@ -1977,6 +2029,8 @@ export function GameScreen({ navigation, route }: Props) {
         socket.on('game:error', onGameError);
         socket.on('game:timeout', onTimeout);
         socket.on('game:emoji', onEmoji);
+        socket.on('game:player_disconnected', onPlayerDisconnected);
+        socket.on('game:player_reconnected', onPlayerReconnected);
         socket.on('disconnect', onDisconnect);
         socket.on('connect', onConnect);
 
@@ -1995,6 +2049,8 @@ export function GameScreen({ navigation, route }: Props) {
           socket.off('game:error', onGameError);
           socket.off('game:timeout', onTimeout);
           socket.off('game:emoji', onEmoji);
+          socket.off('game:player_disconnected', onPlayerDisconnected);
+          socket.off('game:player_reconnected', onPlayerReconnected);
           socket.off('disconnect', onDisconnect);
           socket.off('connect', onConnect);
         };
@@ -2012,6 +2068,17 @@ export function GameScreen({ navigation, route }: Props) {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [gameId, myUserId, joinAttempt]);
+
+  // ── 1-second countdown ticker ──────────────────────────────────────────────
+  // Only runs while at least one disconnect deadline is active. Stops itself
+  // once everyone is back or the deadline has passed so we don't burn cycles
+  // during normal play.
+  useEffect(() => {
+    const hasDeadline = myForfeitDeadline !== null || Object.keys(opponentDisconnects).length > 0;
+    if (!hasDeadline) return;
+    const id = setInterval(() => setCountdownTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [myForfeitDeadline, opponentDisconnects]);
 
   const handleRetryJoin = useCallback(() => {
     disconnectSocket();
@@ -2360,13 +2427,31 @@ export function GameScreen({ navigation, route }: Props) {
         </BlurModal>
       )}
 
-      {/* Disconnect banner */}
+      {/* Disconnect banner — self */}
       {disconnected && (
         <View style={styles.disconnectBanner}>
-          <IconAlert size={16} color="#fff" style={{ marginRight: 6 }} />
-          <Text style={styles.disconnectText}>Reconectando...</Text>
+          <IconAlert size={16} color="#000" style={{ marginRight: 6 }} />
+          <Text style={styles.disconnectText}>
+            {myForfeitDeadline
+              ? `Reconectando... Você perde a partida em ${fmtCountdown(myForfeitDeadline)}`
+              : 'Reconectando...'}
+          </Text>
         </View>
       )}
+
+      {/* Disconnect banner — opponent(s) */}
+      {!disconnected && Object.entries(opponentDisconnects).map(([uid, deadline]) => {
+        const player = currentGame?.players.find((p) => String(p.userId) === uid);
+        const label = player?.name?.split(' ')[0] || 'Adversário';
+        return (
+          <View key={uid} style={styles.opponentDisconnectBanner}>
+            <IconAlert size={16} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={styles.opponentDisconnectText}>
+              {label} desconectado — forfeit em {fmtCountdown(deadline)}
+            </Text>
+          </View>
+        );
+      })}
 
       {/* Error toast */}
       {gameError && (
@@ -3369,6 +3454,8 @@ const styles = StyleSheet.create({
 
   disconnectBanner: { backgroundColor: colors.warning, paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', zIndex: 9999 },
   disconnectText:   { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
+  opponentDisconnectBanner: { backgroundColor: 'rgba(180, 30, 30, 0.92)', paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', zIndex: 9998 },
+  opponentDisconnectText:   { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
 
   errorToast: {
     position: 'absolute', top: 70, alignSelf: 'center', zIndex: 100,

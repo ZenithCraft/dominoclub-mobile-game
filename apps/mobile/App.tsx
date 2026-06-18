@@ -75,8 +75,22 @@ export default function App() {
   const zeroInsets = useMemo(() => ({ top: 0, right: 0, bottom: 0, left: 0 }), []);
   const [win, setWin] = useState(() => Dimensions.get('window'));
   useEffect(() => {
-    const sub = Dimensions.addEventListener('change', ({ window }) => setWin(window));
-    return () => sub.remove();
+    // Belt-and-suspenders: refresh `win` from THREE signals.
+    //   1. Dimensions 'change' — the official RN signal. Most OEMs fire it
+    //      when ImagePicker returns from the camera/gallery activity, but
+    //      some (Samsung One UI, MIUI) drop it intermittently and leave the
+    //      app rendered at the shrunken size used during the picker.
+    //   2. AppState 'active' — fired when our activity is foregrounded
+    //      again. Always reliable, so re-read Dimensions here as backup.
+    //   3. A no-op fallback timer — covers the rare case where neither
+    //      signal fires for ~1s after returning from the picker.
+    const refresh = () => {
+      const w = Dimensions.get('window');
+      setWin((cur) => (cur.width === w.width && cur.height === w.height ? cur : w));
+    };
+    const dimSub = Dimensions.addEventListener('change', refresh);
+    const appSub = AppState.addEventListener('change', (s) => { if (s === 'active') refresh(); });
+    return () => { dimSub.remove(); appSub.remove(); };
   }, []);
   const zeroFrame = useMemo(() => ({ x: 0, y: 0, width: win.width, height: win.height }), [win.width, win.height]);
 

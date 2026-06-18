@@ -805,7 +805,7 @@ export function HomeScreen({ navigation, route }: Props) {
 
       <BlurModal visible={locationBlockerVisible} transparent animationType="fade">
         <View style={styles.overlay}>
-          <View style={styles.logoutCard} onStartShouldSetResponder={() => true}>
+          <View style={[styles.logoutCard, styles.locationCard]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Localização necessária</Text>
               <TouchableOpacity onPress={() => setLocationBlockerVisible(false)}>
@@ -1130,6 +1130,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.xl,
     gap: spacing.lg,
+  },
+  // Override applied on top of logoutCard for the "Localização necessária"
+  // dialog so it stays compact: the body is two sentences and two buttons,
+  // doesn't need the full logoutCard padding/gap budget. Caps height at 60%
+  // of the viewport so it can't overflow on short screens.
+  locationCard: {
+    maxHeight: Math.round(SCREEN_H * 0.60),
+    padding: spacing.lg,
+    gap: spacing.md,
   },
   logoutText: { color: '#fff', fontSize: fonts.sizes.sm, lineHeight: 20 },
   logoutActions: { flexDirection: 'row', gap: spacing.sm },
