@@ -14,7 +14,7 @@ import { api } from '../services/api';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../store/auth.store';
 import { IconX, IconUpload } from '../components/Icons';
-import { GameTopBar } from './HomeScreen';
+import { GameTopBar, validateAvatarLimits } from './HomeScreen';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -61,21 +61,30 @@ export function KYCScreen({ navigation }: Props) {
       Alert.alert('Permissão necessária', 'Precisamos de acesso às suas fotos ou câmera.');
       return null;
     }
+    // allowsEditing intentionally OMITTED — same stuck-portrait Dimensions
+    // bug as the avatar picker (the editor opens as a foreign Activity in
+    // portrait, which poisons RN's Dimensions cache). The server / display
+    // pipeline handles framing.
     const result = camera
       ? await ImagePicker.launchCameraAsync({
           mediaTypes: ['images'],
           quality: 0.6,
-          allowsEditing: true,
-          aspect: [4, 3],
         })
       : await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
           quality: 0.6,
-          allowsEditing: true,
-          aspect: [4, 3],
         });
     if (result.canceled) return null;
-    return result.assets[0].uri;
+    const asset = result.assets[0];
+    const uri = asset?.uri;
+    if (!uri) return null;
+
+    // Same size limits as the avatar picker — large files keep the foreign
+    // Activity in memory longer and make the post-picker layout glitch more
+    // pronounced. Reject early with a clear message.
+    const ok = await validateAvatarLimits(uri, asset.width, asset.height);
+    if (!ok) return null;
+    return uri;
   };
 
   const handleSubmit = async () => {

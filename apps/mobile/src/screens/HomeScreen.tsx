@@ -25,6 +25,50 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const isSmallPhone = !isTablet && SCREEN_W < 390;
 const isShortScreen = SCREEN_H < 420;
 
+// Hard caps on user-picked images. Anything past these warps the gallery
+// Activity round-trip (the larger the asset, the longer the Activity stays
+// in memory) and that's where the stuck-portrait Dimensions bug originates.
+// They're loose enough that any normal phone photo passes after JPEG-quality
+// 0.85, tight enough to reject 8K wallpapers and the like.
+const MAX_AVATAR_BYTES   = 5 * 1024 * 1024; // 5 MB
+const MAX_AVATAR_EDGE_PX = 2400;            // longest side in pixels
+
+/**
+ * Validate a user-picked image against the avatar limits above. Toasts a
+ * user-facing error and returns false if the image is too big either by
+ * bytes or by either pixel dimension. Best-effort: failures in reading the
+ * file or measuring the image fall through as "ok" so we never block a
+ * legitimate small picture because of a side-channel error.
+ */
+export async function validateAvatarLimits(uri: string, width?: number, height?: number): Promise<boolean> {
+  try {
+    const FS = await import('expo-file-system');
+    const info: any = await FS.getInfoAsync(uri, { size: true } as any);
+    if (info?.size && info.size > MAX_AVATAR_BYTES) {
+      const mb = (info.size / 1024 / 1024).toFixed(1);
+      toast.error(`Imagem muito grande (${mb} MB). Use uma foto menor que ${MAX_AVATAR_BYTES / 1024 / 1024} MB.`);
+      return false;
+    }
+  } catch { /* file size unavailable — fall through */ }
+
+  // Prefer the dimensions ImagePicker already gave us; fall back to Image.getSize.
+  let w = width;
+  let h = height;
+  if (!w || !h) {
+    try {
+      const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+        Image.getSize(uri, (W, H) => resolve({ w: W, h: H }), reject);
+      });
+      w = dims.w; h = dims.h;
+    } catch { /* couldn't measure — fall through */ }
+  }
+  if (w && h && Math.max(w, h) > MAX_AVATAR_EDGE_PX) {
+    toast.error(`Imagem com resolução alta demais (${w}x${h}). Use uma foto até ${MAX_AVATAR_EDGE_PX}px de lado.`);
+    return false;
+  }
+  return true;
+}
+
 type Props = { navigation: NativeStackNavigationProp<any>; route?: any };
 
 // ─── Shared top-bar used across logged-in screens ──────────────────────────
@@ -528,21 +572,21 @@ export function HomeScreen({ navigation, route }: Props) {
         toast.warning('Permissão para fotos negada.');
         return;
       }
-      // IMPORTANT: do NOT pass allowsEditing here. On Android the editor opens
-      // as a separate cropper Activity in PORTRAIT, which ignores our app-wide
-      // landscape lock. When it returns, React Native's Dimensions module
-      // stays stuck on the portrait values it captured during the cropper,
-      // and every screen renders for a narrow window until cold restart.
-      // Skipping the cropper round-trip avoids the foreign Activity entirely;
-      // the avatar uploads as-picked and the server / display stylesheets
-      // handle the framing (we square-crop via objectFit:'cover' anyway).
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: 'images',
         quality: 0.85,
       });
       if (result.canceled) return;
-      const uri = result.assets?.[0]?.uri;
+      const asset = result.assets?.[0];
+      const uri = asset?.uri;
       if (!uri) return;
+
+      // ── Size + dimension limits ─────────────────────────────────────────
+      // Large files keep the gallery Activity alive in memory longer, which
+      // makes the post-picker Dimensions-cache corruption (stuck portrait)
+      // worse. Reject anything over these caps before we touch state.
+      const ok = await validateAvatarLimits(uri, asset?.width, asset?.height);
+      if (!ok) return;
 
       setProfileAvatarUri(uri);
 
