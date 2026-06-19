@@ -14,7 +14,7 @@ import { api } from '../services/api';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../store/auth.store';
 import { IconX, IconUpload } from '../components/Icons';
-import { GameTopBar, validateAvatarLimits } from './HomeScreen';
+import { GameTopBar, prepareAvatarUpload } from './HomeScreen';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -76,15 +76,15 @@ export function KYCScreen({ navigation }: Props) {
         });
     if (result.canceled) return null;
     const asset = result.assets[0];
-    const uri = asset?.uri;
-    if (!uri) return null;
+    const pickedUri = asset?.uri;
+    if (!pickedUri) return null;
 
-    // Same size limits as the avatar picker — large files keep the foreign
-    // Activity in memory longer and make the post-picker layout glitch more
-    // pronounced. Reject early with a clear message.
-    const ok = await validateAvatarLimits(uri, asset.width, asset.height);
-    if (!ok) return null;
-    return uri;
+    // Auto-resize/recompress before continuing. Big files keep the foreign
+    // Activity in memory longer and make the post-picker Dimensions glitch
+    // worse; smaller files unwind it faster. prepareAvatarUpload returns the
+    // original URI for already-small images, so this is a no-op when the
+    // picked file is fine as-is.
+    return await prepareAvatarUpload(pickedUri, asset.width, asset.height);
   };
 
   const handleSubmit = async () => {

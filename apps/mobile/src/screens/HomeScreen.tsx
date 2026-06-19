@@ -25,48 +25,115 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const isSmallPhone = !isTablet && SCREEN_W < 390;
 const isShortScreen = SCREEN_H < 420;
 
-// Hard caps on user-picked images. Anything past these warps the gallery
-// Activity round-trip (the larger the asset, the longer the Activity stays
-// in memory) and that's where the stuck-portrait Dimensions bug originates.
-// They're loose enough that any normal phone photo passes after JPEG-quality
-// 0.85, tight enough to reject 8K wallpapers and the like.
+// Target caps for user-picked images. We auto-resize / re-compress anything
+// past these before the upload runs. The larger the asset that survives the
+// gallery Activity round-trip, the longer Android keeps that Activity in
+// memory — and that's where the stuck-portrait Dimensions bug originates.
+// Caps are loose enough that any modest phone photo passes untouched, tight
+// enough that an 8K wallpaper gets pulled down to a manageable size.
 const MAX_AVATAR_BYTES   = 5 * 1024 * 1024; // 5 MB
 const MAX_AVATAR_EDGE_PX = 2400;            // longest side in pixels
+const RECOMPRESS_QUALITY = 75;              // JPEG quality used on the re-encode
 
 /**
- * Validate a user-picked image against the avatar limits above. Toasts a
- * user-facing error and returns false if the image is too big either by
- * bytes or by either pixel dimension. Best-effort: failures in reading the
- * file or measuring the image fall through as "ok" so we never block a
- * legitimate small picture because of a side-channel error.
+ * Prepare a user-picked image for upload. If it's already within the size and
+ * dimension caps, returns the original URI unchanged. Otherwise downscales the
+ * longest edge to MAX_AVATAR_EDGE_PX and re-encodes as JPEG at quality 75,
+ * writing the result to the cache directory and returning that URI.
+ *
+ * All steps are best-effort: any failure (file read, image decode, encode,
+ * cache write) falls through to returning the original URI. The picker call
+ * site never has to know whether resize happened.
  */
-export async function validateAvatarLimits(uri: string, width?: number, height?: number): Promise<boolean> {
+export async function prepareAvatarUpload(uri: string, width?: number, height?: number): Promise<string> {
   try {
-    const FS = await import('expo-file-system');
-    const info: any = await FS.getInfoAsync(uri, { size: true } as any);
-    if (info?.size && info.size > MAX_AVATAR_BYTES) {
-      const mb = (info.size / 1024 / 1024).toFixed(1);
-      toast.error(`Imagem muito grande (${mb} MB). Use uma foto menor que ${MAX_AVATAR_BYTES / 1024 / 1024} MB.`);
-      return false;
-    }
-  } catch { /* file size unavailable — fall through */ }
+    // The legacy entry point keeps the old top-level API (cacheDirectory,
+    // readAsStringAsync, writeAsStringAsync, getInfoAsync) which we still
+    // rely on. The new API moved to Paths/File classes but isn't a drop-in
+    // replacement for what we need here.
+    const FS: any = await import('expo-file-system/legacy');
 
-  // Prefer the dimensions ImagePicker already gave us; fall back to Image.getSize.
-  let w = width;
-  let h = height;
-  if (!w || !h) {
+    // Discover the current size + dimensions so we can decide whether to act.
+    let fileBytes = 0;
     try {
-      const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
-        Image.getSize(uri, (W, H) => resolve({ w: W, h: H }), reject);
-      });
-      w = dims.w; h = dims.h;
-    } catch { /* couldn't measure — fall through */ }
+      const info: any = await FS.getInfoAsync(uri, { size: true } as any);
+      fileBytes = Number(info?.size) || 0;
+    } catch { /* size unknown — fall through, we'll still resize if dims warrant it */ }
+
+    let w = width || 0;
+    let h = height || 0;
+    if (!w || !h) {
+      try {
+        const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+          Image.getSize(uri, (W, H) => resolve({ w: W, h: H }), reject);
+        });
+        w = dims.w; h = dims.h;
+      } catch { /* dims unknown — fall through */ }
+    }
+
+    const longest = Math.max(w, h);
+    const overSize = fileBytes > 0 && fileBytes > MAX_AVATAR_BYTES;
+    const overDims = longest > 0 && longest > MAX_AVATAR_EDGE_PX;
+    if (!overSize && !overDims) return uri;
+
+    // We need to process. Read the file as base64 (FileSystem can do this for
+    // local content:// or file:// URIs that ImagePicker returns).
+    const base64In = await FS.readAsStringAsync(uri, { encoding: 'base64' as any });
+
+    // jimp-compact is pure JS — no native module, no APK rebuild. It accepts
+    // a Uint8Array (or Buffer), supports .resize() and .quality(), and can
+    // re-emit as a base64 data URL. We decode the base64 ourselves via atob
+    // so we don't depend on a Buffer polyfill that isn't installed.
+    // @ts-ignore — jimp-compact ships JS only, no declaration file
+    const JimpMod: any = await import('jimp-compact');
+    const Jimp = JimpMod.default || JimpMod;
+    const bin = atob(base64In);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const img: any = await Jimp.read(bytes);
+
+    if (longest > MAX_AVATAR_EDGE_PX) {
+      const curW = img.getWidth();
+      const curH = img.getHeight();
+      if (curW >= curH) img.resize(MAX_AVATAR_EDGE_PX, Jimp.AUTO);
+      else              img.resize(Jimp.AUTO, MAX_AVATAR_EDGE_PX);
+    }
+    img.quality(RECOMPRESS_QUALITY);
+
+    const dataUrl: string = await img.getBase64Async(Jimp.MIME_JPEG);
+    const base64Out = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+
+    // Write to cache with a unique name so we never collide with a prior
+    // upload's leftover file. The cacheDirectory is purgeable by the OS,
+    // which is fine — the file only needs to live until the upload completes.
+    const outUri = `${FS.cacheDirectory}avatar-${Date.now()}.jpg`;
+    await FS.writeAsStringAsync(outUri, base64Out, { encoding: 'base64' as any });
+
+    // Sanity check: if the output is somehow LARGER than the input (rare —
+    // can happen on heavily-compressed source PNGs), keep the original.
+    try {
+      const outInfo: any = await FS.getInfoAsync(outUri, { size: true } as any);
+      if (fileBytes > 0 && outInfo?.size && outInfo.size > fileBytes) return uri;
+    } catch { /* ignore — return the resized version */ }
+
+    return outUri;
+  } catch {
+    // Any failure: don't block the user. Fall back to the original URI and
+    // let the existing pipeline upload it as-is.
+    return uri;
   }
-  if (w && h && Math.max(w, h) > MAX_AVATAR_EDGE_PX) {
-    toast.error(`Imagem com resolução alta demais (${w}x${h}). Use uma foto até ${MAX_AVATAR_EDGE_PX}px de lado.`);
-    return false;
-  }
-  return true;
+}
+
+/**
+ * Backwards-compat shim for the older reject-based API. The new code calls
+ * prepareAvatarUpload directly; this only stays around for any external test
+ * file that still imports validateAvatarLimits.
+ * @deprecated use prepareAvatarUpload — it auto-resizes instead of rejecting.
+ */
+export async function validateAvatarLimits(uri: string, _width?: number, _height?: number): Promise<boolean> {
+  // Auto-allow; the actual resize is done by the caller via prepareAvatarUpload.
+  // Kept as a no-op so any stale import path keeps building.
+  return Promise.resolve(uri ? true : false);
 }
 
 type Props = { navigation: NativeStackNavigationProp<any>; route?: any };
@@ -578,15 +645,16 @@ export function HomeScreen({ navigation, route }: Props) {
       });
       if (result.canceled) return;
       const asset = result.assets?.[0];
-      const uri = asset?.uri;
-      if (!uri) return;
+      const pickedUri = asset?.uri;
+      if (!pickedUri) return;
 
-      // ── Size + dimension limits ─────────────────────────────────────────
-      // Large files keep the gallery Activity alive in memory longer, which
-      // makes the post-picker Dimensions-cache corruption (stuck portrait)
-      // worse. Reject anything over these caps before we touch state.
-      const ok = await validateAvatarLimits(uri, asset?.width, asset?.height);
-      if (!ok) return;
+      // Auto-resize/recompress oversized images before doing anything else.
+      // The larger the asset that survives the foreign gallery Activity, the
+      // longer Android keeps that Activity around — and that's what poisons
+      // RN's Dimensions cache (the stuck-portrait bug). prepareAvatarUpload
+      // returns the same URI unchanged for small images, or a freshly-written
+      // JPEG in the cache directory when it had to shrink things.
+      const uri = await prepareAvatarUpload(pickedUri, asset?.width, asset?.height);
 
       setProfileAvatarUri(uri);
 
