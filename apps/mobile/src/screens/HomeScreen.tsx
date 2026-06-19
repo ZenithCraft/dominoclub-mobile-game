@@ -33,32 +33,15 @@ const isShortScreen = SCREEN_H < 420;
 // enough that an 8K wallpaper gets pulled down to a manageable size.
 const MAX_AVATAR_BYTES   = 5 * 1024 * 1024; // 5 MB
 const MAX_AVATAR_EDGE_PX = 2400;            // longest side in pixels
-const RECOMPRESS_QUALITY = 75;              // JPEG quality used on the re-encode
-
-/**
- * Prepare a user-picked image for upload. If it's already within the size and
- * dimension caps, returns the original URI unchanged. Otherwise downscales the
- * longest edge to MAX_AVATAR_EDGE_PX and re-encodes as JPEG at quality 75,
- * writing the result to the cache directory and returning that URI.
- *
- * All steps are best-effort: any failure (file read, image decode, encode,
- * cache write) falls through to returning the original URI. The picker call
- * site never has to know whether resize happened.
- */
-export async function prepareAvatarUpload(uri: string, width?: number, height?: number): Promise<string> {
+export async function prepareAvatarUpload(uri: string, width?: number, height?: number): Promise<string | null> {
   try {
-    // The legacy entry point keeps the old top-level API (cacheDirectory,
-    // readAsStringAsync, writeAsStringAsync, getInfoAsync) which we still
-    // rely on. The new API moved to Paths/File classes but isn't a drop-in
-    // replacement for what we need here.
     const FS: any = await import('expo-file-system/legacy');
 
-    // Discover the current size + dimensions so we can decide whether to act.
     let fileBytes = 0;
     try {
       const info: any = await FS.getInfoAsync(uri, { size: true } as any);
       fileBytes = Number(info?.size) || 0;
-    } catch { /* size unknown — fall through, we'll still resize if dims warrant it */ }
+    } catch {}
 
     let w = width || 0;
     let h = height || 0;
@@ -68,58 +51,21 @@ export async function prepareAvatarUpload(uri: string, width?: number, height?: 
           Image.getSize(uri, (W, H) => resolve({ w: W, h: H }), reject);
         });
         w = dims.w; h = dims.h;
-      } catch { /* dims unknown — fall through */ }
+      } catch {}
     }
 
     const longest = Math.max(w, h);
     const overSize = fileBytes > 0 && fileBytes > MAX_AVATAR_BYTES;
     const overDims = longest > 0 && longest > MAX_AVATAR_EDGE_PX;
-    if (!overSize && !overDims) return uri;
 
-    // We need to process. Read the file as base64 (FileSystem can do this for
-    // local content:// or file:// URIs that ImagePicker returns).
-    const base64In = await FS.readAsStringAsync(uri, { encoding: 'base64' as any });
-
-    // jimp-compact is pure JS — no native module, no APK rebuild. It accepts
-    // a Uint8Array (or Buffer), supports .resize() and .quality(), and can
-    // re-emit as a base64 data URL. We decode the base64 ourselves via atob
-    // so we don't depend on a Buffer polyfill that isn't installed.
-    // @ts-ignore — jimp-compact ships JS only, no declaration file
-    const JimpMod: any = await import('jimp-compact');
-    const Jimp = JimpMod.default || JimpMod;
-    const bin = atob(base64In);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const img: any = await Jimp.read(bytes);
-
-    if (longest > MAX_AVATAR_EDGE_PX) {
-      const curW = img.getWidth();
-      const curH = img.getHeight();
-      if (curW >= curH) img.resize(MAX_AVATAR_EDGE_PX, Jimp.AUTO);
-      else              img.resize(Jimp.AUTO, MAX_AVATAR_EDGE_PX);
+    if (overSize || overDims) {
+      const mbStr = fileBytes > 0 ? ` (${(fileBytes / 1024 / 1024).toFixed(1)} MB)` : '';
+      toast.warning(`Imagem muito grande${mbStr}. Use uma foto com no máximo 5 MB e 2400 px.`);
+      return null;
     }
-    img.quality(RECOMPRESS_QUALITY);
 
-    const dataUrl: string = await img.getBase64Async(Jimp.MIME_JPEG);
-    const base64Out = dataUrl.replace(/^data:image\/\w+;base64,/, '');
-
-    // Write to cache with a unique name so we never collide with a prior
-    // upload's leftover file. The cacheDirectory is purgeable by the OS,
-    // which is fine — the file only needs to live until the upload completes.
-    const outUri = `${FS.cacheDirectory}avatar-${Date.now()}.jpg`;
-    await FS.writeAsStringAsync(outUri, base64Out, { encoding: 'base64' as any });
-
-    // Sanity check: if the output is somehow LARGER than the input (rare —
-    // can happen on heavily-compressed source PNGs), keep the original.
-    try {
-      const outInfo: any = await FS.getInfoAsync(outUri, { size: true } as any);
-      if (fileBytes > 0 && outInfo?.size && outInfo.size > fileBytes) return uri;
-    } catch { /* ignore — return the resized version */ }
-
-    return outUri;
+    return uri;
   } catch {
-    // Any failure: don't block the user. Fall back to the original URI and
-    // let the existing pipeline upload it as-is.
     return uri;
   }
 }
@@ -648,13 +594,8 @@ export function HomeScreen({ navigation, route }: Props) {
       const pickedUri = asset?.uri;
       if (!pickedUri) return;
 
-      // Auto-resize/recompress oversized images before doing anything else.
-      // The larger the asset that survives the foreign gallery Activity, the
-      // longer Android keeps that Activity around — and that's what poisons
-      // RN's Dimensions cache (the stuck-portrait bug). prepareAvatarUpload
-      // returns the same URI unchanged for small images, or a freshly-written
-      // JPEG in the cache directory when it had to shrink things.
       const uri = await prepareAvatarUpload(pickedUri, asset?.width, asset?.height);
+      if (!uri) return; // image too large — toast already shown by prepareAvatarUpload
 
       setProfileAvatarUri(uri);
 
