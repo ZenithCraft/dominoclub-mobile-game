@@ -39,12 +39,48 @@ const FORCE_LOCAL_PATHS = {
   'zustand/vanilla/shallow': 'zustand/vanilla/shallow.js',
 };
 
+// Node built-ins that some pure-JS libs (jimp-compact and friends) `require`
+// defensively but never call when used the way we use them. RN doesn't ship
+// these and Metro will refuse to bundle without a resolver. Empty-module
+// stubs are safe here because the offending code paths are never hit.
+const NODE_EMPTY_SHIMS = new Set([
+  'querystring',
+  'url',
+  'http',
+  'https',
+  'fs',
+  'zlib',
+  'stream',
+  'crypto',
+  'timers',
+  'path',
+  'os',
+  'tty',
+  'net',
+  'tls',
+  'dns',
+  'assert',
+  'events',
+  'util',
+  'string_decoder',
+  'punycode',
+  'process',
+  'vm',
+  'child_process',
+  'worker_threads',
+]);
+
 // Always intercept: shim DevLoadingView (missing in RN 0.73, required by Expo SDK 55)
 // and (when in monorepo dev) force React/Zustand to the local copy.
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Expo SDK 55 / React Native 0.73 compatibility shim
   if (moduleName === 'react-native/Libraries/Utilities/DevLoadingView') {
     return { filePath: path.resolve(projectRoot, 'shims', 'DevLoadingView.js'), type: 'sourceFile' };
+  }
+
+  // Node built-in stubs (see comment on NODE_EMPTY_SHIMS above)
+  if (NODE_EMPTY_SHIMS.has(moduleName)) {
+    return { filePath: path.resolve(projectRoot, 'shims', 'node-empty.js'), type: 'sourceFile' };
   }
 
   // Force zustand to CJS version (avoids import.meta in ESM build)
