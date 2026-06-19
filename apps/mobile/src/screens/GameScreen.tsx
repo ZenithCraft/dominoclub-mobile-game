@@ -1373,7 +1373,7 @@ function ResultCard({
   const netAbs = Math.abs(net);
   const fmtBRL = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
   return (
-    <View style={[styles.resultCard, rcIsTablet && { maxWidth: 480 }, isWinner ? styles.resultCardWinner : styles.resultCardLoser]}>
+    <View style={[styles.resultCard, isWinner ? styles.resultCardWinner : styles.resultCardLoser]}>
       <ScrollView style={{ flexShrink: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', gap: isPhone ? 8 : 12 }} showsVerticalScrollIndicator={false}>
         <View style={[styles.resultIcon, { marginBottom: isPhone ? 0 : spacing.sm }]}>
           {isWinner ? (
@@ -3797,12 +3797,12 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
   settingsCard: {
     width: Platform.OS === 'web' ? 640 : '92%',
-    maxWidth: isTablet ? 580 : 440,
+    maxWidth: isTablet ? 820 : 440,
     maxHeight: Platform.OS === 'web' ? 560 : '85%',
     backgroundColor: colors.bgCard,
     borderWidth: 3, borderColor: '#BBFF00',
     borderRadius: radius.xl,
-    padding: isPhone ? 12 : SETTINGS_CARD_PAD,
+    padding: isPhone ? 12 : isTablet ? SETTINGS_CARD_PAD * 1.5 : SETTINGS_CARD_PAD,
     gap: isPhone ? 8 : SETTINGS_ITEM_GAP,
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0px 8px 20px rgba(0,0,0,0.45)' } as any) : shadows.card),
@@ -3857,15 +3857,15 @@ const styles = StyleSheet.create({
   // Leave confirm modal - Estilo KYC
   confirmCard: {
     width: '92%',
-    maxWidth: isTablet ? 520 : 380,
+    maxWidth: isTablet ? 800 : 380,
     maxHeight: '88%',
     backgroundColor: '#082006',
     borderRadius: radius.xl,
-    padding: isPhone ? spacing.md : spacing.xl,
+    padding: isPhone ? spacing.md : isTablet ? spacing.xxl : spacing.xl,
     borderWidth: 2,
     borderColor: '#0F400B',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: isTablet ? spacing.lg : spacing.md,
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' } as any)
       : {
@@ -3914,13 +3914,13 @@ const styles = StyleSheet.create({
   // Result modal - Estilo baseado nas imagens
   resultCard: {
     width: '88%',
-    maxWidth: isTablet ? 480 : 340,
+    maxWidth: isTablet ? 760 : 340,
     maxHeight: '88%',
     borderRadius: radius.xl,
-    paddingVertical: isPhone ? spacing.md : spacing.xxl,
-    paddingHorizontal: isPhone ? spacing.md : spacing.xl,
+    paddingVertical: isPhone ? spacing.md : isTablet ? spacing.xxl * 1.4 : spacing.xxl,
+    paddingHorizontal: isPhone ? spacing.md : isTablet ? spacing.xxl : spacing.xl,
     alignItems: 'center',
-    gap: isPhone ? 6 : spacing.md,
+    gap: isPhone ? 6 : isTablet ? spacing.lg : spacing.md,
   },
   resultCardWinner: {
     backgroundColor: '#082006',

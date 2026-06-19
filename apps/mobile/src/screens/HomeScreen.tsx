@@ -1090,7 +1090,7 @@ const styles = StyleSheet.create({
     maxWidth: isTablet ? 780 : 480,
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
-    padding: SETTINGS_CARD_PAD,
+    padding: isTablet ? 24 : SETTINGS_CARD_PAD,
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#BBFF00',
@@ -1166,7 +1166,7 @@ const styles = StyleSheet.create({
     maxHeight: Platform.OS === 'web' ? 600 : (isTablet ? Math.round(SCREEN_H * 0.85) : Math.round(SCREEN_H * 0.80)),
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
-    padding: SETTINGS_CARD_PAD,
+    padding: isTablet ? 24 : SETTINGS_CARD_PAD,
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#BBFF00',
@@ -1217,7 +1217,7 @@ const styles = StyleSheet.create({
   xpBarFill: { height: '100%', backgroundColor: '#1CBB3D', borderRadius: 3 },
 
   profileRight: { flex: 1, gap: spacing.sm },
-  statLabel: { color: colors.textMuted, fontSize: fonts.sizes.xs },
+  statLabel: { color: colors.textMuted, fontSize: isTablet ? fonts.sizes.sm : fonts.sizes.xs },
   statPill: {
     backgroundColor: '#548C0C80',
     borderRadius: radius.sm,
@@ -1227,7 +1227,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.18)',
   },
-  statValue: { color: '#ffffff', fontWeight: '900', fontSize: fonts.sizes.sm },
+  statValue: { color: '#ffffff', fontWeight: '900', fontSize: isTablet ? fonts.sizes.md : fonts.sizes.sm },
 
   profileActions: { gap: spacing.sm },
   profileActionGrad: {
@@ -1240,14 +1240,14 @@ const styles = StyleSheet.create({
   profileActionTextDark: { color: '#0a1f0a', fontWeight: '900', fontSize: isSmallPhone ? fonts.sizes.xs : fonts.sizes.sm },
 
   logoutCard: {
-    width: isTablet ? '60%' : Math.min(360, SCREEN_W * 0.90),
-    maxWidth: isTablet ? 640 : 420,
+    width: isTablet ? '70%' : Math.min(360, SCREEN_W * 0.90),
+    maxWidth: isTablet ? 760 : 420,
     backgroundColor: 'rgba(8, 20, 8, 0.96)',
     borderWidth: 1,
     borderColor: 'rgba(187, 255, 0, 0.22)',
     borderRadius: radius.xl,
-    padding: spacing.xl,
-    gap: spacing.lg,
+    padding: isTablet ? spacing.xxl : spacing.xl,
+    gap: isTablet ? spacing.xl : spacing.lg,
   },
   // Override applied on top of logoutCard for the "Localização necessária"
   // dialog so it stays compact: the body is two sentences and two buttons,

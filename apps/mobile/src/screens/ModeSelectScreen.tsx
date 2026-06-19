@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { isTablet } from '../theme/responsive';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { IconUser, IconUsers, IconTrophy } from '../components/Icons';
 import { useGameStore } from '../store/game.store';
@@ -984,11 +985,12 @@ const SETTINGS_ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
 const settingsStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
   card: {
-    width: Platform.OS === 'web' ? 640 : 520,
+    width: Platform.OS === 'web' ? 640 : (isTablet ? '75%' : 520),
+    maxWidth: Platform.OS === 'web' ? 700 : (isTablet ? 780 : 560),
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
-    padding: SETTINGS_CARD_PAD,
-    gap: SETTINGS_ITEM_GAP,
+    padding: isTablet ? 24 : SETTINGS_CARD_PAD,
+    gap: isTablet ? 20 : SETTINGS_ITEM_GAP,
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#BBFF00',
@@ -1341,14 +1343,14 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center' },
   modalCard: {
     width: '88%',
-    maxWidth: 360,
+    maxWidth: isTablet ? 580 : 360,
     maxHeight: '88%',
     backgroundColor: '#082006',
     borderRadius: radius.xl,
     borderWidth: 2,
     borderColor: '#0F400B',
-    padding: spacing.xl,
-    gap: spacing.md,
+    padding: isTablet ? spacing.xxl : spacing.xl,
+    gap: isTablet ? spacing.lg : spacing.md,
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' } as any)
       : {
@@ -1361,7 +1363,7 @@ const styles = StyleSheet.create({
   },
   modalHeaderIcon: { alignItems: 'center', marginBottom: spacing.sm },
   modalIcon: { fontSize: 32 },
-  modalTitle: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.lg, textAlign: 'center', marginBottom: spacing.sm },
+  modalTitle: { color: '#fff', fontWeight: '800', fontSize: isTablet ? fonts.sizes.xl : fonts.sizes.lg, textAlign: 'center', marginBottom: spacing.sm },
   modalTourName: { color: '#a3c4a3', fontSize: fonts.sizes.sm, textAlign: 'center', marginBottom: spacing.sm },
   modalInfoBox: {
     backgroundColor: 'rgba(14, 41, 15, 0.6)',
@@ -1374,13 +1376,13 @@ const styles = StyleSheet.create({
   modalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalLabel: {
     color: '#a3c4a3',
-    fontSize: fonts.sizes.sm,
+    fontSize: isTablet ? fonts.sizes.md : fonts.sizes.sm,
     fontWeight: '600',
   },
   modalValue: {
     color: '#fff',
     fontWeight: '700',
-    fontSize: fonts.sizes.sm,
+    fontSize: isTablet ? fonts.sizes.md : fonts.sizes.sm,
   },
   modalDivider: { height: 1, backgroundColor: 'rgba(31, 93, 24, 0.5)', marginVertical: spacing.sm },
   modalActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
@@ -1392,26 +1394,27 @@ const styles = StyleSheet.create({
     borderColor: '#4F4E47',
     backgroundColor: '#4F4E47',
     borderRadius: radius.full,
-    paddingVertical: 12,
+    paddingVertical: isTablet ? 16 : 12,
     alignItems: 'center',
   },
-  modalBtnCancelText: { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
+  modalBtnCancelText: { color: '#fff', fontWeight: '700', fontSize: isTablet ? fonts.sizes.md : fonts.sizes.sm },
   modalBtnConfirm: {
     flex: 1,
     backgroundColor: '#0F400B',
     borderWidth: 2,
     borderColor: '#1F5D18',
     borderRadius: radius.full,
-    paddingVertical: 12,
+    paddingVertical: isTablet ? 16 : 12,
     alignItems: 'center',
   },
-  modalBtnConfirmText: { color: '#fff', fontWeight: '800', fontSize: fonts.sizes.sm },
+  modalBtnConfirmText: { color: '#fff', fontWeight: '800', fontSize: isTablet ? fonts.sizes.md : fonts.sizes.sm },
 });
 
 const inPersonStyles = StyleSheet.create({
   card: {
     borderColor: 'rgba(185,28,28,0.55)',
-    width: 340,
+    width: isTablet ? '80%' : 340,
+    maxWidth: isTablet ? 580 : 380,
   },
   badge: {
     alignSelf: 'center',
