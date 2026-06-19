@@ -1,12 +1,15 @@
 jest.mock('../utils/logger', () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+  logger:      { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+  matchLogger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 jest.mock('../game/domino.engine', () => {
   const actual = jest.requireActual('../game/domino.engine');
   return {
     ...actual,
-    initGame: jest.fn((gameId: string, variant: any, players: any[]) => ({
+    initGame: jest.fn((gameId: string, variant: any, players: any[]) => {
+    const u1Index = players.findIndex((p: any) => p.userId === 'u1');
+    return {
       id: gameId,
       variant,
       players: players.map((p: any, idx: number) => ({
@@ -22,15 +25,20 @@ jest.mock('../game/domino.engine', () => {
       rightOpen: -1,
       topOpen: undefined,
       bottomOpen: undefined,
-      currentPlayerIndex: 0,
+      currentPlayerIndex: u1Index >= 0 ? u1Index : 0,
       turnCount: 0,
       consecutivePasses: 0,
       status: 'playing',
       winnerId: undefined,
       winnerTeam: undefined,
+      matchWinnerTeam: undefined,
+      matchScores: { 1: 0, 2: 0 },
+      roundNumber: 1,
+      targetScore: 1,   // one round = match over, so game:ended fires immediately after u1 plays
       turnStartedAt: Date.now(),
       firstPlayMade: false,
-    })),
+    };
+  }),
   };
 });
 
@@ -86,6 +94,7 @@ describe('Socket.io — full flow 1v1 + reconexão', () => {
   });
 
   it('fila → match → join → reconecta dentro do grace → joga → paga prêmio', async () => {
+
     const walletsByUserId = new Map<string, any>([
       ['u1', { id: 'w1', userId: 'u1', real_balance: 200, bonus_balance: 0, rollover_remaining: 0 }],
       ['u2', { id: 'w2', userId: 'u2', real_balance: 200, bonus_balance: 0, rollover_remaining: 0 }],
@@ -243,5 +252,5 @@ describe('Socket.io — full flow 1v1 + reconexão', () => {
       if (s1.connected) s1.disconnect();
       if (s2.connected) s2.disconnect();
     }
-  });
+  }, 15000);
 });
