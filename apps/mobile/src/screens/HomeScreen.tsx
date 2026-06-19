@@ -20,6 +20,7 @@ import { connectSocket } from '../services/socket';
 import { ConsentModal } from '../components/ConsentModal';
 import { WalletBalanceButton } from '../components/Button';
 import { IconSettings, IconStar, IconLogOut, IconX, IconVolumeUp, IconMusic, IconChevronLeft, IconMenu } from '../components/Icons';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const isSmallPhone = !isTablet && SCREEN_W < 390;
@@ -58,13 +59,34 @@ export async function prepareAvatarUpload(uri: string, width?: number, height?: 
     const overSize = fileBytes > 0 && fileBytes > MAX_AVATAR_BYTES;
     const overDims = longest > 0 && longest > MAX_AVATAR_EDGE_PX;
 
-    if (overSize || overDims) {
-      const mbStr = fileBytes > 0 ? ` (${(fileBytes / 1024 / 1024).toFixed(1)} MB)` : '';
-      toast.warning(`Imagem muito grande${mbStr}. Use uma foto com no máximo 5 MB e 2400 px.`);
-      return null;
+    if (!overSize && !overDims) return uri;
+
+    // Resize and/or recompress using the native ImageManipulator.
+    // This runs in native code — no JS heap bitmap decode, no OOM risk.
+    const actions: Parameters<typeof manipulateAsync>[1] = [];
+    if (overDims) {
+      actions.push({
+        resize: w >= h ? { width: MAX_AVATAR_EDGE_PX } : { height: MAX_AVATAR_EDGE_PX },
+      });
     }
 
-    return uri;
+    const result = await manipulateAsync(uri, actions, {
+      compress: 0.82,
+      format: SaveFormat.JPEG,
+    });
+
+    // Safety valve: if the processed file is still above the size cap
+    // (e.g. a huge image with small dims that didn't need resizing),
+    // reject rather than let an oversized upload through.
+    try {
+      const outInfo: any = await FS.getInfoAsync(result.uri, { size: true } as any);
+      if (outInfo?.size && outInfo.size > MAX_AVATAR_BYTES) {
+        toast.warning(`Imagem muito grande (${(outInfo.size / 1024 / 1024).toFixed(1)} MB). Escolha uma foto menor.`);
+        return null;
+      }
+    } catch {}
+
+    return result.uri;
   } catch {
     return uri;
   }
