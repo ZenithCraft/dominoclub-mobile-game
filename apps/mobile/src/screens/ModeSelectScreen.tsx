@@ -273,6 +273,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
   const { user, refreshUser, setTokens, setUser } = useAuthStore();
   const { setQueueStatus, setLastQueue } = useGameStore();
   const setActiveTournament = useTournamentStore((s) => s.setActiveTournament);
+  const activeTournament = useTournamentStore((s) => s.activeTournament);
   const [queueStats, setQueueStats] = useState<Record<string, { total: number; byBet: Record<string, number> }>>({});
   const [serverBotWaitSeconds, setServerBotWaitSeconds] = useState<number | null>(null);
   const [tournaments, setTournaments]   = useState<Tournament[]>([]);
@@ -413,7 +414,9 @@ export function ModeSelectScreen({ navigation, route }: Props) {
       socket.once('queue:joined', ({ botWaitSeconds }: { botWaitSeconds?: number }) => {
         if (typeof botWaitSeconds === 'number' && Number.isFinite(botWaitSeconds)) {
           setServerBotWaitSeconds(botWaitSeconds);
-          const waitMs = Math.max(20000, Math.min(60000, (botWaitSeconds + 5) * 1000));
+          // Give the bot 15 extra seconds after it injects to create the match.
+          // Cap at 90 s so the UI doesn't hang forever if the server is misconfigured.
+          const waitMs = Math.max(30000, Math.min(90000, (botWaitSeconds + 15) * 1000));
           setSearchTimeout(waitMs);
         }
       });
@@ -461,13 +464,13 @@ export function ModeSelectScreen({ navigation, route }: Props) {
         tournamentId: tour.id,
         tournamentName: tour.name,
         startsAt: data.tournament?.starts_at ?? tour.starts_at,
-        entryFee: tour.entry_fee,
+        entryFee: Number(tour.entry_fee),
       });
       navigation.replace('TournamentWaiting', {
         tournamentId: tour.id,
         tournamentName: tour.name,
         startsAt: data.tournament?.starts_at ?? tour.starts_at,
-        entryFee: tour.entry_fee,
+        entryFee: Number(tour.entry_fee),
       });
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Erro ao entrar no torneio');
@@ -672,7 +675,18 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                   {tournaments.map((t) => (
                     t.is_in_person
                       ? <InPersonTournamentCard key={t.id} t={t} onPress={() => { setInPersonTour(t); setInPersonName(user?.name ?? ''); setInPersonCpf(''); setUseAccountName(!!user?.name); }} />
-                      : <TournamentCard key={t.id} t={t} onJoin={() => setConfirmTour(t)} />
+                      : <TournamentCard key={t.id} t={t} onJoin={() => {
+                          if (activeTournament?.tournamentId === t.id) {
+                            navigation.navigate('TournamentWaiting', {
+                              tournamentId: t.id,
+                              tournamentName: t.name,
+                              startsAt: t.starts_at,
+                              entryFee: Number(t.entry_fee),
+                            });
+                          } else {
+                            setConfirmTour(t);
+                          }
+                        }} />
                   ))}
                 </ScrollView>
               )}

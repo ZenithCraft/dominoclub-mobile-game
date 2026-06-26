@@ -75,14 +75,6 @@ export function SplashScreen({ navigation }: Props) {
           navigation.replace('Login');
           return;
         }
-        // Check for an active game (reconnect after app restart)
-        try {
-          const { data: gameData } = await api.get('/game/active');
-          if (gameData.game?.id) {
-            navigation.replace('Game', { gameId: gameData.game.id });
-            return;
-          }
-        } catch {}
         // Check for an active tournament enrollment
         try {
           const { data } = await api.get('/game/tournaments/my-active');

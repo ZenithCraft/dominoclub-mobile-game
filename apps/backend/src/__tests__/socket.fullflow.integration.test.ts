@@ -89,6 +89,11 @@ describe('Socket.io — full flow 1v1 + reconexão', () => {
   });
 
   afterAll(async () => {
+    // Force-disconnect all lingering server-side sockets before closing,
+    // otherwise server.close() hangs waiting for open HTTP connections.
+    const allSockets = await ioServer.fetchSockets();
+    for (const s of allSockets) s.disconnect(true);
+
     await new Promise<void>((resolve) => ioServer.close(() => resolve()));
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });

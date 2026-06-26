@@ -60,11 +60,10 @@ export function GlobalTournamentBar() {
     (async () => {
       try {
         const socket = await connectSocket();
-        socket.on('tournament:started', async (d: { tournamentId: string; gameId: string }) => {
+        socket.on('tournament:started', (d: { tournamentId: string; gameId: string }) => {
           if (!mounted) return;
           if (!activeTournament || d.tournamentId !== activeTournament.tournamentId) return;
           toast.info('Torneio começou — entrando na partida...');
-          await clearActiveTournament();
           navigation.replace('Game', { gameId: d.gameId });
         });
 
@@ -75,16 +74,48 @@ export function GlobalTournamentBar() {
           await clearActiveTournament();
         });
 
-        socket.on('tournament:next_game', async (d: { tournamentId: string; gameId: string }) => {
+        socket.on('tournament:next_game', (d: { tournamentId: string; gameId: string }) => {
           if (!mounted) return;
           if (!activeTournament || d.tournamentId !== activeTournament.tournamentId) return;
-          toast.info('Próxima rodada liberada — entrando na partida...');
+          toast.info('Próxima rodada — entrando na partida...');
           navigation.replace('Game', { gameId: d.gameId });
+        });
+
+        socket.on('tournament:champion', async (d: { tournamentId: string; prize: number }) => {
+          if (!mounted) return;
+          if (!activeTournament || d.tournamentId !== activeTournament.tournamentId) return;
+          await clearActiveTournament();
+          navigation.replace('TournamentResult', {
+            tournamentId: d.tournamentId,
+            won: true,
+            prize: d.prize,
+            finalPosition: 1,
+          });
+        });
+
+        socket.on('tournament:eliminated', async (d: { tournamentId: string; finalPosition: number; totalPlayers: number; prize: number }) => {
+          if (!mounted) return;
+          if (!activeTournament || d.tournamentId !== activeTournament.tournamentId) return;
+          await clearActiveTournament();
+          navigation.replace('TournamentResult', {
+            tournamentId: d.tournamentId,
+            won: false,
+            prize: d.prize || 0,
+            finalPosition: d.finalPosition,
+            totalPlayers: d.totalPlayers,
+          });
         });
       } catch {}
     })();
     return () => {
       mounted = false;
+      connectSocket().then((s) => {
+        s.off('tournament:started');
+        s.off('tournament:cancelled');
+        s.off('tournament:next_game');
+        s.off('tournament:champion');
+        s.off('tournament:eliminated');
+      }).catch(() => {});
     };
   }, [activeTournament?.tournamentId, navigation]);
 
@@ -135,10 +166,21 @@ export function GlobalTournamentBar() {
   return (
     <View pointerEvents="box-none" style={styles.root}>
       <View style={styles.card}>
-        <View style={{ flex: 1 }}>
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          activeOpacity={0.75}
+          onPress={() =>
+            navigation.navigate('TournamentWaiting', {
+              tournamentId: activeTournament.tournamentId,
+              tournamentName: activeTournament.tournamentName,
+              startsAt: activeTournament.startsAt,
+              entryFee: activeTournament.entryFee,
+            })
+          }
+        >
           <Text style={styles.title} numberOfLines={1}>{activeTournament.tournamentName}</Text>
-          <Text style={styles.subtitle}>Começa em {formatCountdown(remainingMs)}</Text>
-        </View>
+          <Text style={styles.subtitle}>Toque para voltar · {formatCountdown(remainingMs)}</Text>
+        </TouchableOpacity>
         {Platform.OS === 'web' && !activeTournament.notificationsEnabled && (
           <TouchableOpacity style={styles.btn} onPress={enableWebNotifications} activeOpacity={0.85}>
             <Text style={styles.btnText}>Notificar</Text>

@@ -1,6 +1,7 @@
 import { Server as SocketServer, Socket } from 'socket.io';
 import { prisma } from '../services/prisma.service';
-import { deductBet, creditWin } from '../services/wallet.service';
+import { v4 as uuidv4 } from 'uuid';
+import { deductBet, creditWin, refundBet } from '../services/wallet.service';
 import { advanceTournamentBracket, setTournamentIo, cancelAndRefundTournament, startTournament } from '../services/tournament.service';
 import { getHouseEdgePercent } from '../services/runtime-config.service';
 import { config } from '../config';
@@ -22,6 +23,9 @@ import {
 import { volatileMatches, updatePartnerCooldownsAfterGame } from '../services/matchmaking.service';
 
 export const activeGames = new Map<string, GameState>();
+
+// Module-level io ref so admin helpers can emit without the socket context
+let _gameIo: SocketServer | null = null;
 const turnTimers = new Map<string, NodeJS.Timeout>();
 const disconnectTimers = new Map<string, NodeJS.Timeout>();
 // gameId -> Set<userId> currently within their disconnect grace window.
@@ -36,6 +40,10 @@ const pausedTurnRemainingMs = new Map<string, number>();
 // Per-game monotonically increasing sequence counter.
 // Included in every game:state emission so clients can discard stale events.
 const gameStateSeq = new Map<string, number>();
+
+// Stores the last game:round_ended payload while the server is in the 4-second
+// inter-round pause, so reconnecting players can receive it on game:join.
+const pendingRoundResults = new Map<string, any>();
 
 // ─── Bot timing tracking ──────────────────────────────────────────────────────
 // Key: `${gameId}:${userId}` — stores the timestamp of the player's last move
@@ -110,12 +118,61 @@ function flushMoveTimings(gameId: string): Map<string, number[]> {
   return result;
 }
 
+// ─── Tournament bot filler ────────────────────────────────────────────────────
+
+async function createTournamentBot(): Promise<string> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const ts  = Date.now().toString().slice(-7);
+    const rnd = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    const phone = `+5598${ts}${rnd}`;
+    try {
+      const bot = await prisma.user.create({
+        data: { phone, name: 'Bot', cpf_verified: true, phone_verified: true },
+        select: { id: true },
+      });
+      return bot.id;
+    } catch (err: any) {
+      if (err?.code !== 'P2002' || attempt === 2) break;
+    }
+  }
+  return `bot_${uuidv4()}`;
+}
+
+async function fillAndStartTournament(tournamentId: string, currentPlayers: number): Promise<void> {
+  const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
+  if (!tournament || !['OPEN', 'FULL'].includes(tournament.status)) return;
+
+  const botsNeeded = Math.max(0, tournament.max_players - currentPlayers);
+
+  let botUserIds: Set<string> | undefined;
+
+  if (botsNeeded > 0) {
+    const botIds = await Promise.all(Array.from({ length: botsNeeded }, () => createTournamentBot()));
+    await prisma.$transaction([
+      ...botIds.map((botId) =>
+        prisma.tournamentPlayer.create({
+          data: { tournamentId, userId: botId },
+        })
+      ),
+      prisma.tournament.update({
+        where: { id: tournamentId },
+        data: { current_players: { increment: botsNeeded }, status: 'FULL' },
+      }),
+    ]);
+    botUserIds = new Set(botIds);
+    logger.info('[Tournament] Filled with bots', { tournamentId, botsNeeded });
+  }
+
+  await startTournament(tournamentId, botUserIds);
+}
+
 // ─── Tournament auto-cancel scheduler ────────────────────────────────────────
 
 // Track which tournaments have already had their 15-min notification sent
 const notifiedTournaments = new Set<string>();
 
 export function initTournamentScheduler(io: SocketServer) {
+  _gameIo = io;
   setTournamentIo(io);
   const intervalMs = config.env === 'development' ? 2_000 : 60_000;
   setInterval(async () => {
@@ -129,15 +186,9 @@ export function initTournamentScheduler(io: SocketServer) {
         select: { id: true, current_players: true },
       });
       for (const t of overdue) {
-        if (t.current_players < 2) {
-          cancelAndRefundTournament(t.id).catch((e) =>
-            logger.error('[Tournament] Auto-cancel failed', { id: t.id, err: e.message })
-          );
-        } else {
-          startTournament(t.id).catch((e) =>
-            logger.error('[Tournament] Auto-start failed', { id: t.id, err: e.message })
-          );
-        }
+        fillAndStartTournament(t.id, t.current_players).catch((e) =>
+          logger.error('[Tournament] Auto-start failed', { id: t.id, err: e.message })
+        );
       }
 
       // 15-minute ahead notification for registered players
@@ -217,7 +268,7 @@ function broadcastGameState(gameId: string, state: GameState, io: SocketServer) 
 
   state.players.forEach((player) => {
     const view = getPlayerView(state, player.userId);
-    io.to(`user:${player.userId}`).emit('game:state', { ...view, seq });
+    io.to(`user:${player.userId}`).emit('game:state', { ...view, seq, gameId });
   });
 }
 
@@ -292,7 +343,14 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       const state = activeGames.get(gameId)!;
       const seq = gameStateSeq.get(gameId) ?? 0;
       const playerState = getPlayerView(state, user.id);
-      socket.emit('game:state', { ...playerState, seq });
+      socket.emit('game:state', { ...playerState, seq, gameId });
+
+      // If we're in the 4-second inter-round pause, re-send the round result
+      // so players who reconnected during that window still see the banner.
+      if (state.status === 'finished') {
+        const roundResult = pendingRoundResults.get(gameId);
+        if (roundResult) socket.emit('game:round_ended', roundResult);
+      }
 
       // Came back inside the grace window? Tell everyone in the room and resume
       // the (possibly paused) turn timer with whatever time was left.
@@ -322,7 +380,7 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
 
     const seq = gameStateSeq.get(gameId) ?? 0;
     const view = getPlayerView(state, user.id);
-    socket.emit('game:state', { ...view, seq });
+    socket.emit('game:state', { ...view, seq, gameId });
   });
 
   // Play a tile
@@ -387,8 +445,8 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     });
 
     broadcastGameState(gameId, newState, io);
-    clearTurnTimer(gameId);
-    startTurnTimer(gameId, newState, io);
+    // Timer keeps running — drawing doesn't reset the turn clock.
+    // The player still has whatever time remains on their turn to play or draw again.
   });
 
   // Pass turn
@@ -399,9 +457,10 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
     const playerIndex = state.players.findIndex((p) => p.userId === user.id);
     if (playerIndex !== state.currentPlayerIndex) return;
 
-    // Can only pass if no valid moves AND boneyard is empty
     const validMoves = getValidMoves(state, playerIndex);
-    if (validMoves.length > 0 || state.boneyard.length > 0) {
+    // In 4-player (2v2) games drawing is not allowed, so pass is always valid when no valid moves
+    const is4Player = state.players.length >= 4;
+    if (validMoves.length > 0 || (!is4Player && state.boneyard.length > 0)) {
       socket.emit('game:error', { message: 'Cannot pass — you must play or draw' });
       return;
     }
@@ -534,7 +593,9 @@ async function startGame(gameId: string, variant: DominoVariant, players: any[],
 
     if (failed) {
       for (const walletId of deducted) {
-        try { await creditWin(walletId, betAmount); } catch {}
+        try { await refundBet(walletId, betAmount); } catch (err: any) {
+          logger.error('[startGame] Refund failed — manual intervention required', { walletId, betAmount, gameId, err: err?.message });
+        }
       }
       for (const player of players) {
         if (!player.is_bot) {
@@ -566,8 +627,10 @@ async function startGame(gameId: string, variant: DominoVariant, players: any[],
   });
 
   try {
-    await prisma.game.update({ where: { id: gameId }, data: { status: 'PLAYING' } });
-  } catch {}
+    await prisma.game.update({ where: { id: gameId }, data: { status: 'PLAYING', started_at: new Date() } });
+  } catch (err: any) {
+    logger.warn('[startGame] Failed to mark game as PLAYING in DB', { gameId, err: err?.message });
+  }
 
   broadcastGameState(gameId, state, io);
   startTurnTimer(gameId, state, io);
@@ -771,6 +834,7 @@ async function handleGameEnd(
     gameStateSeq.delete(gameId);
     disconnectedInGame.delete(gameId);
     pausedTurnRemainingMs.delete(gameId);
+    pendingRoundResults.delete(gameId);
     if (game) {
       await finalizeMatch(gameId, state, game, io, 'ABANDONED');
     }
@@ -794,7 +858,7 @@ async function handleGameEnd(
   const blocked = state.players.every((p) => p.hand.length > 0);
 
   // Notify clients of round result
-  io.to(`game:${gameId}`).emit('game:round_ended', {
+  const roundEndedPayload = {
     roundNumber:     state.roundNumber,
     winnerTeam:      state.winnerTeam ?? null,
     winnerId:        state.winnerId ?? null,
@@ -806,7 +870,10 @@ async function handleGameEnd(
     matchWinnerTeam: state.matchWinnerTeam ?? null,
     blocked,
     teamPips,
-  });
+  };
+  // Store so reconnecting players in the 4s inter-round pause can receive it
+  if (!matchOver) pendingRoundResults.set(gameId, roundEndedPayload);
+  io.to(`game:${gameId}`).emit('game:round_ended', roundEndedPayload);
 
   logger.info('Round ended', {
     gameId,
@@ -835,6 +902,7 @@ async function handleGameEnd(
     gameStateSeq.delete(gameId);
     disconnectedInGame.delete(gameId);
     pausedTurnRemainingMs.delete(gameId);
+    pendingRoundResults.delete(gameId);
     if (game) {
       await finalizeMatch(gameId, state, game, io, 'FINISHED');
     }
@@ -844,6 +912,7 @@ async function handleGameEnd(
       // CRITICAL FIX: Get FRESH state from activeGames, NOT the stale closure variable
       const freshState = activeGames.get(gameId);
       if (!freshState) return;
+      pendingRoundResults.delete(gameId); // inter-round pause is over
       const nextState = initNextRound(freshState);
       activeGames.set(gameId, nextState);
       broadcastGameState(gameId, nextState, io);
@@ -989,6 +1058,40 @@ async function finalizeMatch(
       logger.error('[Tournament] Failed to advance bracket', { tournamentId: game.tournamentId, gameId, err: err.message });
     });
   }
+}
+
+/** Admin helper: force-end a game by making losingUserId lose, bypassing the bot guard. */
+export async function adminForceEnd(gameId: string, losingUserId: string): Promise<void> {
+  const io = _gameIo;
+  if (!io) throw new Error('Socket server not initialised');
+
+  const state = activeGames.get(gameId);
+  if (!state || state.status !== 'playing') throw new Error('Game not active');
+
+  const loser = state.players.find((p) => p.userId === losingUserId);
+  if (!loser) throw new Error('Player not found in game');
+
+  const winnerTeam = loser.team === 1 ? 2 : 1;
+  const winner = state.players.find((p) => p.team === winnerTeam && !p.isBot)
+    ?? state.players.find((p) => p.team === winnerTeam);
+
+  const newState: GameState = {
+    ...state,
+    status: 'finished',
+    winnerTeam,
+    matchWinnerTeam: winnerTeam,
+    winnerId: winner?.userId,
+  };
+  activeGames.set(gameId, newState);
+
+  io.to(`game:${gameId}`).emit('game:forfeit', {
+    forfeitedUserId: losingUserId,
+    reason: 'leave',
+    winnerId: winner?.userId,
+    winnerTeam,
+  });
+
+  await handleGameEnd(gameId, newState, io, { status: 'ABANDONED' });
 }
 
 async function forfeitGame(gameId: string, forfeitingUserId: string, io: SocketServer, reason: 'leave' | 'disconnect') {

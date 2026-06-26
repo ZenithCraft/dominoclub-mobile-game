@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../services/prisma.service';
 import { createGameSchema } from '../utils/validators';
 import { activeGames } from '../socket/gameSocket';
-import { startTournament } from '../services/tournament.service';
+import { startTournament, withdrawFromTournament } from '../services/tournament.service';
 import { issueNonce } from '../services/nonce.service';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
@@ -130,6 +130,14 @@ export async function getActiveGameHandler(req: Request, res: Response) {
   }
 }
 
+function serializeTournament(t: any) {
+  return {
+    ...t,
+    entry_fee: Number(t.entry_fee),
+    prize_pool: Number(t.prize_pool),
+  };
+}
+
 export async function getTournamentsHandler(req: Request, res: Response) {
   try {
     const tournaments = await prisma.tournament.findMany({
@@ -137,7 +145,7 @@ export async function getTournamentsHandler(req: Request, res: Response) {
       orderBy: { starts_at: 'asc' },
       take: 20,
     });
-    res.json({ tournaments });
+    res.json({ tournaments: tournaments.map(serializeTournament) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -253,7 +261,7 @@ export async function joinTournamentHandler(req: Request, res: Response) {
       message: 'Joined tournament successfully',
       starting: isFull,
       balance: updatedWallet?.real_balance ?? 0,
-      tournament: updatedTournament,
+      tournament: updatedTournament ? serializeTournament(updatedTournament) : null,
     });
   } catch (err: any) {
     const status = err?.status;
@@ -262,7 +270,7 @@ export async function joinTournamentHandler(req: Request, res: Response) {
         prisma.wallet.findUnique({ where: { userId } }).catch(() => null),
         prisma.tournament.findUnique({ where: { id } }).catch(() => null),
       ]);
-      return res.json({ message: 'Already enrolled', starting: false, balance: wallet?.real_balance ?? 0, tournament });
+      return res.json({ message: 'Already enrolled', starting: false, balance: wallet?.real_balance ?? 0, tournament: tournament ? serializeTournament(tournament) : null });
     }
     if (status === 404) return res.status(404).json({ error: err.message });
     if (status === 400) return res.status(400).json({ error: err.message });
@@ -272,7 +280,7 @@ export async function joinTournamentHandler(req: Request, res: Response) {
         prisma.wallet.findUnique({ where: { userId } }).catch(() => null),
         prisma.tournament.findUnique({ where: { id } }).catch(() => null),
       ]);
-      return res.json({ message: 'Already enrolled', starting: false, balance: wallet?.real_balance ?? 0, tournament });
+      return res.json({ message: 'Already enrolled', starting: false, balance: wallet?.real_balance ?? 0, tournament: tournament ? serializeTournament(tournament) : null });
     }
     res.status(500).json({ error: err.message });
   }
@@ -355,7 +363,7 @@ export async function getMyActiveTournamentHandler(req: Request, res: Response) 
             tournamentId: enrollment.tournament.id,
             tournamentName: enrollment.tournament.name,
             startsAt: enrollment.tournament.starts_at,
-            entryFee: enrollment.tournament.entry_fee,
+            entryFee: Number(enrollment.tournament.entry_fee),
           }
         : null,
     });
@@ -483,6 +491,21 @@ export async function getAnnouncementsHandler(req: Request, res: Response) {
     res.json({ announcements: visible });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+}
+
+// POST /api/v1/game/tournaments/:id/withdraw  (mid-tournament, between rounds)
+export async function withdrawTournamentHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const { id } = req.params;
+    await withdrawFromTournament(id, userId);
+    res.json({ message: 'Withdrawn from tournament successfully' });
+  } catch (err: any) {
+    const msg = err?.message ?? 'Internal error';
+    if (msg === 'Tournament is not in progress') return res.status(400).json({ error: msg });
+    if (msg === 'Player is not active in this tournament') return res.status(400).json({ error: msg });
+    res.status(500).json({ error: msg });
   }
 }
 

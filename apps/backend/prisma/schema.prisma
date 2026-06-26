@@ -232,6 +232,7 @@ model Game {
   tournament_round Int?          // which round of the tournament (1-based)
   created_at       DateTime      @default(now())
   updated_at       DateTime      @updatedAt
+  started_at       DateTime?
   finished_at      DateTime?
 
   players    GamePlayer[]
@@ -265,20 +266,21 @@ model GamePlayer {
 }
 
 model Tournament {
-  id              String           @id @default(uuid())
-  name            String
-  mode            GameMode
-  variant         DominoVariant    @default(CARROCA)
-  status          TournamentStatus @default(OPEN)
-  entry_fee       Decimal          @db.Decimal(12, 2)
-  prize_pool      Decimal          @default(0) @db.Decimal(12, 2)
-  max_players     Int
-  current_players Int              @default(0)
-  current_round   Int              @default(0)  // 0 = not started
-  starts_at       DateTime
-  finished_at     DateTime?
-  created_at      DateTime         @default(now())
-  updated_at      DateTime         @updatedAt
+  id                 String           @id @default(uuid())
+  name               String
+  mode               GameMode
+  variant            DominoVariant    @default(CARROCA)
+  status             TournamentStatus @default(OPEN)
+  entry_fee          Decimal          @db.Decimal(12, 2)
+  prize_pool         Decimal          @default(0) @db.Decimal(12, 2)
+  initial_prize_pool Decimal          @default(0) @db.Decimal(12, 2) // admin-set prize for in-person events
+  max_players        Int
+  current_players    Int              @default(0)
+  current_round      Int              @default(0)  // 0 = not started
+  starts_at          DateTime
+  finished_at        DateTime?
+  created_at         DateTime         @default(now())
+  updated_at         DateTime         @updatedAt
 
   // In-person event fields
   is_in_person    Boolean          @default(false)
@@ -298,7 +300,9 @@ model TournamentPlayer {
   id             String    @id @default(uuid())
   tournamentId   String
   userId         String
+  seed           Int?      // 1 = best; assigned at start based on league_points
   eliminated_at  DateTime?
+  withdrawn_at   DateTime? // set alongside eliminated_at when player voluntarily leaves
   final_position Int?
   prize_won      Decimal   @default(0) @db.Decimal(12, 2)
   joined_at      DateTime  @default(now())
@@ -313,6 +317,7 @@ model TournamentPlayer {
   @@unique([tournamentId, userId])
   @@index([tournamentId])
   @@index([userId])
+  @@index([seed])
 }
 
 model FraudLog {

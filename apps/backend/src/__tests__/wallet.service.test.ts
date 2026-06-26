@@ -26,7 +26,7 @@ describe('deductBet', () => {
 
     expect(prisma.wallet.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ real_balance: { decrement: 20 }, bonus_balance: { decrement: 0 } }),
+        data: expect.objectContaining({ real_balance: 30, bonus_balance: 0 }),
       })
     );
   });
@@ -41,8 +41,8 @@ describe('deductBet', () => {
     expect(prisma.wallet.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          real_balance: { decrement: 0 },  // all from bonus
-          bonus_balance: { decrement: 20 },
+          real_balance: 50,   // unchanged — all deducted from bonus
+          bonus_balance: 10,  // 30 - 20
         }),
       })
     );
@@ -58,8 +58,8 @@ describe('deductBet', () => {
     expect(prisma.wallet.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          real_balance: { decrement: 20 }, // 30 - 10 bonus
-          bonus_balance: { decrement: 10 },
+          real_balance: 30,  // 50 - 20 (real deduction = 30 - 10 bonus)
+          bonus_balance: 0,  // 10 bonus fully consumed
         }),
       })
     );

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { SettingsModal } from '../components/SettingsModal';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, RefreshControl, Animated, useWindowDimensions, Platform,
+  TextInput, Alert, RefreshControl, Animated, Dimensions, Platform,
 } from 'react-native';
 import { BlurModal } from '../components/BlurModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -277,8 +277,13 @@ const calStyles = StyleSheet.create({
 export function WalletScreen() {
   const { user, refreshUser } = useAuthStore();
   const navigation = useNavigation<any>();
-  const { width: wW } = useWindowDimensions();
-  const isWide = wW >= 700;
+  // Use physical screen width so that minimize/restore transients don't flip layout.
+  const [stableW, setStableW] = useState(() => Dimensions.get('screen').width);
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ screen: s }) => setStableW(s.width));
+    return () => sub.remove();
+  }, []);
+  const isWide = stableW >= 700;
   const dateColW = isWide ? 110 : 72;
   const statusColW = isWide ? 110 : 86;
 
@@ -628,7 +633,13 @@ export function WalletScreen() {
             <View style={styles.modalCard}>
 
               {depositStep === 'amount' && (
-                <>
+                <ScrollView
+                  style={styles.qrScroll}
+                  contentContainerStyle={styles.amountSection}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  keyboardShouldPersistTaps="handled"
+                >
                   <Text style={styles.modalTitle}>Depositar</Text>
                   <Text style={styles.modalSubtitle}>Faça um depósito utilizando o Pix</Text>
 
@@ -690,22 +701,27 @@ export function WalletScreen() {
                   {useCustom && effectiveAmount < 20 && (
                     <Text style={styles.hintText}>Depósito mínimo: R$ 20,00</Text>
                   )}
-                </>
+                </ScrollView>
               )}
 
               {depositStep === 'qr' && (
-                <View style={styles.qrSection}>
+                <ScrollView
+                  style={styles.qrScroll}
+                  contentContainerStyle={styles.qrSection}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                >
                   <Text style={styles.modalTitle}>Aguardando pagamento</Text>
                   <View style={styles.pollingBadge}>
                     <IconHourglass size={14} color="#fbbf24" />
                     <Text style={styles.pollingText}>Escaneie o QR Code para pagar</Text>
                   </View>
                   <View style={styles.qrWrap}>
-                    <QRCode value={qrCode} size={160} color="#000" backgroundColor="#fff" />
+                    <QRCode value={qrCode} size={140} color="#000" backgroundColor="#fff" />
                   </View>
                   <Text style={styles.qrAmount}>R$ {effectiveAmount.toFixed(2)}</Text>
                   <TouchableOpacity
-                    style={styles.gradBtn}
+                    style={[styles.gradBtn, { alignSelf: 'stretch' }]}
                     onPress={async () => {
                       await Clipboard.setStringAsync(qrCode);
                       Alert.alert('Copiado!', 'Cole no seu app de banco para pagar');
@@ -716,10 +732,12 @@ export function WalletScreen() {
                       <Text style={styles.gradBtnText}>Copiar código PIX</Text>
                     </LinearGradient>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={closeDepositModal} style={styles.cancelLink}>
-                    <Text style={styles.cancelLinkText}>Cancelar</Text>
+                  <TouchableOpacity onPress={closeDepositModal} style={[styles.gradBtn, styles.cancelBtn, { alignSelf: 'stretch' }]}>
+                    <View style={styles.cancelBtnInner}>
+                      <Text style={styles.cancelBtnText}>Cancelar</Text>
+                    </View>
                   </TouchableOpacity>
-                </View>
+                </ScrollView>
               )}
 
               {depositStep === 'confirmed' && (
@@ -730,7 +748,7 @@ export function WalletScreen() {
                   </View>
                   <Text style={styles.confirmedTitle}>Depósito confirmado!</Text>
                   <Text style={styles.confirmedAmount}>+ R$ {effectiveAmount.toFixed(2)}</Text>
-                  <TouchableOpacity style={styles.gradBtn} onPress={closeDepositModal}>
+                  <TouchableOpacity style={[styles.gradBtn, { alignSelf: 'stretch' }]} onPress={closeDepositModal}>
                     <LinearGradient colors={['#BEF311','#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.gradBtnInner}>
                       <Text style={styles.gradBtnText}>Fechar</Text>
                     </LinearGradient>
@@ -935,6 +953,7 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%', maxWidth: 360,
+    maxHeight: '90%',
     backgroundColor: 'rgba(10,20,10,0.98)',
     borderRadius: radius.xl, padding: spacing.xl,
     gap: spacing.md,
@@ -976,7 +995,9 @@ const styles = StyleSheet.create({
 
   hintText: { color: 'rgba(255,255,255,0.35)', fontSize: fonts.sizes.xs, textAlign: 'center', marginTop: -spacing.xs },
 
-  qrSection: { alignItems: 'center', gap: spacing.md },
+  qrScroll: { flexGrow: 0 },
+  amountSection: { gap: spacing.md, paddingBottom: spacing.sm },
+  qrSection: { alignItems: 'center', gap: spacing.md, paddingBottom: spacing.sm },
   pollingBadge: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     backgroundColor: 'rgba(251,191,36,0.12)',
@@ -986,8 +1007,9 @@ const styles = StyleSheet.create({
   pollingText:  { color: '#fbbf24', fontWeight: '600', fontSize: fonts.sizes.sm },
   qrWrap:       { backgroundColor: '#fff', padding: spacing.md, borderRadius: radius.lg, ...shadows.card },
   qrAmount:     { color: '#1CBB3D', fontSize: fonts.sizes.xxl, fontWeight: '900' },
-  cancelLink:   { marginTop: -spacing.xs },
-  cancelLinkText: { color: 'rgba(255,255,255,0.35)', fontSize: fonts.sizes.sm, textAlign: 'center' },
+  cancelBtn:       { backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  cancelBtnInner:  { paddingVertical: 13, alignItems: 'center', justifyContent: 'center' },
+  cancelBtnText:   { color: 'rgba(255,255,255,0.6)', fontWeight: '700', fontSize: fonts.sizes.md },
 
   confirmedSection: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
   confirmedIcon: {

@@ -2,9 +2,18 @@ import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { setAuthFailureCallback } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
+import { useTournamentStore } from '../store/tournament.store';
 import { navigationRef } from './navigationRef';
+
+const isExpoGo = Constants.appOwnership === 'expo';
+type NotificationsModule = typeof import('expo-notifications');
+const Notifications: NotificationsModule | null =
+  isExpoGo || Platform.OS === 'web'
+    ? null
+    : (require('expo-notifications') as NotificationsModule);
 
 import { SplashScreen } from '../screens/SplashScreen';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -125,6 +134,24 @@ export function AppNavigator() {
     });
   }, []);
 
+  // Navigate to waiting room when user taps a tournament reminder notification
+  useEffect(() => {
+    if (!Notifications) return;
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as any;
+      if (data?.type !== 'tournament_reminder') return;
+      const tournament = useTournamentStore.getState().activeTournament;
+      if (!tournament || !navigationRef.isReady()) return;
+      navigationRef.navigate('TournamentWaiting', {
+        tournamentId: tournament.tournamentId,
+        tournamentName: tournament.tournamentName,
+        startsAt: tournament.startsAt,
+        entryFee: tournament.entryFee,
+      });
+    });
+    return () => sub.remove();
+  }, []);
+
   const url = (typeof window !== 'undefined' && window.location?.href)
     ? new URL(window.location.href)
     : null;
@@ -172,7 +199,7 @@ export function AppNavigator() {
             <Stack.Screen name="Terms"                component={TermsScreen} />
             <Stack.Screen name="PrivacyPolicy"        component={PrivacyPolicyScreen} />
             <Stack.Screen name="ResponsibleGambling"  component={ResponsibleGamblingScreen} />
-            <Stack.Screen name="TournamentWaiting"    component={TournamentWaitingScreen} options={{ gestureEnabled: false }} />
+            <Stack.Screen name="TournamentWaiting"    component={TournamentWaitingScreen} options={{ gestureEnabled: false, headerShown: false }} />
             <Stack.Screen name="TournamentBracket"    component={TournamentBracketScreen} />
             <Stack.Screen name="TournamentResult"     component={TournamentResultScreen} options={{ gestureEnabled: false }} />
             <Stack.Screen name="Leaderboard"          component={LeaderboardScreen} />

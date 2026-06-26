@@ -8,6 +8,7 @@ import { config } from '../config';
 import { getDevUserById } from '../services/dev-user.store';
 import { sendOtp, verifyOtp } from '../services/otp.service';
 import { logger } from '../utils/logger';
+import { emailService } from '../services/email.service';
 
 export async function sendOtpHandler(req: Request, res: Response) {
   try {
@@ -88,8 +89,14 @@ export async function updateProfileHandler(req: Request, res: Response) {
     const { name, cpf, avatar, gps_lat, gps_lng, date_of_birth } = req.body;
 
     if (avatar && typeof avatar === 'string') {
-      if (avatar.length > 500 || !/^https?:\/\//.test(avatar)) {
+      const isHttpUrl  = /^https?:\/\//.test(avatar);
+      const isDataUri  = /^data:image\/(jpeg|jpg|png|webp);base64,/.test(avatar);
+      if (!isHttpUrl && !isDataUri) {
         return res.status(400).json({ error: 'URL de avatar inválida' });
+      }
+      // ~100 KB image → ~133 KB base64 + data-URI prefix; cap at 200 KB of characters
+      if (isDataUri && avatar.length > 200_000) {
+        return res.status(400).json({ error: 'Imagem muito grande (máximo ~150 KB)' });
       }
     }
 
@@ -237,10 +244,25 @@ export async function requestDataExportHandler(req: Request, res: Response) {
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // In production this would be emailed. For now return the data directly.
-    // Email delivery would require an email service integration.
+    if (user.email) {
+      const dataJson = JSON.stringify(user, null, 2);
+      try {
+        await emailService.send({
+          to: user.email,
+          subject: 'DominoClub — Seus dados pessoais (LGPD Art. 18)',
+          text: `Olá${user.name ? `, ${user.name}` : ''}!\n\nConforme solicitado, seguem todos os seus dados pessoais cadastrados no DominoClub:\n\n${dataJson}\n\nEste e-mail foi gerado automaticamente. Se você não solicitou esta exportação, entre em contato com nosso suporte.`,
+          html: `<p>Olá${user.name ? `, <strong>${user.name}</strong>` : ''}!</p><p>Conforme solicitado (LGPD Art. 18), seguem seus dados pessoais:</p><pre style="background:#f5f5f5;padding:16px;border-radius:4px;font-size:12px">${dataJson}</pre><p style="color:#666;font-size:12px">Se você não solicitou esta exportação, entre em contato com nosso suporte.</p>`,
+        });
+      } catch (emailErr: any) {
+        logger.error('[LGPD] Failed to send data export email', { userId, err: emailErr.message });
+        return res.status(500).json({ error: 'Falha ao enviar e-mail. Tente novamente em instantes.' });
+      }
+      return res.json({ message: 'Seus dados foram enviados para o e-mail cadastrado em até alguns minutos.' });
+    }
+
+    // No email on file — return data directly so the user is never blocked
     res.json({
-      message: 'Seus dados foram preparados. Em produção, serão enviados ao e-mail cadastrado em até 48h.',
+      message: 'Dados disponíveis abaixo. Cadastre um e-mail em Perfil para receber exportações futuras por e-mail.',
       data: user,
     });
   } catch (err: any) {

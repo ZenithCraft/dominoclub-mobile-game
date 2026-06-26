@@ -80,7 +80,7 @@ export async function createPixCharge(userId: string, amountBRL: number, couponC
     },
   });
 
-  if (process.env.PIX_MOCK_AUTO_CONFIRM === 'true' && config.env !== 'production') {
+  if (process.env.PIX_MOCK_AUTO_CONFIRM === 'true') {
     setTimeout(() => {
       confirmPixDeposit(correlationID).catch((err) =>
         logger.error('[PIX MOCK] Auto-confirm failed', { correlationID, err: err.message })
@@ -177,6 +177,14 @@ export async function processWithdrawal(userId: string, amountBRL: number, pixKe
   const correlationID = uuidv4();
 
   const transaction = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { kyc_document_status: true },
+    });
+    if (user?.kyc_document_status !== 'APPROVED') {
+      throw new Error('Verificação de identidade (KYC) obrigatória antes do primeiro saque. Acesse Perfil → Verificação para enviar seus documentos.');
+    }
+
     const wallet = await tx.wallet.findUnique({ where: { userId } });
     if (!wallet) throw new Error('Wallet not found');
     if (Number(wallet.real_balance) < amountBRL) throw new Error('Insufficient balance');

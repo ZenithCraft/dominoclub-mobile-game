@@ -219,13 +219,15 @@ async function resolveTeamAssignments(userIds: string[]): Promise<number[]> {
     }
   }
 
-  if (inCooldown.size === 0) return [1, 1, 2, 2];
+  // Alternating seats: partners sit across from each other (seat 0 & 2 vs seat 1 & 3)
+  if (inCooldown.size === 0) return [1, 2, 1, 2];
 
-  // 3 possible team splits for 4 players (indices 0-3):
-  // [0,1] vs [2,3] | [0,2] vs [1,3] | [0,3] vs [1,2]
+  // 3 possible team splits — prefer alternating (across) first so partners
+  // always face each other on the visual table layout.
+  // [0,2] vs [1,3] | [0,1] vs [2,3] | [0,3] vs [1,2]
   const splits = [
-    [[0, 1], [2, 3]],
     [[0, 2], [1, 3]],
+    [[0, 1], [2, 3]],
     [[0, 3], [1, 2]],
   ] as const;
 
@@ -244,7 +246,7 @@ async function resolveTeamAssignments(userIds: string[]): Promise<number[]> {
   }
 
   // Fallback if no clean split exists (e.g. multiple conflicting cooldowns)
-  return [1, 1, 2, 2];
+  return [1, 2, 1, 2];
 }
 
 // Called after a 2v2 game finishes. Updates consecutive-same-team counters and
@@ -375,24 +377,31 @@ async function createMatch(players: QueueEntry[], mode: 'ARENA_1V1' | 'CUP_1V1' 
 }
 
 async function createBotUser() {
-  const suffix = uuidv4().replace(/-/g, '').slice(0, 12);
-  const phone = `+5599${suffix}`;
-  try {
-    return await prisma.user.create({
-      data: {
-        phone,
-        name: 'Bot',
-        cpf_verified: true,
-        phone_verified: true,
-      },
-      select: { id: true },
-    });
-  } catch {
-    return { id: `bot_${uuidv4()}` };
+  // Use only digits so the phone passes any E.164/numeric DB constraints.
+  // Combine timestamp + random to guarantee uniqueness even in rapid 2v2 injection.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const ts  = Date.now().toString().slice(-7);
+    const rnd = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    const phone = `+5599${ts}${rnd}`; // +5599 + 11 digits = 16 chars (valid E.164)
+    try {
+      return await prisma.user.create({
+        data: { phone, name: 'Bot', cpf_verified: true, phone_verified: true },
+        select: { id: true },
+      });
+    } catch (err: any) {
+      // Unique violation (P2002): try again with a fresh number
+      if (err?.code !== 'P2002' || attempt === 2) {
+        logger.warn('createBotUser failed', { attempt, message: err?.message });
+        break;
+      }
+    }
   }
+  // Fallback: return a fake ID — createMatch will fail gracefully via match_failed
+  return { id: `bot_${uuidv4()}` };
 }
 
-// Bot injection: if a player waits too long, inject a bot opponent
+// Bot injection: if a player waits too long, inject enough bots to fill the match.
+// For 1v1 modes this means 1 bot; for 2v2 modes up to 3 bots (filling remaining spots).
 export function startBotInjectionTimer(entry: QueueEntry, waitSeconds: number) {
   if (!waitSeconds || waitSeconds <= 0) return null;
   const timeout = setTimeout(() => {
@@ -402,19 +411,29 @@ export function startBotInjectionTimer(entry: QueueEntry, waitSeconds: number) {
       const stillWaiting = queue.find((e) => e.userId === entry.userId);
       if (!stillWaiting) return;
 
-      logger.info('Injecting bot for waiting player', { userId: entry.userId, mode: entry.mode, betAmount: entry.betAmount });
+      const playersNeeded = entry.mode.includes('2V2') ? 4 : 2;
+      const matchingInQueue = queue.filter(
+        (e) => e.betAmount === entry.betAmount && e.variant === entry.variant,
+      ).length;
+      const botsToInject = Math.max(0, playersNeeded - matchingInQueue);
 
-      const bot = await createBotUser();
-      const botEntry: QueueEntry = {
-        userId: bot.id,
-        socketId: `bot_socket_${uuidv4()}`,
-        betAmount: entry.betAmount,
-        variant: entry.variant,
-        mode: entry.mode,
-        joinedAt: Date.now(),
-        isBot: true,
-      };
-      enqueue(botEntry);
+      logger.info('Injecting bots for waiting player', { userId: entry.userId, mode: entry.mode, betAmount: entry.betAmount, botsToInject });
+
+      const botUsers = await Promise.all(
+        Array.from({ length: botsToInject }, () => createBotUser()),
+      );
+      for (const bot of botUsers) {
+        const botEntry: QueueEntry = {
+          userId: bot.id,
+          socketId: `bot_socket_${uuidv4()}`,
+          betAmount: entry.betAmount,
+          variant: entry.variant,
+          mode: entry.mode,
+          joinedAt: Date.now(),
+          isBot: true,
+        };
+        enqueue(botEntry);
+      }
     })();
   }, waitSeconds * 1000);
 

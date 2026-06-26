@@ -7,7 +7,7 @@ import { config } from '../config';
 import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
 import { AdminRequest } from '../middleware/admin.middleware';
-import { activeGames } from '../socket/gameSocket';
+import { activeGames, adminForceEnd } from '../socket/gameSocket';
 import { cancelAndRefundTournament, createTournament, emergencyCancelTournament, startTournament } from '../services/tournament.service';
 import { getRuntimeConfig, invalidateRuntimeConfigCache } from '../services/runtime-config.service';
 import { approveKyc, rejectKyc } from '../services/kyc.service';
@@ -478,7 +478,7 @@ export async function createTournamentAdminHandler(req: Request, res: Response) 
   try {
     const { name, mode, variant, entryFee, maxPlayers, startsAt, isInPerson, address, checkinTime, bannerUrl } = req.body;
 
-    if (!name || !mode || !entryFee || !maxPlayers || !startsAt) {
+    if (!name || !mode || entryFee == null || !maxPlayers || !startsAt) {
       return res.status(400).json({ error: 'name, mode, entryFee, maxPlayers, startsAt are required' });
     }
 
@@ -1500,6 +1500,24 @@ export async function triggerMonthlyResetAdminHandler(_req: Request, res: Respon
   try {
     const updated = await monthlyLeagueReset();
     res.json({ message: `Monthly reset complete`, usersUpdated: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// POST /admin/games/:gameId/forfeit-player  { userId }
+// Dev/testing helper: forfeit a specific player so their opponent wins immediately.
+export async function adminForfeitPlayerHandler(req: Request, res: Response) {
+  try {
+    const { gameId } = req.params;
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+
+    const state = activeGames.get(gameId);
+    if (!state) return res.status(404).json({ error: 'Game not found in active games' });
+
+    await adminForceEnd(gameId, userId);
+    res.json({ ok: true, gameId, forfeitedUserId: userId });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

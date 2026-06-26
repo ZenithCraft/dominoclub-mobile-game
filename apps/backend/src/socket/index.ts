@@ -123,7 +123,7 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       }
 
       // Validate betAmount
-      const ALLOWED_BETS = [0, 5, 10, 20, 50, 100, 200, 500, 1000];
+      const ALLOWED_BETS = [0, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000];
       if (typeof data.betAmount !== 'number' || !ALLOWED_BETS.includes(data.betAmount)) {
         socket.emit('queue:error', { message: 'Valor de aposta inválido' });
         return;

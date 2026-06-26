@@ -156,16 +156,21 @@ export interface GpsValidationResult {
 }
 
 /**
- * Validates that GPS coordinates are within Brazil.
- * Also evaluates accuracy: low-accuracy fixes are accepted but flagged.
+ * Validates GPS coordinates. Checks for obviously invalid values and flags
+ * low-confidence fixes (outside Brazil, low accuracy, mock location).
+ * Location outside Brazil is flagged as low-confidence but never blocks play —
+ * the app is open to users worldwide.
  */
 export function validateGpsBounds(coords: GpsCoords): GpsValidationResult {
   const { lat, lng, accuracy } = coords;
   if (typeof lat !== 'number' || typeof lng !== 'number' || !isFinite(lat) || !isFinite(lng)) {
     return { valid: false, reason: 'Coordenadas GPS inválidas' };
   }
-  if (lat < BRAZIL_LAT_MIN || lat > BRAZIL_LAT_MAX || lng < BRAZIL_LNG_MIN || lng > BRAZIL_LNG_MAX) {
-    return { valid: false, reason: 'Localização fora do Brasil' };
+
+  const outsideBrazil =
+    lat < BRAZIL_LAT_MIN || lat > BRAZIL_LAT_MAX || lng < BRAZIL_LNG_MIN || lng > BRAZIL_LNG_MAX;
+  if (outsideBrazil) {
+    return { valid: true, lowConfidence: true, reason: 'Localização fora do Brasil' };
   }
 
   // Accuracy of exactly 0 is a known mock-location indicator on Android

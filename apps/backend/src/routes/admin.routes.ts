@@ -51,6 +51,7 @@ import {
   // League
   getLeaderboardAdminHandler,
   triggerMonthlyResetAdminHandler,
+  adminForfeitPlayerHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -122,5 +123,8 @@ router.delete('/announcements/:id', deleteAnnouncementAdminHandler);
 // League
 router.get('/league/leaderboard', getLeaderboardAdminHandler);
 router.post('/league/monthly-reset', triggerMonthlyResetAdminHandler);
+
+// Dev/testing helpers
+router.post('/games/:gameId/forfeit-player', adminForfeitPlayerHandler);
 
 export default router;

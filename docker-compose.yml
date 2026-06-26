@@ -41,7 +41,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - ./apps/backend/.env
+      - ./apps/backend/.env.production
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://dominoclub:${POSTGRES_PASSWORD:-dominoclub_dev}@postgres:5432/dominoclub

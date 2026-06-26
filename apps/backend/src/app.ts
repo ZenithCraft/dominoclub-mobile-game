@@ -60,7 +60,7 @@ const adminLoginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: false,
-  skip: () => process.env.NODE_ENV === 'test',
+  skip: () => process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development',
 });
 
 // Admin API: tighter than general API but looser than login

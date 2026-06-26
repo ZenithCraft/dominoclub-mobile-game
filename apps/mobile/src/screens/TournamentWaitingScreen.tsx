@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Platform, Animated, Pressable, Image,
+  Platform, Animated, Pressable, Image, useWindowDimensions,
 } from 'react-native';
 import { BlurModal } from '../components/BlurModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
 import { ScreenBackground } from '../components/ScreenBackground';
-import { IconTrophy, IconSettings, IconX } from '../components/Icons';
+import { IconSettings, IconX } from '../components/Icons';
 import { GradientToggle } from './HomeScreen';
 import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
@@ -74,28 +74,19 @@ async function scheduleTournamentNotification(startsAt: Date, tournamentName: st
   } catch {}
 }
 
-// ─── Round label helper ───────────────────────────────────────────────────────
-
-function roundLabel(round: number, totalRounds: number): string {
-  const fromEnd = totalRounds - round;
-  if (fromEnd === 0) return 'Final';
-  if (fromEnd === 1) return 'Semifinal';
-  if (fromEnd === 2) return 'Quartas de final';
-  return `Rodada ${round}`;
-}
-
 // ─── Countdown hook ───────────────────────────────────────────────────────────
 
-function useCountdown(targetDate: Date | null) {
-  const [remaining, setRemaining] = useState<number>(0);
+function useCountdown(targetDate: Date) {
+  const [remaining, setRemaining] = useState<number>(() => Math.max(0, targetDate.getTime() - Date.now()));
 
+  // targetDate is stabilised by the caller (useRef.current) — safe dep
   useEffect(() => {
-    if (!targetDate) return;
     const tick = () => setRemaining(Math.max(0, targetDate.getTime() - Date.now()));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [targetDate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const h = Math.floor(remaining / 3_600_000);
   const m = Math.floor((remaining % 3_600_000) / 60_000);
@@ -113,20 +104,34 @@ type Props = {
 
 export function TournamentWaitingScreen({ navigation, route }: Props) {
   const { tournamentId, tournamentName, startsAt, entryFee } = route.params;
-  const startsAtDate = new Date(startsAt);
+
+  // Stable ref — avoids creating a new Date() on every render (which would
+  // cause useCountdown's effect to re-fire → infinite update loop).
+  const startsAtDate = useRef(new Date(startsAt)).current;
+
   const { remaining, h, m, s } = useCountdown(startsAtDate);
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const [cancelledMessage, setCancelledMessage] = useState<string | null>(null);
+  const [byeRound, setByeRound] = useState<number | null>(null);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [musicOn, setMusicOn] = useState(true);
 
+  // Refs so the 30s interval always reads fresh values
+  const remainingRef = useRef(remaining);
+  const cancelledRef = useRef(cancelledMessage);
+  useEffect(() => { remainingRef.current = remaining; }, [remaining]);
+  useEffect(() => { cancelledRef.current = cancelledMessage; }, [cancelledMessage]);
+
+  const { height } = useWindowDimensions();
+  const compact = height < 750;
+
   const setActiveTournament = useTournamentStore((st) => st.setActiveTournament);
   const setNotificationsEnabled = useTournamentStore((st) => st.setNotificationsEnabled);
   const clearActiveTournament = useTournamentStore((st) => st.clearActiveTournament);
 
-  // Pulse animation for trophy icon
+  // Pulse animation
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -151,8 +156,19 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
     }
   }, []);
 
-  const enableNotifications = useCallback(async () => {
-    if (notifEnabled) return;
+  const toggleNotifications = useCallback(async () => {
+    if (notifEnabled) {
+      // Disable
+      if (Notifications) {
+        try { await Notifications.cancelAllScheduledNotificationsAsync(); } catch {}
+      }
+      await setNotificationsEnabled(false);
+      setNotifEnabled(false);
+      toast.info('Notificação desativada.');
+      return;
+    }
+
+    // Enable
     if (Platform.OS === 'web') {
       const WebNotification = (globalThis as any)?.Notification;
       if (!WebNotification) {
@@ -178,7 +194,40 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
     await setNotificationsEnabled(true);
     setNotifEnabled(true);
     toast.success('Notificação ativada.');
-  }, [notifEnabled, startsAt, tournamentName]);
+  }, [notifEnabled, startsAtDate, tournamentName]);
+
+  const handleLeave = useCallback(async () => {
+    const inProgress = byeRound != null || startsAtDate <= new Date();
+    const endpoint = inProgress
+      ? `/game/tournaments/${tournamentId}/withdraw`
+      : `/game/tournaments/${tournamentId}/leave`;
+    try {
+      await api.post(endpoint);
+    } catch {
+      toast.warning('Não foi possível sair do torneio.');
+      return;
+    }
+    await clearActiveTournament();
+    toast.success('Você saiu do torneio.');
+    navigation.replace('ModeSelect', { mode: 'TORNEIO' });
+  }, [byeRound, startsAtDate, tournamentId]);
+
+  // When countdown hits 0, poll /game/active every 2s in case we missed the
+  // tournament:started socket event (race between socket emit and app listening).
+  useEffect(() => {
+    if (remaining > 0 || cancelledMessage) return;
+    const poll = setInterval(async () => {
+      try {
+        const res = await api.get('/game/active');
+        const gameId: string | undefined = res.data?.game?.id;
+        if (gameId) {
+          clearInterval(poll);
+          navigation.replace('Game', { gameId });
+        }
+      } catch {}
+    }, 2000);
+    return () => clearInterval(poll);
+  }, [remaining, cancelledMessage]);
 
   // Socket listeners for tournament events
   useEffect(() => {
@@ -190,7 +239,6 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
 
         socket.on('tournament:started', (data: { tournamentId: string; gameId: string; round: number; totalRounds: number }) => {
           if (!mounted || data.tournamentId !== tournamentId) return;
-          clearActiveTournament();
           navigation.replace('Game', { gameId: data.gameId });
         });
 
@@ -202,8 +250,25 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
 
         socket.on('tournament:next_game', (data: { tournamentId: string; gameId: string; round: number; totalRounds: number }) => {
           if (!mounted || data.tournamentId !== tournamentId) return;
-          clearActiveTournament();
+          setByeRound(null);
           navigation.replace('Game', { gameId: data.gameId });
+        });
+
+        socket.on('tournament:bye', (data: { tournamentId: string; round: number; totalRounds: number }) => {
+          if (!mounted || data.tournamentId !== tournamentId) return;
+          setByeRound(data.round);
+          toast.success(`Rodada ${data.round}: você avançou automaticamente! Aguarde a próxima partida.`);
+        });
+
+        socket.on('tournament:withdrew', (data: { tournamentId: string }) => {
+          if (!mounted || data.tournamentId !== tournamentId) return;
+          clearActiveTournament();
+          navigation.replace('ModeSelect', { mode: 'TORNEIO' });
+        });
+
+        socket.on('tournament:opponent_withdrew', (data: { tournamentId: string; round: number }) => {
+          if (!mounted || data.tournamentId !== tournamentId) return;
+          toast.info('Seu adversário saiu do torneio. Você avançou!');
         });
       } catch {}
     })();
@@ -214,55 +279,79 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
         s.off('tournament:started');
         s.off('tournament:cancelled');
         s.off('tournament:next_game');
+        s.off('tournament:bye');
+        s.off('tournament:withdrew');
+        s.off('tournament:opponent_withdrew');
       }).catch(() => {});
     };
   }, [tournamentId]);
 
-  const trophyScale = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
-  const trophyOpacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] });
+  // 30-second reminder notifications while waiting
+  useEffect(() => {
+    if (!Notifications || Platform.OS === 'web') return;
+    const id = setInterval(async () => {
+      if (remainingRef.current <= 0 || cancelledRef.current) return;
+      const { status } = await Notifications!.getPermissionsAsync();
+      if (status !== 'granted') return;
+      const total = Math.floor(remainingRef.current / 1000);
+      const mm = Math.floor(total / 60);
+      const ss = total % 60;
+      try {
+        await Notifications!.scheduleNotificationAsync({
+          content: {
+            title: '🏆 ' + tournamentName,
+            body: `Começa em ${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}. Prepare-se!`,
+            sound: true,
+            data: { type: 'tournament_reminder' },
+          },
+          trigger: { type: Notifications!.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, repeats: false },
+        });
+      } catch {}
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [tournamentName]);
 
   const pad = (n: number) => String(n).padStart(2, '0');
 
   return (
     <ScreenBackground style={styles.bg}>
-      <SafeAreaView style={styles.safe} edges={[]}>
-        <View style={styles.topBar}>
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)} accessibilityLabel="Configurações">
-            <IconSettings size={22} color="#fff" accessibilityLabel="Configurações" />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.centered}>
-
-          {/* Trophy */}
-          <Animated.View style={{ transform: [{ scale: trophyScale }], opacity: trophyOpacity, marginBottom: spacing.lg }}>
-            <View style={styles.trophyCircle}>
-              <IconTrophy size={40} color="#fbbf24" accessibilityLabel="Torneio" />
-            </View>
-          </Animated.View>
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        {/* Gear button — absolutely positioned so it doesn't shift the centroid */}
+        <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)} accessibilityLabel="Configurações">
+          <IconSettings size={22} color="#fff" accessibilityLabel="Configurações" />
+        </TouchableOpacity>
+        <View style={[styles.scroll, styles.centered]}>
 
           {/* Title */}
-          <Text style={styles.title}>{tournamentName}</Text>
-          <View style={styles.statusPill}>
+          <Text style={[styles.title, compact && styles.titleCompact]}>{tournamentName}</Text>
+          <View style={[styles.statusPill, compact && styles.statusPillCompact]}>
             <View style={styles.statusDot} />
-            <Text style={styles.statusText}>Esperando o torneio começar</Text>
+            <Text style={styles.statusText}>
+              {byeRound != null
+                ? `Bye na rodada ${byeRound} — aguardando próxima`
+                : 'Esperando o torneio começar'}
+            </Text>
           </View>
 
-          {/* Countdown */}
+          {/* Countdown card */}
           <LinearGradient
             colors={['rgba(187,255,0,0.12)', 'rgba(0,0,0,0.45)', 'rgba(28,187,61,0.10)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.countdownCard}
+            style={[styles.countdownCard, compact && styles.countdownCardCompact]}
           >
             {cancelledMessage ? (
               <Text style={styles.cancelledText}>{cancelledMessage}</Text>
             ) : remaining === 0 ? (
-              <Text style={styles.countdownLabel}>Iniciando partida...</Text>
+              <Text style={styles.countdownLabel}>
+                {Date.now() - startsAtDate.getTime() > 60_000
+                  ? 'Aguardando próxima rodada...'
+                  : 'Iniciando partida...'}
+              </Text>
             ) : (
               <>
                 <Text style={styles.countdownLabel}>Começa em</Text>
-                <Text style={styles.countdown}>
+                <Text style={[styles.countdown, compact && styles.countdownCompact]}>
                   {h > 0 ? `${pad(h)}:` : ''}{pad(m)}:{pad(s)}
                 </Text>
               </>
@@ -271,45 +360,37 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
             <View style={styles.infoRow}>
               <View style={styles.infoItem}>
                 <Text style={styles.infoLabel}>Entrada paga</Text>
-                <Text style={styles.infoValue}>R$ {entryFee.toFixed(2)}</Text>
-              </View>
-              <View style={styles.infoDivider} />
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Notificação</Text>
-                <Text style={[styles.infoValue, { color: notifEnabled ? '#1CBB3D' : 'rgba(255,255,255,0.75)' }]}>
-                  {notifEnabled ? 'Ativa' : 'Desativada'}
-                </Text>
+                <Text style={styles.infoValue}>R$ {Number(entryFee).toFixed(2)}</Text>
               </View>
             </View>
           </LinearGradient>
 
-          {!cancelledMessage && !notifEnabled && (
-            <TouchableOpacity style={styles.notifyBtn} onPress={enableNotifications} activeOpacity={0.85}>
-              <Text style={styles.notifyBtnText}>Ativar notificação</Text>
-            </TouchableOpacity>
+          {/* Action buttons: notification toggle + leave, side by side */}
+          {!cancelledMessage && (
+            <View style={[styles.actionsRow, compact && styles.actionsRowCompact]}>
+              <TouchableOpacity
+                style={[styles.actionBtn, notifEnabled && styles.actionBtnNotifActive]}
+                onPress={toggleNotifications}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.actionBtnText, notifEnabled && styles.actionBtnTextActive]}>
+                  {notifEnabled ? '🔔 Notif ativa' : '🔕 Notificar'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnLeave]}
+                onPress={handleLeave}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.actionBtnText, styles.actionBtnTextLeave]}>Sair do torneio</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
+          {/* Back to lobby */}
           <TouchableOpacity
-            style={styles.leaveBtn}
-            onPress={async () => {
-              try {
-                await api.post(`/game/tournaments/${tournamentId}/leave`);
-              } catch {
-                toast.warning('Não foi possível sair do torneio.');
-                return;
-              }
-              await clearActiveTournament();
-              toast.success('Você saiu do torneio.');
-              navigation.replace('ModeSelect', { mode: 'TORNEIO' });
-            }}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.leaveBtnText}>Sair do torneio</Text>
-          </TouchableOpacity>
-
-          {/* Back button */}
-          <TouchableOpacity
-            style={styles.backBtn}
+            style={[styles.backBtn, compact && styles.btnCompact]}
             onPress={() => navigation.replace('ModeSelect', { mode: 'TORNEIO' })}
             activeOpacity={0.85}
           >
@@ -416,95 +497,110 @@ const settingsStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: '#0a1f0a' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
   safe: { flex: 1 },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
   gearBtn: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.lg,
+    zIndex: 10,
     width: 44, height: 44, borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(187,255,0,0.22)',
     alignItems: 'center', justifyContent: 'center',
   },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl },
-
-  trophyCircle: {
-    width: 80, height: 80, borderRadius: 40,
-    backgroundColor: 'rgba(251,191,36,0.15)',
-    borderWidth: 2, borderColor: 'rgba(251,191,36,0.4)',
-    alignItems: 'center', justifyContent: 'center',
+  scroll: { flex: 1 },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    // Equal top/bottom padding so justifyContent:'center' lands at true screen midpoint.
+    // paddingTop also clears the absolute gear button (top:8 + height:44 + gap ≈ 60px).
+    paddingTop: 68,
+    paddingBottom: 68,
+    gap: spacing.sm,
   },
 
   title: {
     color: '#fff', fontSize: fonts.sizes.xl, fontWeight: '900',
-    textAlign: 'center', marginBottom: spacing.xs,
+    textAlign: 'center',
   },
+  titleCompact: { fontSize: fonts.sizes.lg },
   statusPill: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: 'rgba(28,187,61,0.15)',
     borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: 5,
     borderWidth: 1, borderColor: 'rgba(28,187,61,0.3)',
-    marginBottom: spacing.lg,
   },
+  statusPillCompact: {},
   statusDot: {
     width: 8, height: 8, borderRadius: 4, backgroundColor: '#1CBB3D',
   },
   statusText: { color: '#1CBB3D', fontSize: fonts.sizes.sm, fontWeight: '700' },
 
   countdownCard: {
-    width: '100%', maxWidth: 300,
+    width: '100%', maxWidth: 320,
     borderRadius: radius.xl, padding: spacing.lg,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center', gap: spacing.md,
-    marginBottom: spacing.lg,
   },
+  countdownCardCompact: { padding: spacing.md, gap: spacing.sm },
   countdownLabel: { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.sm, fontWeight: '600' },
   countdown: {
     color: '#fff', fontSize: 44, fontWeight: '900', letterSpacing: 2,
     ...(Platform.OS === 'web' ? ({ fontVariantNumeric: 'tabular-nums' } as any) : null),
   },
+  countdownCompact: { fontSize: 32, letterSpacing: 1 },
   cancelledText: {
     color: '#fca5a5', fontSize: fonts.sizes.md, fontWeight: '700', textAlign: 'center',
   },
 
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, width: '100%' },
-  infoItem: { flex: 1, alignItems: 'center', gap: 4 },
-  infoDivider: { width: 1, height: 32, backgroundColor: 'rgba(255,255,255,0.15)' },
+  infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%' },
+  infoItem: { alignItems: 'center', gap: 4 },
   infoLabel: { color: 'rgba(255,255,255,0.5)', fontSize: fonts.sizes.xs, fontWeight: '600' },
   infoValue: { color: '#fff', fontSize: fonts.sizes.md, fontWeight: '800' },
 
-  notifyBtn: {
+  // Two-button action row
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    width: '100%',
+    maxWidth: 320,
+  },
+  actionsRowCompact: {},
+  actionBtn: {
+    flex: 1,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: 'rgba(28,187,61,0.35)',
+    borderColor: 'rgba(255,255,255,0.2)',
     paddingVertical: 12,
-    paddingHorizontal: spacing.xxl,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginBottom: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.07)',
   },
-  notifyBtnText: { color: '#1CBB3D', fontWeight: '800', fontSize: fonts.sizes.sm },
-  leaveBtn: {
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.55)',
-    paddingVertical: 12,
-    paddingHorizontal: spacing.xxl,
-    backgroundColor: 'rgba(239,68,68,0.18)',
-    marginBottom: spacing.md,
+  actionBtnNotifActive: {
+    borderColor: 'rgba(28,187,61,0.45)',
+    backgroundColor: 'rgba(28,187,61,0.12)',
   },
-  leaveBtnText: { color: '#fecaca', fontWeight: '800', fontSize: fonts.sizes.sm },
+  actionBtnLeave: {
+    borderColor: 'rgba(239,68,68,0.45)',
+    backgroundColor: 'rgba(239,68,68,0.12)',
+  },
+  actionBtnText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '700',
+    fontSize: fonts.sizes.xs,
+  },
+  actionBtnTextActive: { color: '#1CBB3D' },
+  actionBtnTextLeave: { color: '#fecaca' },
 
+  btnCompact: { paddingVertical: 8 },
   backBtn: {
     borderRadius: radius.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
     paddingVertical: 14, paddingHorizontal: spacing.xxl,
     backgroundColor: 'rgba(255,255,255,0.08)',
-    marginBottom: spacing.md,
+    width: '100%', maxWidth: 320, alignItems: 'center',
   },
   backBtnText: { color: '#e2e8f0', fontWeight: '700', fontSize: fonts.sizes.md },
 
@@ -512,6 +608,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     paddingVertical: 14, paddingHorizontal: spacing.xxl,
     backgroundColor: '#1CBB3D',
+    width: '100%', maxWidth: 320, alignItems: 'center',
   },
   goHomeBtnText: { color: '#052e16', fontWeight: '900', fontSize: fonts.sizes.md },
 });

@@ -440,7 +440,9 @@ export function getBotMove(state: GameState, playerIndex: number): {
   const validMoves = getValidMoves(state, playerIndex);
 
   if (validMoves.length === 0) {
-    if (state.boneyard.length > 0) return { action: 'draw' };
+    // In 4-player (2v2) games drawing is not allowed — always pass
+    const is4Player = state.players.length >= 4;
+    if (!is4Player && state.boneyard.length > 0) return { action: 'draw' };
     return { action: 'pass' };
   }
 

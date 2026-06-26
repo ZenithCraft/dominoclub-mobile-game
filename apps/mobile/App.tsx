@@ -2,7 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaInsetsContext, SafeAreaFrameContext } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
-import { Platform, AppState, Dimensions } from 'react-native';
+import { Platform, AppState, Dimensions, LogBox } from 'react-native';
+
+// expo-navigation-bar's setPositionAsync / setBehaviorAsync are not supported on
+// Android 15+ with edge-to-edge enabled (enforced by Expo Go). Suppress the warnings
+// so they don't pollute the dev console.
+LogBox.ignoreLogs([
+  '`setPositionAsync` is not supported with edge-to-edge enabled',
+  '`setBehaviorAsync` is not supported with edge-to-edge enabled',
+]);
 import { AppNavigator } from './src/navigation';
 import { ToastContainer } from './src/components/Toast';
 

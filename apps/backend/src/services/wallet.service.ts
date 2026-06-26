@@ -50,16 +50,25 @@ export async function deductBet(walletId: string, amount: number) {
     const useBonus      = bonusBal >= amount;
     const realDeduction = useBonus ? 0 : amount - Math.min(bonusBal, amount);
     const bonusDeduction = useBonus ? amount : bonusBal;
-    const rolloverDeduction = rolloverRem > 0 ? Math.min(rolloverRem, amount) : 0;
+    // Only count toward rollover when bonus funds are involved in this bet
+    const rolloverDeduction = rolloverRem > 0 && bonusDeduction > 0
+      ? Math.min(rolloverRem, amount)
+      : 0;
 
     if (realBal < realDeduction) throw new Error('Insufficient balance');
+
+    const newRollover = Math.max(0, rolloverRem - rolloverDeduction);
+    const rolloverJustCleared = rolloverRem > 0 && newRollover === 0;
+    // When rollover clears, convert remaining bonus into real balance
+    const newRealBal  = realBal - realDeduction + (rolloverJustCleared ? bonusBal - bonusDeduction : 0);
+    const newBonusBal = rolloverJustCleared ? 0 : bonusBal - bonusDeduction;
 
     await tx.wallet.update({
       where: { id: walletId },
       data: {
-        real_balance:  { decrement: realDeduction },
-        bonus_balance: { decrement: bonusDeduction },
-        ...(rolloverDeduction > 0 ? { rollover_remaining: { decrement: rolloverDeduction } } : {}),
+        real_balance:  newRealBal,
+        bonus_balance: newBonusBal,
+        ...(rolloverDeduction > 0 ? { rollover_remaining: newRollover } : {}),
       },
     });
 
@@ -69,7 +78,33 @@ export async function deductBet(walletId: string, amount: number) {
         type: 'BET',
         amount: -amount,
         status: 'COMPLETED',
-        balance_after: realBal - realDeduction,
+        balance_after: newRealBal,
+      },
+    });
+  }, { isolationLevel: 'Serializable' as any });
+}
+
+// Refunds a failed game-start bet directly to real_balance.
+// We don't track per-bet source buckets, so real_balance is the safe default.
+// Must NOT use creditWin — that routes to bonus_balance when rollover is active.
+export async function refundBet(walletId: string, amount: number) {
+  await prisma.$transaction(async (tx) => {
+    const wallet = await tx.wallet.findUnique({ where: { id: walletId } });
+    if (!wallet) throw new Error('Wallet not found');
+
+    const updated = await tx.wallet.update({
+      where: { id: walletId },
+      data: { real_balance: { increment: amount } },
+    });
+
+    await tx.transaction.create({
+      data: {
+        walletId,
+        type: 'REFUND',
+        amount,
+        status: 'COMPLETED',
+        balance_after: n(updated.real_balance),
+        description: 'Reembolso de entrada — partida cancelada',
       },
     });
   }, { isolationLevel: 'Serializable' as any });

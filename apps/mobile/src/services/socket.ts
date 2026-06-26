@@ -75,7 +75,13 @@ function createSocket(token: string | null) {
 
   s.on('connect',       () => { if (__DEV__) console.log('Socket connected:', s.id); });
   s.on('disconnect',    (reason) => { if (__DEV__) console.log('Socket disconnected:', reason); });
-  s.on('connect_error', (err) => { if (__DEV__) console.error('Socket error:', err.message); });
+  s.on('connect_error', (err) => {
+    if (__DEV__) {
+      // Auth errors are expected on first connect in dev (token refresh handles it)
+      if (isAuthSocketError(err)) console.warn('Socket auth error (retrying):', err.message);
+      else console.error('Socket error:', err.message);
+    }
+  });
 
   return s;
 }

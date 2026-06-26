@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, Image,
   TouchableOpacity, Alert, Animated, Pressable, ActivityIndicator,
-  Platform, useWindowDimensions, Easing, PanResponder, Dimensions, AppState,
+  Platform, useWindowDimensions, Easing, PanResponder, Dimensions, AppState, BackHandler,
 } from 'react-native';
 import { BlurModal } from '../components/BlurModal';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +20,7 @@ import { ScreenBackground } from '../components/ScreenBackground';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import { useGameStore, Tile, GameState, PlacedTile, WIN_TYPE_LABEL, WIN_TYPE_POINTS } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
+import { useTournamentStore } from '../store/tournament.store';
 import { RootStackParamList } from '../navigation';
 
 type PlaySide = 'left' | 'right' | 'top' | 'bottom';
@@ -1061,7 +1062,7 @@ function ScoreBox({ is4Player, myScore, oppScore, targetScore }: { is4Player: bo
 const scoreStyles = StyleSheet.create({
   box: {
     backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     paddingVertical: isPhone ? 5 : isTablet ? 14 : 10,
     paddingHorizontal: isPhone ? 10 : isTablet ? 24 : 18,
     gap: isPhone ? 4 : isTablet ? 10 : 8,
@@ -1085,10 +1086,10 @@ const scoreStyles = StyleSheet.create({
 // ─── Opponent card (top centre) ───────────────────────────────────────────────
 
 const TEAM_COLORS = {
-  idle:  (t: number) => t === 1 ? 'rgba(59,130,246,0.45)' : 'rgba(239,68,68,0.45)',
-  turn:  (t: number) => t === 1 ? 'rgba(96,165,250,0.95)'  : 'rgba(248,113,113,0.95)',
-  glow:  (t: number) => t === 1 ? '#60a5fa' : '#f87171',
-  none: 'rgba(0,0,0,0.55)',
+  idle:  (t: number) => t === 1 ? 'rgba(74,222,128,0.70)'  : 'rgba(239,68,68,0.70)',
+  turn:  (t: number) => t === 1 ? 'rgba(134,239,172,0.95)' : 'rgba(248,113,113,0.95)',
+  glow:  (t: number) => t === 1 ? '#4ade80' : '#f87171',
+  none: 'rgba(255,255,255,0.30)',
 };
 
 function teamTurnStyle(team: number) {
@@ -1159,8 +1160,8 @@ const oppStyles = StyleSheet.create({
     paddingLeft: isSmallPhone ? 9 : isPhone ? 13 : 18,
     paddingRight: isSmallPhone ? 7 : isPhone ? 11 : 14,
     gap: isSmallPhone ? 5 : isPhone ? 7 : 11,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.30)',
     minWidth: isSmallPhone ? 118 : isPhone ? 150 : isTablet ? 350 : 190,
     minHeight: isSmallPhone ? 39 : isPhone ? 47 : isTablet ? 88 : 56,
   },
@@ -1185,8 +1186,8 @@ const oppStyles = StyleSheet.create({
 // ─── Opponent Timer (same style as player timer) ──────────────────────────────
 
 function OpponentTimer({ timer, isTurn }: { timer: number; isTurn: boolean }) {
+  const pulseAnim = usePulse(isTurn);
   if (!isTurn) return null;
-  const pulseAnim = usePulse(true);
   const timerStyle = timer > 10 ? styles.timerBadgeGreen
     : timer > 5 ? styles.timerBadgeGold
     : styles.timerBadgeRed;
@@ -1239,8 +1240,8 @@ const sideStyles = StyleSheet.create({
     paddingVertical: isSmallPhone ? 6 : isPhone ? 8 : 12,
     paddingHorizontal: isSmallPhone ? 8 : isPhone ? 10 : 14,
     gap: isSmallPhone ? 3 : isPhone ? 4 : 6,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.30)',
     minWidth: isSmallPhone ? 60 : isPhone ? 72 : isTablet ? 140 : 96,
     minHeight: isSmallPhone ? 64 : isPhone ? 78 : isTablet ? 150 : 110,
   },
@@ -1325,8 +1326,8 @@ const myCardStyles = StyleSheet.create({
     paddingLeft: isSmallPhone ? 9 : isPhone ? 13 : 18,
     paddingRight: isSmallPhone ? 7 : isPhone ? 11 : 14,
     gap: isSmallPhone ? 5 : isPhone ? 7 : 11,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.30)',
     minWidth: isSmallPhone ? 118 : isPhone ? 150 : isTablet ? 350 : 190,
     minHeight: isSmallPhone ? 39 : isPhone ? 47 : isTablet ? 88 : 56,
   },
@@ -1518,6 +1519,7 @@ export function GameScreen({ navigation, route }: Props) {
   const opponentEndTimeRef = useRef<number | null>(null);
   const [resultModal, setResultModal]   = useState(false);
   const [playAgainSearching, setPlayAgainSearching] = useState(false);
+  const [tournamentMatchModal, setTournamentMatchModal] = useState<{ visible: boolean; won: boolean } | null>(null);
   const [gameError, setGameError]       = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
   // Set of opponent userIds currently in their disconnect grace window, mapped
@@ -1586,6 +1588,12 @@ export function GameScreen({ navigation, route }: Props) {
     ? Math.round(Math.min(viewportWidth * 0.78, 1400) / 1.45)
     : Math.round(Math.min(viewportWidth * 0.94, 980) / 1.50);
   const tableHeight = Math.min(_maxByW, _maxByH);
+  // Never let the table shrink — Android useWindowDimensions can temporarily
+  // return a smaller height when coming back from background.
+  const stableTableHeightRef = useRef(0);
+  if (tableHeight > stableTableHeightRef.current) stableTableHeightRef.current = tableHeight;
+  const stableTableHeight = stableTableHeightRef.current || tableHeight;
+
   const myUserId = String((user as any)?.id ?? (user as any)?.userId ?? (user as any)?._id ?? '');
   const myPlayerIndex = (() => {
     const players = currentGame?.players ?? [];
@@ -1640,13 +1648,19 @@ export function GameScreen({ navigation, route }: Props) {
   const targetScore   = currentGame?.targetScore ?? 6;
 
   // ── Timer ──────────────────────────────────────────────────────────────────
-  // Timestamp-based timer that works even when browser tab is inactive
-  const resetTurnTimer = useCallback(() => {
+  // Timestamp-based timer synced to server's turnStartedAt so client and
+  // server timeouts fire at the same moment regardless of network latency.
+  const TURN_TIMEOUT_MS = 15000;
+  const resetTurnTimer = useCallback((turnStartedAt?: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
-    turnEndTimeRef.current = Date.now() + 15000;
-    opponentEndTimeRef.current = Date.now() + 15000;
-    setTurnTimer(15);
-    setOpponentTimer(15);
+    const deadline = turnStartedAt
+      ? turnStartedAt + TURN_TIMEOUT_MS
+      : Date.now() + TURN_TIMEOUT_MS;
+    turnEndTimeRef.current = deadline;
+    opponentEndTimeRef.current = deadline;
+    const initial = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    setTurnTimer(initial);
+    setOpponentTimer(initial);
     timerRef.current = setInterval(() => {
       if (turnEndTimeRef.current) {
         const remaining = Math.ceil((turnEndTimeRef.current - Date.now()) / 1000);
@@ -1659,14 +1673,14 @@ export function GameScreen({ navigation, route }: Props) {
     }, 100);
   }, []);
 
-  // Opponent timer countdown - only count when it's opponent's turn
+  // Opponent timer countdown - driven by the same deadline set in resetTurnTimer
   useEffect(() => {
     if (isMyTurn || !currentGame || currentGame.status !== 'playing') {
-      setOpponentTimer(15);
       opponentEndTimeRef.current = null;
       return;
     }
-    opponentEndTimeRef.current = Date.now() + opponentTimer * 1000;
+    // opponentEndTimeRef is already set by resetTurnTimer when state arrived;
+    // just start a tick interval that reads it without overwriting.
     const interval = setInterval(() => {
       if (opponentEndTimeRef.current) {
         const remaining = Math.ceil((opponentEndTimeRef.current - Date.now()) / 1000);
@@ -1680,24 +1694,40 @@ export function GameScreen({ navigation, route }: Props) {
     return () => clearInterval(interval);
   }, [isMyTurn, currentGame?.status, currentGame?.currentPlayerIndex]);
 
-  // Auto-pass when timer reaches 0 (no auto-play)
+  // Auto-pass when timer reaches 0, but only when there's literally nothing else to do.
+  // When the player has valid moves or can draw, let the backend timer handle the timeout
+  // (it auto-plays via getBotMove) — sending a premature pass would be rejected by the server.
   const autoPassExecutedRef = useRef(false);
   useEffect(() => {
     if (turnTimer !== 0 || !isMyTurn || !currentGame) {
       autoPassExecutedRef.current = false;
       return;
     }
-    // Prevent multiple executions
     if (autoPassExecutedRef.current) return;
+    if (hasValidMoves) return;            // server timer will auto-play
+    if (!is4Player && hasBoneyard) return; // must draw first, server handles timeout
     autoPassExecutedRef.current = true;
 
-    // Auto-pass when time runs out
     const timeout = setTimeout(() => {
       handlePass();
     }, 100);
 
     return () => clearTimeout(timeout);
-  }, [turnTimer, isMyTurn]);
+  }, [turnTimer, isMyTurn, hasValidMoves, is4Player, hasBoneyard]);
+
+  // Auto-pass in 4-player (2v2) when there are no valid moves — drawing is not
+  // allowed in 2v2, so the player must pass immediately without waiting for the timer.
+  const autoPass4pRef = useRef(false);
+  useEffect(() => {
+    if (!is4Player || !isMyTurn || !currentGame || hasValidMoves) {
+      autoPass4pRef.current = false;
+      return;
+    }
+    if (autoPass4pRef.current) return;
+    autoPass4pRef.current = true;
+    const t = setTimeout(() => { handlePass(); }, 800);
+    return () => clearTimeout(t);
+  }, [is4Player, isMyTurn, hasValidMoves, currentGame?.currentPlayerIndex]);
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
@@ -1853,6 +1883,8 @@ export function GameScreen({ navigation, route }: Props) {
         socketRef.current = socket;
 
         const onGameState = (state: any) => {
+          // Discard events from a different game (stale broadcast from old game)
+          if (state?.gameId && state.gameId !== gameId) return;
           didReceiveState = true;
           if (joinTimeout) { clearTimeout(joinTimeout); joinTimeout = null; }
           const incomingSeq: number   = typeof state?.seq         === 'number' ? state.seq         : -1;
@@ -1888,10 +1920,9 @@ export function GameScreen({ navigation, route }: Props) {
           const me = normalized.players.find((p) => p.userId === myUserId) ?? normalized.players.find((p) => p.seat === 0);
           const newHand = me?.hand ?? [];
           const prevMe = prev?.players?.find((p) => p.userId === myUserId);
-          if (__DEV__) console.log(`[GAME STATE] Round ${normalized.roundNumber}, Hand size: ${newHand?.length}, Status: ${normalized.status}`);
           // CRITICAL: On round change, ensure we completely replace the hand, never accumulate
           if (normalized.roundNumber !== prev?.roundNumber) {
-            if (__DEV__) console.log(`[ROUND CHANGE] Round ${prev?.roundNumber} -> ${normalized.roundNumber}`);
+            if (__DEV__ && prev?.roundNumber !== undefined) console.log(`[ROUND CHANGE] Round ${prev.roundNumber} -> ${normalized.roundNumber}`);
             // Force hand replacement by clearing selected tile
             setSelectedTile(null);
             // If server sent wrong hand size, log error
@@ -1901,7 +1932,7 @@ export function GameScreen({ navigation, route }: Props) {
           }
 
           setGame(normalized);
-          resetTurnTimer();
+          resetTurnTimer(normalized.turnStartedAt);
           const cur = useGameStore.getState().selectedTile;
           if (cur) {
             const idx = cur.handIndex;
@@ -1949,7 +1980,23 @@ export function GameScreen({ navigation, route }: Props) {
           prevStateRef.current = normalized;
         };
 
-        const onEnded = (result: any) => { if (timerRef.current) clearInterval(timerRef.current); setGameResult(result); setResultModal(true); refreshUser(); };
+        const onEnded = (result: any) => {
+          if (timerRef.current) clearInterval(timerRef.current);
+          setGameResult(result);
+          refreshUser();
+          const { activeTournament } = useTournamentStore.getState();
+          if (activeTournament) {
+            const myId = useAuthStore.getState().user?.id;
+            const game = useGameStore.getState().currentGame;
+            const myTeam = game?.players.find(p => p.userId === myId)?.team;
+            const won = result.winnerId
+              ? result.winnerId === myId
+              : myTeam != null && result.winnerTeam === myTeam;
+            setTournamentMatchModal({ visible: true, won });
+          } else {
+            setResultModal(true);
+          }
+        };
         const onRoundEnded = (data: any) => {
           // Advance currentRoundRef so any stale same-round states are hard-dropped.
           // Do NOT reset lastSeqRef here: the server seq counter never resets between
@@ -2098,11 +2145,25 @@ export function GameScreen({ navigation, route }: Props) {
       if (!sock || !sock.connected) {
         handleRetryJoin();
       } else {
+        // Socket is already connected — clear any stale disconnect banner that
+        // may have been set before the socket auto-reconnected in the background.
+        setDisconnected(false);
+        setMyForfeitDeadline(null);
         sock.emit('game:sync_request', { gameId });
       }
     });
     return () => sub.remove();
   }, [gameId, handleRetryJoin]);
+
+  // ── Android hardware back button → show leave confirmation ─────────────────
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setLeaveConfirmVisible(true);
+      return true; // prevent default back navigation
+    });
+    return () => sub.remove();
+  }, []);
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const handleTileSelect = (tile: Tile, handIndex: number) => {
@@ -2114,7 +2175,6 @@ export function GameScreen({ navigation, route }: Props) {
 
   const handlePlayTile = useCallback(async (side: PlaySide) => {
     if (!selectedTile) return;
-    if (turnTimer === 0) { showError('Tempo esgotado'); return; }
     const plays = validPlaysForSelected.filter((p) => p.side === side);
     if (!plays.length) return;
     try {
@@ -2128,7 +2188,6 @@ export function GameScreen({ navigation, route }: Props) {
 
   const handlePlayImmediate = useCallback(async () => {
     if (!selectedTile || validPlaysForSelected.length !== 1) return;
-    if (turnTimer === 0) { showError('Tempo esgotado'); return; }
     const { side, flipped } = validPlaysForSelected[0];
     try {
       const socket = socketRef.current ?? await connectSocket();
@@ -2305,9 +2364,11 @@ export function GameScreen({ navigation, route }: Props) {
   // Valor ajustado para manter peças próximas mas com espaçamento visual mínimo
   const SNAKE_GAP_BASE = 4;
   const SNAKE_GAP = SNAKE_GAP_BASE;
+  // In 4-player the side cards overlap 70% into the felt (translateX ±30%),
+  // so reduce the usable snake width to keep tiles away from the card area.
   const snakeMaxW = feltWidth
-    ? Math.max(0, feltWidth * (is4Player ? 0.92 : 0.94))
-    : Math.max(0, viewportWidth * (is4Player ? 0.80 : 0.92));
+    ? Math.max(0, feltWidth * (is4Player ? 0.74 : 0.88))
+    : Math.max(0, viewportWidth * (is4Player ? 0.66 : 0.88));
   const SNAKE_H_PER_ROW = Math.max(
     6,
     Math.min(14, Math.floor((snakeMaxW + SNAKE_GAP) / (boardTilePreset.long + SNAKE_GAP)))
@@ -2323,9 +2384,9 @@ export function GameScreen({ navigation, route }: Props) {
   // ── Board scale: shrink tiles so they always fit inside the oval ─────────
   const boardScale = (() => {
     if (!feltWidth || baseLayout.width === 0 || baseLayout.height === 0) return 1;
-    const boardPadBase = 4;
-    const availW = Math.max(0, feltWidth  * 0.94 - boardPadBase * 2);
-    const availH = Math.max(0, tableHeight * (is4Player ? 0.76 : 0.86) - boardPadBase * 2);
+    const boardPadBase = 18;
+    const availW = Math.max(0, feltWidth  * (is4Player ? 0.74 : 0.88) - boardPadBase * 2);
+    const availH = Math.max(0, stableTableHeight * (is4Player ? 0.74 : 0.84) - boardPadBase * 2);
     const scaleW = baseLayout.width > availW ? availW / baseLayout.width : 1;
     const scaleH = baseLayout.height > availH ? availH / baseLayout.height : 1;
     return Math.max(is4Player ? 0.41 : 0.55, Math.min(1, scaleW, scaleH));
@@ -2477,7 +2538,7 @@ export function GameScreen({ navigation, route }: Props) {
         {/* Table */}
         <View style={styles.tableWrap}>
           <View style={styles.tableArea}>
-            <View style={[styles.tableFrame, { height: tableHeight, width: is4Player ? (isTablet ? '90%' : '80%') : (isTablet ? '97%' : '92%') }]}>
+            <View style={[styles.tableFrame, { height: stableTableHeight, width: isTablet ? '97%' : '92%' }]}>
               {topOpponent && (
                 <View style={styles.oppCardOverlay}>
                   <View
@@ -2561,7 +2622,7 @@ export function GameScreen({ navigation, route }: Props) {
 
                 <View
                   style={styles.tableFelt}
-                  onLayout={(e) => setFeltWidth(Math.round(e.nativeEvent.layout.width))}
+                  onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setFeltWidth((prev) => Math.max(prev, w)); }}
                 >
                 {/* Watermark */}
                 {currentGame.board.length === 0 && (
@@ -2774,7 +2835,7 @@ export function GameScreen({ navigation, route }: Props) {
                   };
 
                   return (
-                    <View style={[styles.snakeBoardFrame, { paddingTop: boardPad + 40, paddingBottom: boardPad + 12, paddingHorizontal: boardPad + 24 }]}>
+                    <View style={[styles.snakeBoardFrame, { paddingTop: boardPad + 52, paddingBottom: boardPad + 20, paddingHorizontal: boardPad + 32 }]}>
                       <View style={[styles.snakeBoard, { width: extW, height: extH }]}>
                         {/* Board tiles (shifted right by leftSlot_px) */}
                         {layout.placed.map((p, i) => {
@@ -2902,7 +2963,7 @@ export function GameScreen({ navigation, route }: Props) {
             {/* ── Action bar — draw / pass only ── */}
             {isMyTurn && !selectedTile && (
               <View style={styles.actionBar}>
-                {hasBoneyard && !is2v2 && !hasValidMoves && (
+                {hasBoneyard && !is4Player && !hasValidMoves && (
                   <Animated.View style={{ transform: [{ scale: drawPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }] }}>
                     <LinearGradient
                       colors={['#1CBB3D', '#22c55e']}
@@ -2963,7 +3024,6 @@ export function GameScreen({ navigation, route }: Props) {
                         onDragUp={(moveX?: number) => {
                           const plays = validMovesMap.get(tileKey(tile)) || [];
                           if (!plays.length) return;
-                          if (turnTimer === 0) { showError('Tempo esgotado'); return; }
                           const emptyBoard = (currentGame?.board?.length ?? 0) === 0;
                           if (emptyBoard || plays.length === 1) {
                             const play = plays[0];
@@ -2986,7 +3046,7 @@ export function GameScreen({ navigation, route }: Props) {
                             }
                           }
                         }}
-                        onWebDragStart={isPlayable && turnTimer > 0 ? (clientX, clientY) => {
+                        onWebDragStart={isPlayable ? (clientX, clientY) => {
                           const plays = validMovesMap.get(tileKey(tile)) || [];
                           startWebDrag(tile, clientX, clientY, (dropX: number) => {
                             if (!plays.length) return;
@@ -3013,7 +3073,7 @@ export function GameScreen({ navigation, route }: Props) {
                             }
                           });
                         } : undefined}
-                        onNativeDragStart={isPlayable && Platform.OS !== 'web' && turnTimer > 0 ? (pageX, pageY) => {
+                        onNativeDragStart={isPlayable && Platform.OS !== 'web' ? (pageX, pageY) => {
                           const plays = validMovesMap.get(tileKey(tile)) || [];
                           startNativeDrag(tile, pageX, pageY, (dropX: number) => {
                             if (!plays.length) return;
@@ -3050,7 +3110,7 @@ export function GameScreen({ navigation, route }: Props) {
                 })}
 
                 {/* ── Pass button — inline, same position as Jogar, only when no valid moves ── */}
-                {isMyTurn && !selectedTile && !hasValidMoves && !hasBoneyard && (
+                {isMyTurn && !selectedTile && !hasValidMoves && (!hasBoneyard || is4Player) && (
                   <View style={styles.inlineActions}>
                     <TouchableOpacity style={styles.passBtn} onPress={handlePass} activeOpacity={0.8}>
                       <Text style={styles.passBtnText}>Passar</Text>
@@ -3229,6 +3289,82 @@ export function GameScreen({ navigation, route }: Props) {
         </View>
       </BlurModal>
 
+
+      {/* ── Tournament match result modal ── */}
+      {tournamentMatchModal?.visible && (
+        <BlurModal visible transparent animationType="fade">
+          <View style={styles.overlay}>
+            <View style={{
+              width: isTablet ? 480 : '88%',
+              backgroundColor: '#0d1f0d',
+              borderRadius: 24,
+              borderWidth: 2,
+              borderColor: tournamentMatchModal.won ? 'rgba(187,255,0,0.55)' : 'rgba(239,68,68,0.45)',
+              padding: spacing.xl,
+              alignItems: 'center',
+              gap: spacing.lg,
+            }}>
+              <Text style={{ fontSize: 56 }}>{tournamentMatchModal.won ? '🏆' : '💀'}</Text>
+              <Text style={{
+                color: tournamentMatchModal.won ? '#BBFF00' : '#f87171',
+                fontSize: isTablet ? 32 : 26,
+                fontWeight: '900',
+                textAlign: 'center',
+                letterSpacing: -0.5,
+              }}>
+                {tournamentMatchModal.won ? 'Você venceu!' : 'Você foi eliminado'}
+              </Text>
+              <Text style={{
+                color: 'rgba(255,255,255,0.65)',
+                fontSize: isTablet ? 16 : 14,
+                textAlign: 'center',
+                fontWeight: '600',
+              }}>
+                {tournamentMatchModal.won
+                  ? 'Aguardando o início da próxima rodada...'
+                  : 'Obrigado por participar do torneio.'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const { activeTournament } = useTournamentStore.getState();
+                  setTournamentMatchModal(null);
+                  clearGame();
+                  if (activeTournament) {
+                    navigation.replace('TournamentWaiting', {
+                      tournamentId: activeTournament.tournamentId,
+                      tournamentName: activeTournament.tournamentName,
+                      startsAt: activeTournament.startsAt,
+                      entryFee: activeTournament.entryFee,
+                    });
+                  } else {
+                    navigation.replace('Main');
+                  }
+                }}
+                activeOpacity={0.82}
+                style={{
+                  width: '100%',
+                  paddingVertical: spacing.md,
+                  borderRadius: 14,
+                  backgroundColor: tournamentMatchModal.won ? '#BBFF00' : 'rgba(239,68,68,0.18)',
+                  borderWidth: tournamentMatchModal.won ? 0 : 1,
+                  borderColor: 'rgba(239,68,68,0.55)',
+                  alignItems: 'center',
+                  marginTop: spacing.xs,
+                }}
+              >
+                <Text style={{
+                  color: tournamentMatchModal.won ? '#0a1f0a' : '#fecaca',
+                  fontWeight: '900',
+                  fontSize: isTablet ? 17 : 15,
+                  letterSpacing: 0.2,
+                }}>
+                  {tournamentMatchModal.won ? 'Sala de espera →' : 'Voltar ao início'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </BlurModal>
+      )}
 
       {/* ── Web drag ghost — floats above everything, outside the hand ScrollView ── */}
       {Platform.OS === 'web' && webDrag && (() => {
@@ -3452,9 +3588,9 @@ const styles = StyleSheet.create({
   },
   backBtnText: { color: '#e2e8f0', fontWeight: '800', fontSize: fonts.sizes.sm },
 
-  disconnectBanner: { backgroundColor: colors.warning, paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', zIndex: 9999 },
+  disconnectBanner: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: colors.warning, paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', zIndex: 9999 },
   disconnectText:   { color: '#000', fontWeight: '700', fontSize: fonts.sizes.sm },
-  opponentDisconnectBanner: { backgroundColor: 'rgba(180, 30, 30, 0.92)', paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', zIndex: 9998 },
+  opponentDisconnectBanner: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: 'rgba(180, 30, 30, 0.92)', paddingVertical: 6, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', zIndex: 9998 },
   opponentDisconnectText:   { color: '#fff', fontWeight: '700', fontSize: fonts.sizes.sm },
 
   errorToast: {
@@ -3534,14 +3670,15 @@ const styles = StyleSheet.create({
     left: 0,
     top: '50%',
     zIndex: 20,
-    transform: [{ translateX: '-50%' as any }, { translateY: '-50%' as any }],
+    // 30% outside the table border, 70% on the felt — keeps cards visible on 360px screens
+    transform: [{ translateX: '-30%' as any }, { translateY: '-50%' as any }],
   },
   sideCardRight: {
     position: 'absolute',
     right: 0,
     top: '50%',
     zIndex: 20,
-    transform: [{ translateX: '50%' as any }, { translateY: '-50%' as any }],
+    transform: [{ translateX: '30%' as any }, { translateY: '-50%' as any }],
   },
   sideCardStack: { flexDirection: 'column', alignItems: 'center', gap: 6 },
   // The top bar is absolute so `middle` fills the whole screen — symmetric

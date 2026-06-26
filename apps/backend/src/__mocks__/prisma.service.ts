@@ -20,14 +20,22 @@ const makeMock = () => ({
 });
 
 export const prisma = {
-  user:              makeMock(),
-  wallet:            makeMock(),
-  transaction:       makeMock(),
-  game:              makeMock(),
-  gamePlayer:        makeMock(),
-  tournament:        makeMock(),
-  tournamentPlayer:  makeMock(),
-  fraudLog:          makeMock(),
+  user:               makeMock(),
+  wallet:             makeMock(),
+  transaction:        makeMock(),
+  game:               makeMock(),
+  gamePlayer:         makeMock(),
+  tournament:         makeMock(),
+  tournamentPlayer:   makeMock(),
+  fraudLog:           makeMock(),
+  coupon:             makeMock(),
+  couponRedemption:   makeMock(),
+  pairBlock:          makeMock(),
+  partnerCooldown:    makeMock(),
+  gameRoom:           makeMock(),
+  announcement:       makeMock(),
+  systemConfig:       makeMock(),
+  deviceBind:         makeMock(),
   $transaction: jest.fn((ops: any): Promise<any> => {
     // If array — resolve each mock; if callback — call it with prisma
     if (Array.isArray(ops)) return Promise.all(ops);
@@ -44,6 +52,8 @@ export const prisma = {
 const MODEL_KEYS = [
   'user', 'wallet', 'transaction', 'game', 'gamePlayer',
   'tournament', 'tournamentPlayer', 'fraudLog',
+  'coupon', 'couponRedemption', 'pairBlock', 'partnerCooldown',
+  'gameRoom', 'announcement', 'systemConfig', 'deviceBind',
 ] as const;
 
 function restoreModelDefaults() {

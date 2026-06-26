@@ -6,6 +6,7 @@ import { connectRedis, disconnectRedis } from './services/redis.service';
 import { cleanupExpiredNonces } from './services/nonce.service';
 import { cleanupVelocityStore } from './middleware/antifraud.middleware';
 import { cleanupBlacklist } from './services/token-blacklist.service';
+import { processPushReceipts } from './services/push.service';
 import { config } from './config';
 import { logger } from './utils/logger';
 
@@ -54,6 +55,14 @@ async function main() {
     cleanupVelocityStore();
     cleanupBlacklist();
   }, 60_000);
+
+  // Expo push receipt polling — checks every 30 min for DeviceNotRegistered errors
+  // and removes stale tokens from the DB. Expo keeps receipts for 24 h.
+  setInterval(() => {
+    processPushReceipts().catch((err) =>
+      logger.warn('[Push] Receipt polling failed', { err: err.message })
+    );
+  }, 30 * 60 * 1000);
 
   return io;
 }

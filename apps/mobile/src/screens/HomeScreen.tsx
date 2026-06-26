@@ -32,8 +32,8 @@ const isShortScreen = SCREEN_H < 420;
 // memory — and that's where the stuck-portrait Dimensions bug originates.
 // Caps are loose enough that any modest phone photo passes untouched, tight
 // enough that an 8K wallpaper gets pulled down to a manageable size.
-const MAX_AVATAR_BYTES   = 5 * 1024 * 1024; // 5 MB
-const MAX_AVATAR_EDGE_PX = 2400;            // longest side in pixels
+const MAX_AVATAR_BYTES   = 100 * 1024; // 100 KB — keeps base64 payload small enough to store in DB
+const MAX_AVATAR_EDGE_PX = 320;        // longest side in pixels — plenty for a 40 px avatar circle
 export async function prepareAvatarUpload(uri: string, width?: number, height?: number): Promise<string | null> {
   try {
     const FS: any = await import('expo-file-system/legacy');
@@ -225,8 +225,19 @@ export function GameTopBar({
   exitVariant?: 'logout' | 'back';
   level?: number;
 }) {
-  const { height: tbH, width: tbW } = useWindowDimensions();
-  const tbPortrait = tbH > tbW;
+  // Use physical screen dimensions for portrait detection — window dimensions
+  // can transiently change on Android after minimize/restore (stuck-portrait bug),
+  // but the physical screen size only changes on actual device rotation.
+  const [tbPortrait, setTbPortrait] = useState(() => {
+    const s = Dimensions.get('screen');
+    return s.height >= s.width;
+  });
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ screen: s }) => {
+      setTbPortrait(s.height >= s.width);
+    });
+    return () => sub.remove();
+  }, []);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const balance = (Number(user?.wallet?.real_balance ?? 0) + Number(user?.wallet?.bonus_balance ?? 0));
   const level   = levelProp ?? 2;
@@ -461,10 +472,8 @@ const topBar = StyleSheet.create({
 // ─── Main HomeScreen ────────────────────────────────────────────────────────
 
 export function HomeScreen({ navigation, route }: Props) {
-  const { height: windowH, width: windowW } = useWindowDimensions();
+  const { height: windowH } = useWindowDimensions();
   const dynShortScreen = windowH < 420;
-  const dynIsTablet = windowW >= 768;
-  const dynIsPortrait = windowH > windowW;
   const { user } = useAuthStore();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [profileVisible, setProfileVisible]   = useState(false);
@@ -594,6 +603,10 @@ export function HomeScreen({ navigation, route }: Props) {
             const st = (useAuthStore as any).getState?.();
             if (st?.setAvatar) await st.setAvatar(uri);
             else if (st?.user && st?.setUser) st.setUser({ ...st.user, avatar: uri });
+            try {
+              const { api } = await import('../services/api');
+              await api.put('/auth/profile', { avatar: uri });
+            } catch {}
           };
           reader.readAsDataURL(file);
         };
@@ -624,6 +637,17 @@ export function HomeScreen({ navigation, route }: Props) {
       const st = (useAuthStore as any).getState?.();
       if (st?.setAvatar) await st.setAvatar(uri);
       else if (st?.user && st?.setUser) st.setUser({ ...st.user, avatar: uri });
+
+      // Upload to server so the avatar persists across devices and is visible to other players
+      try {
+        const FS: any = await import('expo-file-system/legacy');
+        const b64: string = await FS.readAsStringAsync(uri, { encoding: 'base64' });
+        const dataUri = `data:image/jpeg;base64,${b64}`;
+        const { api } = await import('../services/api');
+        await api.put('/auth/profile', { avatar: dataUri });
+      } catch {
+        // Silent fail — avatar already saved locally; server sync can retry on next open
+      }
     } catch {
       toast.error('Não foi possível abrir suas fotos.');
     }
@@ -698,7 +722,7 @@ export function HomeScreen({ navigation, route }: Props) {
               colors={['#22d3ee', '#0891b2']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[styles.modeBtnGrad, dynIsTablet && { minHeight: 100 }]}
+              style={[styles.modeBtnGrad, isTablet && { minHeight: 130 }]}
             >
               <Text style={styles.modeBtnTextLivre}>Livre</Text>
             </LinearGradient>
@@ -714,7 +738,7 @@ export function HomeScreen({ navigation, route }: Props) {
               colors={['#fbbf24', '#d97706']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[styles.modeBtnGrad, dynIsTablet && { minHeight: 100 }]}
+              style={[styles.modeBtnGrad, isTablet && { minHeight: 130 }]}
             >
               <Text style={styles.modeBtnTextTorneio}>Torneio</Text>
             </LinearGradient>
@@ -995,11 +1019,11 @@ const styles = StyleSheet.create({
         }),
   },
   modeBtnGrad: {
-    paddingVertical: isSmallPhone ? spacing.sm : (isShortScreen ? spacing.xs : spacing.md),
+    paddingVertical: isSmallPhone ? spacing.md : (isShortScreen ? spacing.sm : spacing.lg),
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    minHeight: isSmallPhone ? 52 : (isShortScreen ? 48 : 60),
+    minHeight: isSmallPhone ? 72 : (isShortScreen ? 64 : 88),
     borderRadius: radius.lg - 3,
   },
   modeBtnLivre: {
