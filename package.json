@@ -19,7 +19,5 @@
     "concurrently": "^8.2.2",
     "playwright": "^1.58.2"
   },
-  "dependencies": {
-    "expo-updates": "~55.0.24"
-  }
+  "dependencies": {}
 }

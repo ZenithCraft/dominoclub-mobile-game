@@ -19,8 +19,11 @@ type Game = {
   id: string;
   winner_id?: string;
   winnerId?: string;
+  winning_team?: number | null;
   tournamentId?: string | null;
+  tournament_id?: string | null;
   bet_amount?: number;
+  players?: { userId: string; team: number }[];
 };
 
 type Achievement = {
@@ -51,13 +54,21 @@ function rankMeta(rank: string) {
   return RANK_META[rank] ?? RANK_META['BRONZE'];
 }
 
+function didWin(g: Game, myId: string): boolean {
+  if ((g.winner_id ?? g.winnerId) === myId) return true;
+  if (g.winning_team != null && g.players) {
+    const myTeam = g.players.find((p) => p.userId === myId)?.team;
+    return myTeam != null && myTeam === g.winning_team;
+  }
+  return false;
+}
+
 function computeWinStreak(games: Game[], myId: string): number {
   if (!myId) return 0;
   let streak = 0;
   let best = 0;
   for (const g of games) {
-    const winner = g.winner_id ?? g.winnerId;
-    if (winner === myId) {
+    if (didWin(g, myId)) {
       streak++;
       if (streak > best) best = streak;
     } else {
@@ -127,11 +138,11 @@ export function AchievementsScreen({ navigation }: Props) {
 
       const games: Game[] = historyPages.status === 'fulfilled' ? historyPages.value : [];
 
-      const wins = games.filter((g) => (g.winner_id ?? g.winnerId) === myId).length;
+      const wins = games.filter((g) => didWin(g, myId)).length;
       const tournamentsWon = new Set(
         games
-          .filter((g) => !!g.tournamentId && (g.winner_id ?? g.winnerId) === myId)
-          .map((g) => g.tournamentId),
+          .filter((g) => !!(g.tournamentId ?? g.tournament_id) && didWin(g, myId))
+          .map((g) => g.tournamentId ?? g.tournament_id),
       ).size;
       const total = games.length;
       const streak = computeWinStreak(games, myId);

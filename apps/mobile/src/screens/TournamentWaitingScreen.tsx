@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { isTablet } from '../theme/responsive';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { IconSettings, IconX } from '../components/Icons';
 import { GradientToggle } from './HomeScreen';
@@ -540,7 +541,7 @@ const styles = StyleSheet.create({
   statusText: { color: '#1CBB3D', fontSize: fonts.sizes.sm, fontWeight: '700' },
 
   countdownCard: {
-    width: '100%', maxWidth: 320,
+    width: '100%', maxWidth: isTablet ? 620 : 320,
     borderRadius: radius.xl, padding: spacing.lg,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center', gap: spacing.md,
@@ -566,7 +567,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     width: '100%',
-    maxWidth: 320,
+    maxWidth: isTablet ? 620 : 320,
   },
   actionsRowCompact: {},
   actionBtn: {
@@ -600,7 +601,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
     paddingVertical: 14, paddingHorizontal: spacing.xxl,
     backgroundColor: 'rgba(255,255,255,0.08)',
-    width: '100%', maxWidth: 320, alignItems: 'center',
+    width: '100%', maxWidth: isTablet ? 620 : 320, alignItems: 'center',
   },
   backBtnText: { color: '#e2e8f0', fontWeight: '700', fontSize: fonts.sizes.md },
 
@@ -608,7 +609,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     paddingVertical: 14, paddingHorizontal: spacing.xxl,
     backgroundColor: '#1CBB3D',
-    width: '100%', maxWidth: 320, alignItems: 'center',
+    width: '100%', maxWidth: isTablet ? 620 : 320, alignItems: 'center',
   },
   goHomeBtnText: { color: '#052e16', fontWeight: '900', fontSize: fonts.sizes.md },
 });

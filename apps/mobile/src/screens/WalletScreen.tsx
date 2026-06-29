@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { SettingsModal } from '../components/SettingsModal';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable,
   TextInput, Alert, RefreshControl, Animated, Dimensions, Platform,
 } from 'react-native';
 import { BlurModal } from '../components/BlurModal';
@@ -10,9 +10,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { isTablet } from '../theme/responsive';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { IconX, IconHourglass, IconClipboard, IconQrCode, IconCheck, IconChevronLeft, IconChevronRight } from '../components/Icons';
 import { Wallet, Star, ArrowUpCircle } from 'lucide-react-native';
+import Svg, { Circle, Line, Path, G } from 'react-native-svg';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { useNavigation } from '@react-navigation/native';
@@ -272,6 +274,56 @@ const calStyles = StyleSheet.create({
   footerToday: { color: '#BEF311', fontWeight: '700', fontSize: fonts.sizes.sm },
 });
 
+// ─── Info icon (SVG) ─────────────────────────────────────────────────────────
+
+function WithdrawInfoIcon({ size = 20, color = '#fff' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="1.8" />
+      <Line x1="12" y1="8" x2="12" y2="8" stroke={color} strokeWidth="2.4" strokeLinecap="round" />
+      <Line x1="12" y1="12" x2="12" y2="16" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+type BulletIconType = 'clock' | 'key' | 'coin' | 'refresh' | 'shield';
+function WithdrawBulletIcon({ type, size = 13 }: { type: BulletIconType; size?: number }) {
+  const c = 'rgba(28,187,61,0.9)';
+  const s = size;
+  if (type === 'clock') return (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ marginTop: 2 }}>
+      <Circle cx="12" cy="12" r="10" stroke={c} strokeWidth="2" />
+      <Path d="M12 7v5l3 3" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+  if (type === 'key') return (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ marginTop: 2 }}>
+      <Circle cx="8" cy="9" r="5" stroke={c} strokeWidth="2" />
+      <Path d="M13 14l7-7" stroke={c} strokeWidth="2" strokeLinecap="round" />
+      <Path d="M18 13l2-2" stroke={c} strokeWidth="2" strokeLinecap="round" />
+      <Path d="M20 15l2-2" stroke={c} strokeWidth="2" strokeLinecap="round" />
+    </Svg>
+  );
+  if (type === 'coin') return (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ marginTop: 2 }}>
+      <Circle cx="12" cy="12" r="10" stroke={c} strokeWidth="2" />
+      <Path d="M12 7v1m0 8v1M9 12c0-1.66 1.34-3 3-3s3 1.34 3 3-1.34 3-3 3" stroke={c} strokeWidth="1.8" strokeLinecap="round" />
+    </Svg>
+  );
+  if (type === 'refresh') return (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ marginTop: 2 }}>
+      <Path d="M2 12C2 6.477 6.477 2 12 2c3.5 0 6.572 1.756 8.418 4.418" stroke={c} strokeWidth="2" strokeLinecap="round" />
+      <Path d="M22 12c0 5.523-4.477 10-10 10-3.5 0-6.572-1.756-8.418-4.418" stroke={c} strokeWidth="2" strokeLinecap="round" />
+      <Path d="M18 2l2.418 4.418L16 6" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+  return (
+    <Svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ marginTop: 2 }}>
+      <Path d="M12 2l3 7h7l-6 4.5 2.3 7L12 17l-6.3 3.5L8 13.5 2 9h7z" stroke={c} strokeWidth="1.8" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export function WalletScreen() {
@@ -284,6 +336,7 @@ export function WalletScreen() {
     return () => sub.remove();
   }, []);
   const isWide = stableW >= 700;
+  const isTabletLocal = stableW >= 768;
   const dateColW = isWide ? 110 : 72;
   const statusColW = isWide ? 110 : 86;
 
@@ -299,11 +352,18 @@ export function WalletScreen() {
   const [qrCode, setQrCode]               = useState('');
   const [depositLoading, setDepositLoading] = useState(false);
   const [couponCode, setCouponCode]       = useState('');
+  const [couponState, setCouponState]     = useState<'idle' | 'validating' | 'valid' | 'not_found' | 'used'>('idle');
+  const [couponValidating, setCouponValidating] = useState(false);
 
-  const [withdrawModal, setWithdrawModal]   = useState(false);
-  const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [pixKey, setPixKey]               = useState('');
+  const [withdrawModal, setWithdrawModal]     = useState(false);
+  const [withdrawStep, setWithdrawStep]       = useState<'form' | 'submitted'>('form');
+  const [withdrawAmount, setWithdrawAmount]   = useState('');
+  const [pixKey, setPixKey]                   = useState('');
   const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const [withdrawInfoVisible, setWithdrawInfoVisible] = useState(false);
+  const withdrawSuccessAnim = useRef(new Animated.Value(0)).current;
+
+  const [rolloverModal, setRolloverModal] = useState(false);
 
   const [kycStatus, setKycStatus]     = useState<string | null>(null);
   const [kycChecked, setKycChecked]   = useState(false);
@@ -434,10 +494,40 @@ export function WalletScreen() {
     setUseCustom(false);
     setCustomAmount('');
     setCouponCode('');
+    setCouponState('idle');
     loadWallet(true);
   }, [stopPolling, loadWallet]);
 
+  const handleCouponChange = (text: string) => {
+    setCouponCode(text);
+    setCouponState('idle');
+  };
+
+  const handleValidateCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code) return;
+    setCouponValidating(true);
+    try {
+      const { data } = await api.get(`/wallet/coupon/validate?code=${encodeURIComponent(code)}`);
+      setCouponState(data.status);
+    } catch {
+      setCouponState('not_found');
+    } finally {
+      setCouponValidating(false);
+    }
+  };
+
   // ── Withdraw ─────────────────────────────────────────────────────────────────
+
+  const closeWithdrawModal = useCallback(() => {
+    setWithdrawModal(false);
+    setWithdrawStep('form');
+    setWithdrawAmount('');
+    setPixKey('');
+    setWithdrawInfoVisible(false);
+    withdrawSuccessAnim.setValue(0);
+    loadWallet(true);
+  }, [loadWallet, withdrawSuccessAnim]);
 
   const handleWithdraw = async () => {
     const amount = parseFloat(withdrawAmount.replace(',', '.'));
@@ -447,10 +537,12 @@ export function WalletScreen() {
     setWithdrawLoading(true);
     try {
       await api.post('/wallet/withdraw', { amount, pixKey: pixKey.trim() });
-      Alert.alert('Saque solicitado!', 'Você receberá o valor na sua chave PIX em instantes.');
-      setWithdrawModal(false);
-      setWithdrawAmount('');
-      setPixKey('');
+      setWithdrawStep('submitted');
+      Animated.sequence([
+        Animated.timing(withdrawSuccessAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(withdrawSuccessAnim, { toValue: 0.85, duration: 180, useNativeDriver: true }),
+        Animated.timing(withdrawSuccessAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+      ]).start();
       await loadWallet(true);
     } catch (err: any) {
       Alert.alert('Erro no saque', err.response?.data?.error || 'Tente novamente em instantes');
@@ -491,12 +583,22 @@ export function WalletScreen() {
             </View>
 
             {rolloverRemaining > 0 && (
-              <View style={styles.rolloverBanner}>
-                <Text style={styles.rolloverText}>
-                  Rollover pendente:{' '}
-                  <Text style={{ color: '#fbbf24', fontWeight: '800' }}>R$ {rolloverRemaining.toFixed(2)}</Text>
-                </Text>
-              </View>
+              <TouchableOpacity style={styles.rolloverBanner} activeOpacity={0.8} onPress={() => setRolloverModal(true)}>
+                <View style={styles.rolloverBannerRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rolloverText}>
+                      Rollover pendente:{' '}
+                      <Text style={{ color: '#fbbf24', fontWeight: '800' }}>R$ {rolloverRemaining.toFixed(2)}</Text>
+                    </Text>
+                    <Text style={styles.rolloverSubText}>Toque para entender como funciona</Text>
+                  </View>
+                  <Svg width={22} height={22} viewBox="0 0 24 24">
+                    <Circle cx="12" cy="12" r="10" stroke="#fbbf24" strokeWidth="1.8" fill="none" />
+                    <Line x1="12" y1="11" x2="12" y2="17" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" />
+                    <Circle cx="12" cy="7.5" r="1.2" fill="#fbbf24" />
+                  </Svg>
+                </View>
+              </TouchableOpacity>
             )}
 
             {kycChecked && (kycStatus === 'APPROVED' || firstWithdrawalDone) && (
@@ -557,10 +659,9 @@ export function WalletScreen() {
 
             {/* Table head */}
             <View style={styles.tableHead}>
-              <Text style={[styles.thCell, styles.thDate]}>Data</Text>
-              <Text style={[styles.thCell, styles.thType]}>Tipo</Text>
-              <Text style={[styles.thCell, styles.thValue]}>Valor</Text>
-              <Text style={[styles.thCell, styles.thStatus]}>Status</Text>
+              {(['Data', 'Tipo', 'Valor', 'Status'] as const).map(label => (
+                <Text key={label} style={[styles.thCell, label === 'Data' ? styles.thDate : label === 'Tipo' ? styles.thType : label === 'Valor' ? styles.thValue : styles.thStatus, isTabletLocal && { fontSize: 14, paddingVertical: 4 }]}>{label}</Text>
+              ))}
             </View>
 
             <View style={{ flex: 1 }}>
@@ -576,12 +677,12 @@ export function WalletScreen() {
                 </View>
               ) : (
                 pagedTransactions.map((tx, idx) => (
-                  <View key={tx.id} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
-                    <Text style={[styles.tdCell, styles.thDate]}>
+                  <View key={tx.id} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt, isTabletLocal && { paddingVertical: 14 }]}>
+                    <Text style={[styles.tdCell, styles.thDate, isTabletLocal && { fontSize: fonts.sizes.sm }]}>
                       {new Date(tx.created_at).toLocaleDateString('pt-BR')}
                     </Text>
-                    <Text style={[styles.tdCell, styles.thType]}>{TYPE_LABEL[tx.type] ?? tx.type}</Text>
-                    <Text style={[styles.tdCell, styles.thValue, { color: tx.amount > 0 ? '#1CBB3D' : '#f87171', fontWeight: '700' }]}>
+                    <Text style={[styles.tdCell, styles.thType, isTabletLocal && { fontSize: fonts.sizes.sm }]}>{TYPE_LABEL[tx.type] ?? tx.type}</Text>
+                    <Text style={[styles.tdCell, styles.thValue, { color: tx.amount > 0 ? '#1CBB3D' : '#f87171', fontWeight: '700' }, isTabletLocal && { fontSize: fonts.sizes.sm }]}>
                       {tx.amount > 0 ? '+' : ''}R$ {Math.abs(tx.amount).toFixed(2)}
                     </Text>
                     <View style={[styles.thStatus, { alignItems: 'center' }]}>
@@ -629,8 +730,8 @@ export function WalletScreen() {
 
         {/* ── Deposit modal ── */}
         <BlurModal visible={depositModal} transparent animationType="fade">
-          <View style={styles.overlay}>
-            <View style={styles.modalCard}>
+          <Pressable style={styles.overlay} onPress={closeDepositModal}>
+            <Pressable style={styles.modalCard} onPress={() => {}} onStartShouldSetResponder={() => true}>
 
               {depositStep === 'amount' && (
                 <ScrollView
@@ -675,22 +776,55 @@ export function WalletScreen() {
                   </View>
 
                   <Text style={styles.fieldLabel}>Cupom (opcional)</Text>
-                  <View style={styles.inputWrap}>
-                    <TextInput
-                      style={styles.input}
-                      value={couponCode}
-                      onChangeText={setCouponCode}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      placeholder="Ex: BEMVINDO20"
-                      placeholderTextColor="rgba(255,255,255,0.35)"
-                    />
+                  <View style={styles.couponRow}>
+                    <View style={[styles.inputWrap, { flex: 1 }]}>
+                      <TextInput
+                        style={styles.input}
+                        value={couponCode}
+                        onChangeText={handleCouponChange}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                        placeholder="Ex: BEMVINDO20"
+                        placeholderTextColor="rgba(255,255,255,0.35)"
+                      />
+                    </View>
+                    {couponCode.trim().length > 0 && couponState !== 'valid' && (
+                      <TouchableOpacity
+                        style={[styles.couponValidateBtn, couponValidating && { opacity: 0.6 }]}
+                        onPress={handleValidateCoupon}
+                        disabled={couponValidating}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.couponValidateBtnText}>
+                          {couponValidating ? '...' : 'Validar'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
 
+                  {couponState === 'valid' && (
+                    <View style={[styles.couponBadge, styles.couponBadgeValid]}>
+                      <IconCheck size={13} color="#1CBB3D" />
+                      <Text style={[styles.couponBadgeText, { color: '#1CBB3D' }]}>Cupom aprovado</Text>
+                    </View>
+                  )}
+                  {couponState === 'not_found' && (
+                    <View style={[styles.couponBadge, styles.couponBadgeError]}>
+                      <IconX size={13} color="#f87171" />
+                      <Text style={[styles.couponBadgeText, { color: '#f87171' }]}>Cupom inexistente</Text>
+                    </View>
+                  )}
+                  {couponState === 'used' && (
+                    <View style={[styles.couponBadge, styles.couponBadgeWarning]}>
+                      <IconX size={13} color="#fbbf24" />
+                      <Text style={[styles.couponBadgeText, { color: '#fbbf24' }]}>Cupom já utilizado</Text>
+                    </View>
+                  )}
+
                   <TouchableOpacity
-                    style={[styles.gradBtn, (depositLoading || effectiveAmount < 20) && { opacity: 0.5 }]}
+                    style={[styles.gradBtn, (depositLoading || effectiveAmount < 20 || (couponCode.trim().length > 0 && couponState !== 'valid')) && { opacity: 0.5 }]}
                     onPress={handleDeposit}
-                    disabled={depositLoading || effectiveAmount < 20}
+                    disabled={depositLoading || effectiveAmount < 20 || (couponCode.trim().length > 0 && couponState !== 'valid')}
                   >
                     <LinearGradient colors={['#BEF311','#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.gradBtnInner}>
                       <IconQrCode size={16} color="#0a1f0a" />
@@ -761,67 +895,198 @@ export function WalletScreen() {
                   <IconX size={16} color="rgba(255,255,255,0.6)" />
                 </TouchableOpacity>
               )}
+            </Pressable>
+          </Pressable>
+        </BlurModal>
+
+        {/* ── Rollover info modal ── */}
+        <BlurModal visible={rolloverModal} transparent animationType="fade">
+          <View style={styles.overlay}>
+            <View style={[styles.modalCard, { gap: 0, padding: 0 }]}>
+              <TouchableOpacity style={styles.closeX} onPress={() => setRolloverModal(false)}>
+                <IconX size={16} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ padding: spacing.xl, gap: spacing.md }}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.rolloverModalHeader}>
+                  <Svg width={isTablet ? 54 : 38} height={isTablet ? 54 : 38} viewBox="0 0 24 24">
+                    <Circle cx="12" cy="12" r="10" stroke="#fbbf24" strokeWidth="1.6" fill="rgba(251,191,36,0.12)" />
+                    <Line x1="12" y1="11" x2="12" y2="17" stroke="#fbbf24" strokeWidth="2.2" strokeLinecap="round" />
+                    <Circle cx="12" cy="7.5" r="1.3" fill="#fbbf24" />
+                  </Svg>
+                  <Text style={styles.rolloverModalTitle}>O que é Rollover?</Text>
+                </View>
+
+                <View style={styles.rolloverAmountBox}>
+                  <Text style={styles.rolloverAmountLabel}>Valor pendente</Text>
+                  <Text style={styles.rolloverAmountValue}>R$ {rolloverRemaining.toFixed(2)}</Text>
+                </View>
+
+                <View style={styles.rolloverInfoList}>
+                  <View style={styles.rolloverInfoItem}>
+                    <Text style={styles.rolloverInfoDot}>•</Text>
+                    <Text style={styles.rolloverInfoText}>
+                      O rollover é um requisito de apostas aplicado ao <Text style={{ color: '#fbbf24' }}>bônus recebido</Text>. Você precisa apostá-lo antes de sacar.
+                    </Text>
+                  </View>
+                  <View style={styles.rolloverInfoItem}>
+                    <Text style={styles.rolloverInfoDot}>•</Text>
+                    <Text style={styles.rolloverInfoText}>
+                      Cada partida jogada abate o valor apostado do seu rollover restante.
+                    </Text>
+                  </View>
+                  <View style={styles.rolloverInfoItem}>
+                    <Text style={styles.rolloverInfoDot}>•</Text>
+                    <Text style={styles.rolloverInfoText}>
+                      Quando o rollover chegar a <Text style={{ color: '#4ade80' }}>R$ 0,00</Text>, o saque será liberado automaticamente.
+                    </Text>
+                  </View>
+                  <View style={styles.rolloverInfoItem}>
+                    <Text style={styles.rolloverInfoDot}>•</Text>
+                    <Text style={styles.rolloverInfoText}>
+                      Partidas canceladas ou encerradas antes do fim <Text style={{ color: 'rgba(255,255,255,0.5)' }}>não contam</Text>.
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity style={styles.rolloverModalBtn} onPress={() => setRolloverModal(false)}>
+                  <LinearGradient colors={['#fbbf24', '#f59e0b']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rolloverModalBtnGrad}>
+                    <Text style={styles.rolloverModalBtnText}>Entendido</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
           </View>
         </BlurModal>
 
         {/* ── Withdraw modal ── */}
         <BlurModal visible={withdrawModal} transparent animationType="fade">
-          <View style={styles.overlay}>
-            <View style={styles.modalCard}>
-              <TouchableOpacity
-                style={styles.closeX}
-                onPress={() => { setWithdrawModal(false); setWithdrawAmount(''); setPixKey(''); }}
-              >
-                <IconX size={16} color="rgba(255,255,255,0.6)" />
-              </TouchableOpacity>
+          <Pressable style={styles.overlay} onPress={closeWithdrawModal}>
+            <Pressable style={styles.modalCard} onPress={() => {}} onStartShouldSetResponder={() => true}>
 
-              <Text style={styles.modalTitle}>Solicitar Saque</Text>
-              <Text style={styles.modalSubtitle}>Saque via Pix em instantes</Text>
+              {withdrawStep === 'form' && (
+                <ScrollView
+                  style={styles.qrScroll}
+                  contentContainerStyle={styles.amountSection}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {/* Title row — title centered, info button absolute-right */}
+                  <View style={styles.withdrawTitleRow}>
+                    <Text style={styles.modalTitle}>Solicitar Saque</Text>
+                    <TouchableOpacity
+                      style={styles.withdrawInfoBtn}
+                      onPress={() => setWithdrawInfoVisible(v => !v)}
+                      activeOpacity={0.75}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <WithdrawInfoIcon
+                        size={isTablet ? 26 : 20}
+                        color={withdrawInfoVisible ? '#1CBB3D' : 'rgba(255,255,255,0.55)'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.modalSubtitle}>Saque via Pix em instantes</Text>
 
-              <View style={styles.availableRow}>
-                <Text style={styles.availableLabel}>Disponível para saque</Text>
-                <Text style={styles.availableValue}>R$ {realBalance.toFixed(2)}</Text>
-              </View>
+                  {/* Info panel */}
+                  {withdrawInfoVisible && (
+                    <View style={styles.withdrawInfoPanel}>
+                      <Text style={styles.withdrawInfoTitle}>Como funciona o saque?</Text>
+                      {([
+                        { icon: 'clock',   text: 'Processado em instantes após a solicitação' },
+                        { icon: 'key',     text: 'O valor é enviado para a chave Pix informada' },
+                        { icon: 'coin',    text: 'Saque mínimo de R$ 20,00' },
+                        { icon: 'refresh', text: 'Rollover pendente bloqueia o saque — finalize-o jogando primeiro' },
+                        { icon: 'shield',  text: 'Apenas saques via Pix são aceitos no momento' },
+                      ] as const).map(({ icon, text }, i) => (
+                        <View key={i} style={styles.withdrawInfoItem}>
+                          <WithdrawBulletIcon type={icon} size={isTablet ? 16 : 13} />
+                          <Text style={styles.withdrawInfoText}>{text}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
 
-              <Text style={styles.fieldLabel}>Valor do saque</Text>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={styles.input}
-                  value={withdrawAmount}
-                  onChangeText={setWithdrawAmount}
-                  keyboardType="decimal-pad"
-                  placeholder="Digite o valor (mín. R$ 20)"
-                  placeholderTextColor="rgba(255,255,255,0.35)"
-                />
-              </View>
+                  {/* Available balance */}
+                  <View style={styles.availableRow}>
+                    <Text style={styles.availableLabel}>Disponível para saque</Text>
+                    <Text style={styles.availableValue}>R$ {realBalance.toFixed(2)}</Text>
+                  </View>
 
-              <Text style={styles.fieldLabel}>Chave Pix</Text>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={styles.input}
-                  value={pixKey}
-                  onChangeText={setPixKey}
-                  placeholder="CPF, e-mail, telefone ou chave aleatória"
-                  placeholderTextColor="rgba(255,255,255,0.35)"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
+                  <Text style={styles.fieldLabel}>Valor do saque</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.input}
+                      value={withdrawAmount}
+                      onChangeText={setWithdrawAmount}
+                      keyboardType="decimal-pad"
+                      placeholder="Digite o valor (mín. R$ 20)"
+                      placeholderTextColor="rgba(255,255,255,0.35)"
+                    />
+                  </View>
 
-              <TouchableOpacity
-                style={[styles.gradBtn, withdrawLoading && { opacity: 0.6 }]}
-                onPress={handleWithdraw}
-                disabled={withdrawLoading}
-              >
-                <LinearGradient colors={['#BEF311','#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.gradBtnInner}>
-                  <Text style={styles.gradBtnText}>{withdrawLoading ? 'Solicitando...' : 'Confirmar Saque'}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+                  <Text style={styles.fieldLabel}>Chave Pix</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.input}
+                      value={pixKey}
+                      onChangeText={setPixKey}
+                      placeholder="CPF, e-mail, telefone ou chave aleatória"
+                      placeholderTextColor="rgba(255,255,255,0.35)"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </View>
 
-              <Text style={styles.hintText}>Saque mínimo: R$ 20,00 · Processado em instantes</Text>
-            </View>
-          </View>
+                  <TouchableOpacity
+                    style={[styles.gradBtn, withdrawLoading && { opacity: 0.6 }]}
+                    onPress={handleWithdraw}
+                    disabled={withdrawLoading}
+                  >
+                    <LinearGradient colors={['#BEF311','#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.gradBtnInner}>
+                      <Text style={styles.gradBtnText}>{withdrawLoading ? 'Solicitando...' : 'Confirmar Saque'}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  <Text style={styles.hintText}>Saque mínimo: R$ 20,00 · Processado em instantes</Text>
+                </ScrollView>
+              )}
+
+              {withdrawStep === 'submitted' && (
+                <Animated.View style={[styles.confirmedSection, { opacity: withdrawSuccessAnim }]}>
+                  <View style={[styles.confirmedIcon, styles.withdrawConfirmedIcon]}>
+                    <LinearGradient colors={['#facc15','#f59e0b']} start={{x:0,y:0}} end={{x:1,y:1}} style={StyleSheet.absoluteFillObject} />
+                    <IconCheck size={28} color="#1a0a00" />
+                  </View>
+                  <Text style={styles.confirmedTitle}>Saque solicitado!</Text>
+                  <Text style={[styles.confirmedAmount, styles.withdrawConfirmedAmount]}>
+                    − R$ {parseFloat(withdrawAmount.replace(',', '.')).toFixed(2)}
+                  </Text>
+                  <View style={styles.withdrawSubmittedInfo}>
+                    <Text style={styles.withdrawSubmittedText}>
+                      O valor será transferido para sua chave Pix em instantes.
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={[styles.gradBtn, { alignSelf: 'stretch' }]} onPress={closeWithdrawModal}>
+                    <LinearGradient colors={['#BEF311','#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.gradBtnInner}>
+                      <Text style={styles.gradBtnText}>Fechar</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </Animated.View>
+              )}
+
+              {withdrawStep !== 'submitted' && (
+                <TouchableOpacity style={styles.closeX} onPress={closeWithdrawModal}>
+                  <IconX size={16} color="rgba(255,255,255,0.6)" />
+                </TouchableOpacity>
+              )}
+            </Pressable>
+          </Pressable>
         </BlurModal>
         <SettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
       </SafeAreaView>
@@ -855,7 +1120,27 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(251,191,36,0.3)',
     borderRadius: radius.md, padding: spacing.md,
   },
+  rolloverBannerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   rolloverText: { color: 'rgba(255,255,255,0.7)', fontSize: fonts.sizes.xs },
+  rolloverSubText: { color: 'rgba(251,191,36,0.6)', fontSize: fonts.sizes.xs - 1, marginTop: 2 },
+
+  rolloverModalHeader: { alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
+  rolloverModalTitle: { color: '#fbbf24', fontWeight: '800', fontSize: isTablet ? fonts.sizes.xl : fonts.sizes.lg, textAlign: 'center' },
+  rolloverAmountBox: {
+    backgroundColor: 'rgba(251,191,36,0.08)', borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.25)', borderRadius: radius.md,
+    paddingVertical: spacing.md, paddingHorizontal: spacing.lg,
+    alignItems: 'center', marginBottom: spacing.md,
+  },
+  rolloverAmountLabel: { color: 'rgba(255,255,255,0.5)', fontSize: isTablet ? fonts.sizes.sm : fonts.sizes.xs, marginBottom: 2 },
+  rolloverAmountValue: { color: '#fbbf24', fontWeight: '800', fontSize: isTablet ? fonts.sizes.xxxl : fonts.sizes.xxl },
+  rolloverInfoList: { gap: spacing.sm, marginBottom: spacing.lg },
+  rolloverInfoItem: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
+  rolloverInfoDot: { color: '#fbbf24', fontWeight: '700', fontSize: fonts.sizes.sm, lineHeight: 20 },
+  rolloverInfoText: { color: 'rgba(255,255,255,0.7)', fontSize: isTablet ? fonts.sizes.md : fonts.sizes.sm, flex: 1, lineHeight: isTablet ? 26 : 20 },
+  rolloverModalBtn: { borderRadius: radius.md, overflow: 'hidden' },
+  rolloverModalBtnGrad: { paddingVertical: 13, alignItems: 'center' },
+  rolloverModalBtnText: { color: '#000', fontWeight: '800', fontSize: isTablet ? fonts.sizes.lg : fonts.sizes.md },
 
   actionsCol:   { gap: spacing.sm },
   withdrawBtn:  { borderRadius: radius.md, overflow: 'hidden' },
@@ -907,14 +1192,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)',
     paddingBottom: spacing.sm, marginBottom: 2,
   },
-  thCell:   { color: 'rgba(255,255,255,0.45)', fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  thCell:   { color: 'rgba(255,255,255,0.45)', fontSize: isTablet ? 13 : 10, fontWeight: '700', textAlign: 'center' },
   tableRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 9,
+    paddingVertical: isTablet ? 13 : 9,
     borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.04)',
   },
   tableRowAlt: { backgroundColor: 'rgba(255,255,255,0.02)' },
-  tdCell: { color: '#fff', fontSize: fonts.sizes.xs, textAlign: 'center' },
+  tdCell: { color: '#fff', fontSize: isTablet ? fonts.sizes.sm : fonts.sizes.xs, textAlign: 'center' },
   thDate:   { flex: 1 },
   thType:   { flex: 1 },
   thValue:  { flex: 1 },
@@ -952,7 +1237,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   modalCard: {
-    width: '100%', maxWidth: 360,
+    width: '100%', maxWidth: isTablet ? 680 : 360,
     maxHeight: '90%',
     backgroundColor: 'rgba(10,20,10,0.98)',
     borderRadius: radius.xl, padding: spacing.xl,
@@ -995,6 +1280,24 @@ const styles = StyleSheet.create({
 
   hintText: { color: 'rgba(255,255,255,0.35)', fontSize: fonts.sizes.xs, textAlign: 'center', marginTop: -spacing.xs },
 
+  couponRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  couponValidateBtn: {
+    backgroundColor: 'rgba(28,187,61,0.15)',
+    borderWidth: 1, borderColor: 'rgba(28,187,61,0.4)',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: 12,
+  },
+  couponValidateBtnText: { color: '#1CBB3D', fontWeight: '700', fontSize: fonts.sizes.sm },
+  couponBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 6,
+    marginTop: -spacing.xs,
+  },
+  couponBadgeValid:   { backgroundColor: 'rgba(28,187,61,0.10)',  borderWidth: 1, borderColor: 'rgba(28,187,61,0.25)'  },
+  couponBadgeError:   { backgroundColor: 'rgba(248,113,113,0.10)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.25)' },
+  couponBadgeWarning: { backgroundColor: 'rgba(251,191,36,0.10)',  borderWidth: 1, borderColor: 'rgba(251,191,36,0.25)'  },
+  couponBadgeText: { fontSize: fonts.sizes.xs, fontWeight: '700' },
+
   qrScroll: { flexGrow: 0 },
   amountSection: { gap: spacing.md, paddingBottom: spacing.sm },
   qrSection: { alignItems: 'center', gap: spacing.md, paddingBottom: spacing.sm },
@@ -1027,4 +1330,47 @@ const styles = StyleSheet.create({
   },
   availableLabel: { color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.xs, fontWeight: '600' },
   availableValue: { color: '#1CBB3D', fontWeight: '900', fontSize: fonts.sizes.lg },
+
+  // ── Withdraw modal ──
+  withdrawTitleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    position: 'relative',
+  },
+  withdrawInfoBtn: {
+    position: 'absolute', right: 0,
+    width: isTablet ? 40 : 32, height: isTablet ? 40 : 32,
+    borderRadius: isTablet ? 20 : 16,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  withdrawInfoPanel: {
+    backgroundColor: 'rgba(28,187,61,0.06)',
+    borderRadius: radius.md,
+    borderWidth: 1, borderColor: 'rgba(28,187,61,0.18)',
+    padding: isTablet ? spacing.lg : spacing.md,
+    gap: isTablet ? spacing.md : spacing.sm,
+  },
+  withdrawInfoTitle: {
+    color: '#1CBB3D', fontWeight: '800', fontSize: isTablet ? fonts.sizes.md : fonts.sizes.sm,
+    marginBottom: 2,
+  },
+  withdrawInfoItem: { flexDirection: 'row', alignItems: 'flex-start', gap: isTablet ? 10 : spacing.sm },
+  withdrawInfoBullet: { fontSize: isTablet ? fonts.sizes.md : fonts.sizes.sm, lineHeight: 20, width: isTablet ? 26 : 22 },
+  withdrawInfoText: {
+    color: 'rgba(255,255,255,0.75)', fontSize: isTablet ? fonts.sizes.sm : fonts.sizes.xs,
+    fontWeight: '500', flex: 1, lineHeight: isTablet ? 22 : 18,
+  },
+  withdrawConfirmedIcon: { backgroundColor: 'transparent' },
+  withdrawConfirmedAmount: { color: '#fbbf24' },
+  withdrawSubmittedInfo: {
+    backgroundColor: 'rgba(251,191,36,0.08)',
+    borderWidth: 1, borderColor: 'rgba(251,191,36,0.2)',
+    borderRadius: radius.md, padding: spacing.md,
+    alignSelf: 'stretch',
+  },
+  withdrawSubmittedText: {
+    color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.xs,
+    fontWeight: '500', textAlign: 'center', lineHeight: 18,
+  },
 });

@@ -47,13 +47,13 @@ export async function deductBet(walletId: string, amount: number) {
     const realBal    = n(wallet.real_balance);
     const rolloverRem = n(wallet.rollover_remaining);
 
-    const useBonus      = bonusBal >= amount;
-    const realDeduction = useBonus ? 0 : amount - Math.min(bonusBal, amount);
+    const useBonus       = bonusBal >= amount;
+    const realDeduction  = useBonus ? 0 : amount - Math.min(bonusBal, amount);
     const bonusDeduction = useBonus ? amount : bonusBal;
-    // Only count toward rollover when bonus funds are involved in this bet
-    const rolloverDeduction = rolloverRem > 0 && bonusDeduction > 0
-      ? Math.min(rolloverRem, amount)
-      : 0;
+    // Every wagered amount counts toward rollover, regardless of which bucket funded it.
+    // Without this, a player who exhausts their bonus but still has rollover_remaining
+    // can never satisfy the requirement — they'd be permanently locked.
+    const rolloverDeduction = rolloverRem > 0 ? Math.min(rolloverRem, amount) : 0;
 
     if (realBal < realDeduction) throw new Error('Insufficient balance');
 

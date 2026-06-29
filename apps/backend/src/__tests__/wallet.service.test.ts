@@ -120,6 +120,171 @@ describe('creditWin', () => {
       })
     );
   });
+
+  it('routes winnings to bonus_balance when rollover is active', async () => {
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({ rollover_remaining: 100 });
+    (prisma.wallet.update as jest.Mock).mockResolvedValue({ ...mockWallet, bonus_balance: 80 });
+    (prisma.transaction.create as jest.Mock).mockResolvedValue({});
+
+    await creditWin('w1', 30);
+
+    expect(prisma.wallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { bonus_balance: { increment: 30 } },
+      })
+    );
+  });
+
+  it('routes winnings to real_balance once rollover is cleared', async () => {
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({ rollover_remaining: 0 });
+    (prisma.wallet.update as jest.Mock).mockResolvedValue({ ...mockWallet, real_balance: 180 });
+    (prisma.transaction.create as jest.Mock).mockResolvedValue({});
+
+    await creditWin('w1', 80);
+
+    expect(prisma.wallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { real_balance: { increment: 80 } },
+      })
+    );
+  });
+});
+
+describe('rollover mechanics', () => {
+  it('decrements rollover_remaining when bet uses bonus funds', async () => {
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({
+      ...mockWallet,
+      real_balance: 50,
+      bonus_balance: 30,
+      rollover_remaining: 100,
+    });
+    (prisma.wallet.update as jest.Mock).mockResolvedValue({});
+    (prisma.transaction.create as jest.Mock).mockResolvedValue({});
+
+    await deductBet('w1', 20);
+
+    expect(prisma.wallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          bonus_balance: 10,        // 30 - 20
+          real_balance: 50,
+          rollover_remaining: 80,   // 100 - 20
+        }),
+      })
+    );
+  });
+
+  it('decrements rollover_remaining when bet uses real funds (no bonus left)', async () => {
+    // Critical regression: player exhausted bonus but rollover still pending.
+    // Without the fix, rolloverDeduction would be 0 here and rollover never clears.
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({
+      ...mockWallet,
+      real_balance: 100,
+      bonus_balance: 0,
+      rollover_remaining: 60,
+    });
+    (prisma.wallet.update as jest.Mock).mockResolvedValue({});
+    (prisma.transaction.create as jest.Mock).mockResolvedValue({});
+
+    await deductBet('w1', 25);
+
+    expect(prisma.wallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          real_balance: 75,         // 100 - 25
+          bonus_balance: 0,
+          rollover_remaining: 35,   // 60 - 25
+        }),
+      })
+    );
+  });
+
+  it('clears rollover when a single bet covers the remaining requirement', async () => {
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({
+      ...mockWallet,
+      real_balance: 50,
+      bonus_balance: 40,
+      rollover_remaining: 15,
+    });
+    (prisma.wallet.update as jest.Mock).mockResolvedValue({});
+    (prisma.transaction.create as jest.Mock).mockResolvedValue({});
+
+    await deductBet('w1', 20); // bet > rollover_remaining
+
+    expect(prisma.wallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          rollover_remaining: 0,
+          // rolloverJustCleared → remaining bonus (40-20=20) converts to real
+          real_balance: 50 + 20,   // real unchanged by bet + converted bonus
+          bonus_balance: 0,
+        }),
+      })
+    );
+  });
+
+  it('converts remaining bonus to real when rollover clears mid-bet', async () => {
+    // rollover_remaining=10, bet=30 with bonus=50
+    // rolloverDeduction = min(10, 30) = 10 → clears
+    // bonusDeduction = 30 (all from bonus since bonus >= bet)
+    // newBonusBal before clear = 50 - 30 = 20 → converted to real
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({
+      ...mockWallet,
+      real_balance: 100,
+      bonus_balance: 50,
+      rollover_remaining: 10,
+    });
+    (prisma.wallet.update as jest.Mock).mockResolvedValue({});
+    (prisma.transaction.create as jest.Mock).mockResolvedValue({});
+
+    await deductBet('w1', 30);
+
+    expect(prisma.wallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          rollover_remaining: 0,
+          bonus_balance: 0,
+          real_balance: 100 + 20,  // 100 (unchanged) + 20 (converted bonus residual)
+        }),
+      })
+    );
+  });
+
+  it('does not touch rollover_remaining when no rollover is active', async () => {
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({
+      ...mockWallet,
+      real_balance: 50,
+      bonus_balance: 0,
+      rollover_remaining: 0,
+    });
+    (prisma.wallet.update as jest.Mock).mockResolvedValue({});
+    (prisma.transaction.create as jest.Mock).mockResolvedValue({});
+
+    await deductBet('w1', 20);
+
+    const updateCall = (prisma.wallet.update as jest.Mock).mock.calls[0][0];
+    expect(updateCall.data).not.toHaveProperty('rollover_remaining');
+  });
+
+  it('partial rollover: caps deduction at rollover_remaining, not the bet amount', async () => {
+    // rollover_remaining=5, bet=50 → rolloverDeduction = min(5, 50) = 5
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({
+      ...mockWallet,
+      real_balance: 200,
+      bonus_balance: 0,
+      rollover_remaining: 5,
+    });
+    (prisma.wallet.update as jest.Mock).mockResolvedValue({});
+    (prisma.transaction.create as jest.Mock).mockResolvedValue({});
+
+    await deductBet('w1', 50);
+
+    expect(prisma.wallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ rollover_remaining: 0 }),
+      })
+    );
+  });
 });
 
 describe('deposit', () => {

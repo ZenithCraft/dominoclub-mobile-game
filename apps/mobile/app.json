@@ -35,7 +35,7 @@
         "backgroundColor": "#0a1f0a"
       },
       "package": "com.dominoclub.app",
-      "versionCode": 32,
+      "versionCode": 33,
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
@@ -61,7 +61,8 @@
     },
     "plugins": [
       "expo-location",
-      "expo-image-picker"
+      "expo-image-picker",
+      "expo-font"
     ],
     "owner": "o_jojoyoro",
     "extra": {

@@ -1329,7 +1329,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#22d3ee',
   },
   searchCard: {
-    width: 360,
+    width: isTablet ? 540 : 360,
     maxWidth: '94%',
     borderRadius: radius.xl,
     paddingVertical: 22,
@@ -1340,8 +1340,8 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ boxShadow: '0px 14px 28px rgba(0,0,0,0.50)' } as any) : { elevation: 8, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 18, shadowOffset: { width: 0, height: 10 } }),
   },
   searchSpinnerRow: { alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  searchTitle: { color: '#fff', fontSize: fonts.sizes.xl, fontWeight: '900', textAlign: 'center' },
-  searchSubtitle: { color: 'rgba(255,255,255,0.72)', fontSize: fonts.sizes.sm, fontWeight: '700', textAlign: 'center', marginTop: 6, marginBottom: 14 },
+  searchTitle: { color: '#fff', fontSize: isTablet ? fonts.sizes.xxl : fonts.sizes.xl, fontWeight: '900', textAlign: 'center' },
+  searchSubtitle: { color: 'rgba(255,255,255,0.72)', fontSize: isTablet ? fonts.sizes.md : fonts.sizes.sm, fontWeight: '700', textAlign: 'center', marginTop: 6, marginBottom: 14 },
   cancelBtn: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
@@ -1351,7 +1351,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     alignItems: 'center',
   },
-  cancelBtnText: { color: '#fff', fontWeight: '900', fontSize: fonts.sizes.sm },
+  cancelBtnText: { color: '#fff', fontWeight: '900', fontSize: isTablet ? fonts.sizes.md : fonts.sizes.sm },
 
   // Modal - Estilo KYC
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center' },

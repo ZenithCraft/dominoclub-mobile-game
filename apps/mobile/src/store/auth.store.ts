@@ -118,9 +118,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             }
           }
         } catch (err: any) {
-          if (err?.response?.status === 401) {
+          const status = err?.response?.status;
+          if (status === 401 || status === 404) {
+            // 401 = invalid/expired token, 404 = user deleted from DB.
+            // Both mean stored tokens are unusable — wipe them so the next
+            // app load starts fresh instead of looping on the same bad tokens.
             const allowDevLogin = process.env.EXPO_PUBLIC_FORCE_DEV_LOGIN === 'true';
-            if (allowDevLogin) {
+            if (allowDevLogin && status === 401) {
               try {
                 const { data } = await api.post('/auth/dev/login', {
                   phone: '+5599999999999',

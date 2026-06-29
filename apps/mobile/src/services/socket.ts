@@ -3,6 +3,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api, refreshAccessToken } from './api';
 
 function getSocketUrl(): string {
+  // When running in a browser on localhost, always use the local backend
+  // so the socket token (signed by the local server) is verified by the same server.
+  const isLocalhostWeb =
+    typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+  if (isLocalhostWeb) return 'http://localhost:3001';
+
   const envSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL;
   if (envSocketUrl) return envSocketUrl;
 
@@ -11,15 +17,10 @@ function getSocketUrl(): string {
     try {
       const u = new URL(base);
       return u.origin;
-    } catch {
-    }
+    } catch {}
   }
 
-  const isLocalhostWeb =
-    typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-  return typeof location !== 'undefined'
-    ? (isLocalhostWeb ? 'http://localhost:3001' : location.origin)
-    : 'http://localhost:3001';
+  return typeof location !== 'undefined' ? location.origin : 'http://localhost:3001';
 }
 function isMockMode(): boolean {
   return (

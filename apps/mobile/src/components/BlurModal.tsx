@@ -10,7 +10,7 @@ export function BlurModal({ children, intensity = 22, ...modalProps }: BlurModal
   const opacity = Math.min(0.85, intensity / 100 + 0.6);
   return (
     <Modal transparent statusBarTranslucent {...modalProps}>
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: `rgba(0,0,0,${opacity})` }]}>
+      <View style={{ flex: 1, backgroundColor: `rgba(0,0,0,${opacity})` }}>
         {children}
       </View>
     </Modal>

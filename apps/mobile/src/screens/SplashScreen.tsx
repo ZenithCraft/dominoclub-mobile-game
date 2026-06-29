@@ -32,7 +32,7 @@ const dominoImages: Record<string, any> = {
 type Props = { navigation: NativeStackNavigationProp<any> };
 
 export function SplashScreen({ navigation }: Props) {
-  const { loadFromStorage, setTokens, setUser } = useAuthStore();
+  const { loadFromStorage, setTokens, setUser, logout } = useAuthStore();
   const { width: winW, height: winH } = useWindowDimensions();
   const isTabletSize = Math.min(winW, winH) >= 768;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -58,17 +58,26 @@ export function SplashScreen({ navigation }: Props) {
 
     const DEV_AUTO_LOGIN = process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS === 'true';
 
+    const DEV_PHONE = '+5511999990001';
+
     let timer: ReturnType<typeof setTimeout> | null = null;
     loadFromStorage().then(async () => {
-      if (!useAuthStore.getState().user && !useAuthStore.getState().accessToken && DEV_AUTO_LOGIN) {
+      const cachedUser = useAuthStore.getState().user;
+
+      if (DEV_AUTO_LOGIN && cachedUser?.phone !== DEV_PHONE) {
+        // Cached session is wrong user (e.g. Super Admin) or empty — force Dev User login
+        if (cachedUser) await logout();
         try {
           const { data } = await api.post('/auth/dev/login', {
-            phone: '+5599999999999',
-            name: 'Super Admin',
+            phone: DEV_PHONE,
+            name: 'Dev User',
           });
           setTokens(data.accessToken, data.refreshToken);
           setUser(data.user);
         } catch {}
+      } else if (!DEV_AUTO_LOGIN && cachedUser?.phone === DEV_PHONE) {
+        // Bypass was turned off — clear the dev session so real login is required
+        await logout();
       }
       timer = setTimeout(async () => {
         if (!useAuthStore.getState().user) {

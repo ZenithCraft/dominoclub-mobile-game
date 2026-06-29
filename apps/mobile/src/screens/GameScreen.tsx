@@ -1124,7 +1124,8 @@ function OpponentCard({ player, tileCount, isTurn, team = 0, isOpponent = false 
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
-  const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
+  const colorTeam = isOpponent ? 2 : 1;
+  const idleBorder = team ? TEAM_COLORS.idle(colorTeam) : TEAM_COLORS.none;
   const gradientColors: [string, string] = isOpponent
     ? ['rgba(38,8,8,0.97)', 'rgba(100,22,22,0.93)']
     : ['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)'];
@@ -1134,7 +1135,7 @@ function OpponentCard({ player, tileCount, isTurn, team = 0, isOpponent = false 
         colors={gradientColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[oppStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
+        style={[oppStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(colorTeam)]}
       >
         <View style={oppStyles.avatar}>
           {avatarUri ? (
@@ -1206,7 +1207,8 @@ function SidePlayerCard({ player, tileCount, isTurn, team = 0, isOpponent = fals
   if (!player) return null;
   const name = player.isBot ? 'Bot' : (player.name || `P${player.seat + 1}`);
   const avatarUri: string | undefined = player?.avatarUrl ?? player?.avatar;
-  const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
+  const colorTeam = isOpponent ? 2 : 1;
+  const idleBorder = team ? TEAM_COLORS.idle(colorTeam) : TEAM_COLORS.none;
   const gradientColors: [string, string] = isOpponent
     ? ['rgba(38,8,8,0.97)', 'rgba(100,22,22,0.93)']
     : ['rgba(8,38,14,0.97)', 'rgba(32,100,22,0.93)'];
@@ -1216,7 +1218,12 @@ function SidePlayerCard({ player, tileCount, isTurn, team = 0, isOpponent = fals
         colors={gradientColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[sideStyles.card, { borderColor: idleBorder }, isTurn && teamTurnStyle(team)]}
+        style={[
+          sideStyles.card,
+          isOpponent && sideStyles.cardEnemy,
+          { borderColor: idleBorder },
+          isTurn && teamTurnStyle(colorTeam),
+        ]}
       >
         <View style={sideStyles.avatar}>
           {avatarUri ? (
@@ -1245,6 +1252,11 @@ const sideStyles = StyleSheet.create({
     minWidth: isSmallPhone ? 60 : isPhone ? 72 : isTablet ? 140 : 96,
     minHeight: isSmallPhone ? 64 : isPhone ? 78 : isTablet ? 150 : 110,
   },
+  cardEnemy: {
+    paddingVertical: isSmallPhone ? 10 : isPhone ? 14 : isTablet ? 12 : 20,
+    gap: isSmallPhone ? 5 : isPhone ? 7 : isTablet ? 6 : 10,
+    minHeight: isSmallPhone ? 86 : isPhone ? 106 : isTablet ? 150 : 138,
+  },
   name: { color: '#fff', fontWeight: '800', fontSize: isPhone ? 10 : isTablet ? fonts.sizes.md : fonts.sizes.xs, textAlign: 'center' },
   sub:  { color: 'rgba(255,255,255,0.7)', fontSize: isPhone ? 9 : isTablet ? fonts.sizes.sm : fonts.sizes.xs, textAlign: 'center' },
   avatar: {
@@ -1268,7 +1280,7 @@ function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji, team = 0
   name: string; hand: number; isMyTurn: boolean; avatarUri?: string; onSelectEmoji?: (e: string) => void; team?: number; matchScore?: number;
 }) {
   const [open, setOpen] = React.useState(false);
-  const idleBorder = team ? TEAM_COLORS.idle(team) : TEAM_COLORS.none;
+  const idleBorder = team ? TEAM_COLORS.idle(1) : TEAM_COLORS.none;
   const scale = usePulse(isMyTurn);
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
@@ -1276,7 +1288,7 @@ function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji, team = 0
         colors={['rgba(32,100,22,0.93)', 'rgba(8,38,14,0.97)']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={[myCardStyles.card, { borderColor: idleBorder }, isMyTurn && teamTurnStyle(team)]}
+        style={[myCardStyles.card, { borderColor: idleBorder }, isMyTurn && teamTurnStyle(1)]}
       >
         <View style={myCardStyles.nameWrap}>
           <Text style={myCardStyles.name} numberOfLines={1} ellipsizeMode="tail">{name}</Text>
@@ -3520,7 +3532,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#BBFF00',
   },
   joinCard: {
-    width: 360,
+    width: isTablet ? 680 : 360,
     maxWidth: '94%',
     borderRadius: radius.xl,
     paddingVertical: 22,
@@ -3557,7 +3569,7 @@ const styles = StyleSheet.create({
   },
   loadingCard: {
     marginTop: 16,
-    width: 320,
+    width: isTablet ? 620 : 320,
     maxWidth: '92%',
     backgroundColor: 'rgba(0,0,0,0.45)',
     borderRadius: radius.lg,
@@ -3726,7 +3738,7 @@ const styles = StyleSheet.create({
     width: '90%',
     maxWidth: isTablet ? 1280 : 1020,
     alignSelf: 'center',
-    backgroundColor: '#060e06',
+    backgroundColor: '#0d1a0d',
     borderRadius: 999,
     padding: 6,
     borderWidth: 8,

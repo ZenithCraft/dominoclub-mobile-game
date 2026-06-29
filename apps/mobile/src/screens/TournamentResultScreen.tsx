@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { isTablet } from '../theme/responsive';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { IconTrophy, IconSettings, IconX } from '../components/Icons';
 import { GradientToggle } from './HomeScreen';
@@ -245,7 +246,7 @@ const styles = StyleSheet.create({
   titleLoss: { color: '#fff' },
 
   resultCard: {
-    width: '100%', maxWidth: 360,
+    width: '100%', maxWidth: isTablet ? 680 : 360,
     borderRadius: radius.xl, padding: spacing.xl,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
     gap: spacing.md,
@@ -255,7 +256,7 @@ const styles = StyleSheet.create({
   resultValue: { color: '#fff', fontSize: fonts.sizes.xl, fontWeight: '900' },
   resultDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
 
-  actions: { width: '100%', maxWidth: 360, gap: spacing.sm },
+  actions: { width: '100%', maxWidth: isTablet ? 680 : 360, gap: spacing.sm },
 
   bracketBtn: {
     borderRadius: radius.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',

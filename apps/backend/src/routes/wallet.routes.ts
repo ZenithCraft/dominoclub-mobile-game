@@ -6,6 +6,7 @@ import {
   withdrawHandler,
   getTransactionHandler,
   redeemCouponHandler,
+  validateCouponHandler,
   pixWebhookHandler,
 } from '../controllers/wallet.controller';
 
@@ -15,6 +16,7 @@ router.get('/', authMiddleware, getWalletHandler);
 router.post('/deposit', authMiddleware, depositHandler);
 router.post('/withdraw', authMiddleware, withdrawHandler);
 router.post('/redeem-coupon', authMiddleware, redeemCouponHandler);
+router.get('/coupon/validate', authMiddleware, validateCouponHandler);
 router.get('/transaction/:id', authMiddleware, getTransactionHandler);
 router.post('/pix/webhook', pixWebhookHandler);
 

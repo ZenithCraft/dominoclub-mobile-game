@@ -8,6 +8,7 @@ import { BlurModal } from './BlurModal';
 import { GradientToggle } from '../screens/HomeScreen';
 import { IconX } from './Icons';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
+import { isTablet } from '../theme/responsive';
 import { toast } from '../store/toast.store';
 
 const CARD_PAD = Platform.OS === 'web' ? 24 : 16;
@@ -90,7 +91,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   card: {
-    width: Platform.OS === 'web' ? 640 : 440,
+    width: Platform.OS === 'web' ? 640 : isTablet ? 780 : 440,
     maxWidth: '92%',
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,

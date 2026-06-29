@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { getWallet, deposit, withdraw, getTransaction } from '../services/wallet.service';
-import { redeemCoupon } from '../services/coupon.service';
+import { redeemCoupon, validateCoupon } from '../services/coupon.service';
 import { confirmPixDeposit, verifyPixWebhookSignature } from '../services/pix.service';
 import { depositSchema, redeemCouponSchema, withdrawSchema } from '../utils/validators';
 import { checkUserVelocity } from '../middleware/antifraud.middleware';
@@ -63,6 +63,17 @@ export async function redeemCouponHandler(req: Request, res: Response) {
     res.status(201).json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
+  }
+}
+
+export async function validateCouponHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.userId;
+    const code = typeof req.query.code === 'string' ? req.query.code : '';
+    const status = await validateCoupon(userId, code);
+    res.json({ status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 }
 

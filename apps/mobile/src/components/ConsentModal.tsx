@@ -6,6 +6,7 @@ import {
 import { BlurModal } from './BlurModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, radius } from '../theme';
+import { isTablet } from '../theme/responsive';
 import { IconShieldAlert } from './Icons';
 
 const CONSENT_KEY = '@dominoclub_consent_v1';
@@ -273,8 +274,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.xl,
     width: '100%',
-    maxWidth: 420,
-    maxHeight: 520,
+    maxWidth: isTablet ? 740 : 420,
+    maxHeight: isTablet ? 860 : 520,
     flex: 1,
     borderWidth: 2,
     borderColor: '#0F400B',

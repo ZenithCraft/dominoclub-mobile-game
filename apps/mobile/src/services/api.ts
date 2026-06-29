@@ -5,14 +5,6 @@ import { Platform } from 'react-native';
 
 const envBaseUrl = process.env.EXPO_PUBLIC_API_URL;
 
-// Detectar IP da máquina para desenvolvimento mobile
-// No Android/iOS, localhost não funciona - precisa do IP real da máquina
-const getLocalIp = () => {
-  // Se estiver rodando no Expo Go ou emulador, usa o IP da máquina de desenvolvimento
-  // Você pode substituir pelo seu IP local: EXPO_PUBLIC_API_URL=http://192.168.1.X:3001/api/v1
-  return '192.168.1.1'; // Fallback - será substituído pelo env ou detectado
-};
-
 const isLocalhostWeb =
   typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
 
@@ -20,11 +12,15 @@ const isLocalhostWeb =
 const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
 
 let BASE_URL: string;
-if (envBaseUrl) {
+if (isLocalhostWeb) {
+  // Rodando no browser em localhost → sempre usa o backend local.
+  // Isso evita erros de CORS quando o servidor remoto não aceita localhost
+  // e garante que DEV_AUTH_BYPASS funcione (desativado em produção).
+  BASE_URL = 'http://localhost:3001/api/v1';
+} else if (envBaseUrl) {
   BASE_URL = envBaseUrl;
 } else if (typeof location !== 'undefined') {
-  // Web
-  BASE_URL = isLocalhostWeb ? 'http://localhost:3001/api/v1' : `${location.origin}/api/v1`;
+  BASE_URL = `${location.origin}/api/v1`;
 } else {
   if (__DEV__) {
     console.warn('EXPO_PUBLIC_API_URL not set — using localhost fallback. Set it in .env or app.json.');

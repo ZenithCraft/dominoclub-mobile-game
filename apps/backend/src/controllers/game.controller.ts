@@ -447,7 +447,7 @@ export async function getMyLeagueHandler(req: Request, res: Response) {
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({
       points: user.league_points,
-      current_rank: pointsToRank(user.league_points),
+      rank: pointsToRank(user.league_points),
       previous_rank: user.previous_rank,
       previous_rank_month: user.previous_rank_month,
     });

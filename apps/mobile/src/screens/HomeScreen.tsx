@@ -484,6 +484,7 @@ export function HomeScreen({ navigation, route }: Props) {
   const [locationBlockerVisible, setLocationBlockerVisible] = useState(false);
   const [onlineCount, setOnlineCount] = useState(0);
   const [profileAvatarUri, setProfileAvatarUri] = useState<string | null>(null);
+  const [profileRank, setProfileRank] = useState<string>('BRONZE');
   const [profileStatsLoading, setProfileStatsLoading] = useState(false);
   const [profileStats, setProfileStats] = useState({
     totalWins: 0,
@@ -552,16 +553,32 @@ export function HomeScreen({ navigation, route }: Props) {
           if (list.length < 10) break;
         }
 
-        const wins = games.filter((g) => (g?.winner_id ?? g?.winnerId) === userId).length;
+        const didWin = (g: any) => {
+          if ((g?.winner_id ?? g?.winnerId) === userId) return true;
+          if (g?.winning_team != null && Array.isArray(g?.players)) {
+            const myTeam = g.players.find((p: any) => p.userId === userId)?.team;
+            return myTeam != null && myTeam === g.winning_team;
+          }
+          return false;
+        };
+
+        const wins = games.filter(didWin).length;
         const total = games.length;
         const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
         const tournamentIds = new Set<string>();
         for (const g of games) {
           const tid = g?.tournamentId ?? g?.tournament_id;
-          if (tid && (g?.winner_id ?? g?.winnerId) === userId) tournamentIds.add(tid);
+          if (tid && didWin(g)) tournamentIds.add(tid);
         }
 
+        let rank = 'BRONZE';
+        try {
+          const { data: leagueData } = await apiClient.get('/game/me/league');
+          rank = leagueData?.rank ?? 'BRONZE';
+        } catch { /* league fetch is non-critical */ }
+
         if (!cancelled) {
+          setProfileRank(rank);
           setProfileStats({
             totalWins: wins,
             winRate,
@@ -668,6 +685,18 @@ export function HomeScreen({ navigation, route }: Props) {
         return;
       }
     } catch {}
+
+    if (!user?.cpf_verified || !user?.phone_verified) {
+      Alert.alert(
+        'Verificação necessária',
+        'Você precisa verificar sua identidade (KYC) antes de buscar partidas. O processo leva menos de 2 minutos.',
+        [
+          { text: 'Agora não', style: 'cancel' },
+          { text: 'Verificar agora', onPress: () => navigation.navigate('KYC') },
+        ],
+      );
+      return;
+    }
 
     if (Platform.OS !== 'web') {
       try {
@@ -865,12 +894,15 @@ export function HomeScreen({ navigation, route }: Props) {
                       )}
                     </TouchableOpacity>
                     <Text style={styles.profileName}>{user?.name || 'Jogador'}</Text>
-                    <Text style={styles.profileBadge}>Bronze</Text>
+                    <Text style={styles.profileBadge}>{profileStatsLoading ? '...' : ({
+                      BRONZE: 'Bronze', SILVER: 'Prata', GOLD: 'Ouro',
+                      PLATINUM: 'Platina', DIAMOND: 'Diamante',
+                    }[profileRank] ?? 'Bronze')}</Text>
                     <View style={styles.profileStarContainer}>
                       <LevelStarBadge level={profileStatsLoading ? '--' : levelText} size={44} />
                     </View>
                     <View style={styles.xpBarBg}>
-                      <View style={[styles.xpBarFill, { width: '40%' }]} />
+                      <View style={[styles.xpBarFill, { width: `${Math.round((profileStats.totalGames % 10) / 10 * 100)}%` as any }]} />
                     </View>
                   </View>
 
@@ -1073,8 +1105,8 @@ const styles = StyleSheet.create({
 
   // Settings modal
   settingsCard: {
-    width: Platform.OS === 'web' ? 640 : (isTablet ? '75%' : Math.min(440, SCREEN_W * 0.92)),
-    maxWidth: isTablet ? 780 : 480,
+    width: Platform.OS === 'web' ? (isTablet ? '78%' : 640) : (isTablet ? '78%' : Math.min(440, SCREEN_W * 0.92)),
+    maxWidth: isTablet ? 860 : 480,
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
     padding: isTablet ? 24 : SETTINGS_CARD_PAD,
@@ -1148,9 +1180,9 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   profileCard: {
-    width: Platform.OS === 'web' ? 640 : (isTablet ? '80%' : '92%'),
-    maxWidth: isTablet ? 900 : 520,
-    maxHeight: Platform.OS === 'web' ? 600 : (isTablet ? Math.round(SCREEN_H * 0.85) : Math.round(SCREEN_H * 0.80)),
+    width: Platform.OS === 'web' ? (isTablet ? '82%' : 640) : (isTablet ? '82%' : '92%'),
+    maxWidth: isTablet ? 960 : 520,
+    maxHeight: Platform.OS === 'web' ? (isTablet ? 860 : 600) : (isTablet ? Math.round(SCREEN_H * 0.88) : Math.round(SCREEN_H * 0.80)),
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
     padding: isTablet ? 24 : SETTINGS_CARD_PAD,
@@ -1219,7 +1251,7 @@ const styles = StyleSheet.create({
   profileActions: { gap: spacing.sm },
   profileActionGrad: {
     borderRadius: radius.sm,
-    paddingVertical: isSmallPhone ? 6 : 10,
+    paddingVertical: isSmallPhone ? 12 : 16,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.25)',
