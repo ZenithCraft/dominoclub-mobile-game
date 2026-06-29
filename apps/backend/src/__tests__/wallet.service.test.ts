@@ -266,6 +266,31 @@ describe('rollover mechanics', () => {
     expect(updateCall.data).not.toHaveProperty('rollover_remaining');
   });
 
+  it('clears rollover when bonus is exhausted by a bet (no bonus left to protect)', async () => {
+    // Player has bonus=10, rollover=50. This bet exhausts the bonus.
+    // Since there is nothing left to protect, rollover should be dropped immediately.
+    (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({
+      ...mockWallet,
+      real_balance: 100,
+      bonus_balance: 10,
+      rollover_remaining: 50,
+    });
+    (prisma.wallet.update as jest.Mock).mockResolvedValue({});
+    (prisma.transaction.create as jest.Mock).mockResolvedValue({});
+
+    await deductBet('w1', 10); // uses all bonus
+
+    expect(prisma.wallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          bonus_balance: 0,
+          rollover_remaining: 0, // cleared because bonus is gone
+          real_balance: 100,     // real unchanged (bonus covered the bet)
+        }),
+      })
+    );
+  });
+
   it('partial rollover: caps deduction at rollover_remaining, not the bet amount', async () => {
     // rollover_remaining=5, bet=50 → rolloverDeduction = min(5, 50) = 5
     (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({

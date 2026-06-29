@@ -59,16 +59,22 @@ export async function deductBet(walletId: string, amount: number) {
 
     const newRollover = Math.max(0, rolloverRem - rolloverDeduction);
     const rolloverJustCleared = rolloverRem > 0 && newRollover === 0;
-    // When rollover clears, convert remaining bonus into real balance
-    const newRealBal  = realBal - realDeduction + (rolloverJustCleared ? bonusBal - bonusDeduction : 0);
-    const newBonusBal = rolloverJustCleared ? 0 : bonusBal - bonusDeduction;
+    const bonusAfterBet = bonusBal - bonusDeduction; // remaining bonus before any conversion
+    // If this bet exhausted the bonus (was > 0, now 0) but rollover didn't clear yet,
+    // drop the rollover requirement — there is no bonus left to protect.
+    const bonusExhausted = bonusBal > 0 && bonusAfterBet === 0 && !rolloverJustCleared;
+    const finalRollover = (rolloverJustCleared || bonusExhausted) ? 0 : newRollover;
+    // When rollover clears (either normally or via bonus exhaustion), convert leftover
+    // bonus into real balance so the player doesn't lose it.
+    const newBonusBal = (rolloverJustCleared || bonusExhausted) ? 0 : bonusAfterBet;
+    const newRealBal  = realBal - realDeduction + ((rolloverJustCleared || bonusExhausted) ? bonusAfterBet : 0);
 
     await tx.wallet.update({
       where: { id: walletId },
       data: {
         real_balance:  newRealBal,
         bonus_balance: newBonusBal,
-        ...(rolloverDeduction > 0 ? { rollover_remaining: newRollover } : {}),
+        ...((rolloverDeduction > 0 || bonusExhausted) ? { rollover_remaining: finalRollover } : {}),
       },
     });
 
@@ -88,6 +94,7 @@ export async function deductBet(walletId: string, amount: number) {
 // We don't track per-bet source buckets, so real_balance is the safe default.
 // Must NOT use creditWin — that routes to bonus_balance when rollover is active.
 export async function refundBet(walletId: string, amount: number) {
+  if (amount <= 0) return; // free games have no entry fee — nothing to refund
   await prisma.$transaction(async (tx) => {
     const wallet = await tx.wallet.findUnique({ where: { id: walletId } });
     if (!wallet) throw new Error('Wallet not found');

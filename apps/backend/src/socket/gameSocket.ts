@@ -528,9 +528,19 @@ export function setupGameSocket(socket: Socket, io: SocketServer, user: { id: st
       if (!set) { set = new Set(); disconnectedInGame.set(gameId, set); }
       set.add(user.id);
 
+      const state = activeGames.get(gameId);
+      const is4Player = (state?.players.length ?? 0) >= 4;
+
+      // In 2v2 games, substitute immediately with a bot — no grace window.
+      // This prevents 3 friends from exploiting the grace period to hand
+      // a match to their team by having one player disconnect on purpose.
+      if (is4Player && state && state.status === 'playing') {
+        replaceWithBot(gameId, user.id, io);
+        return;
+      }
+
       // If it's THIS player's turn, freeze the turn timer with whatever ms
       // were left — the match shouldn't keep moving while they're offline.
-      const state = activeGames.get(gameId);
       if (state && state.status === 'playing') {
         const currentPlayer = state.players[state.currentPlayerIndex];
         if (currentPlayer.userId === user.id) {
@@ -1094,12 +1104,52 @@ export async function adminForceEnd(gameId: string, losingUserId: string): Promi
   await handleGameEnd(gameId, newState, io, { status: 'ABANDONED' });
 }
 
+// In a 2v2 game, replace a disconnected/leaving human player with a bot so the
+// match can continue instead of forfeiting. This prevents three friends from
+// exploiting a 2v2 table by having one quit to hand the game to their team.
+function replaceWithBot(gameId: string, leavingUserId: string, io: SocketServer) {
+  const state = activeGames.get(gameId);
+  if (!state || state.status !== 'playing') return false;
+
+  const playerIndex = state.players.findIndex((p) => p.userId === leavingUserId);
+  if (playerIndex === -1) return false;
+
+  const botUserId = `bot_sub_${leavingUserId.slice(0, 8)}`;
+  const newPlayers = state.players.map((p, i) =>
+    i === playerIndex ? { ...p, userId: botUserId, isBot: true } : p
+  );
+  const newState: GameState = { ...state, players: newPlayers };
+  activeGames.set(gameId, newState);
+
+  io.to(`game:${gameId}`).emit('game:bot_substitution', {
+    replacedUserId: leavingUserId,
+    botUserId,
+  });
+
+  logger.info('Player replaced by bot in 2v2', { gameId, leavingUserId, botUserId });
+
+  // If it was this player's turn, hand it to the bot immediately
+  clearTurnTimer(gameId);
+  scheduleBotTurn(gameId, newState, io);
+  if (newState.players[newState.currentPlayerIndex].userId !== botUserId) {
+    startTurnTimer(gameId, newState, io);
+  }
+
+  return true;
+}
+
 async function forfeitGame(gameId: string, forfeitingUserId: string, io: SocketServer, reason: 'leave' | 'disconnect') {
   const state = activeGames.get(gameId);
   if (!state || state.status !== 'playing') return;
 
   const forfeitingPlayer = state.players.find((p) => p.userId === forfeitingUserId);
   if (!forfeitingPlayer || forfeitingPlayer.isBot) return;
+
+  // In 2v2, replace the leaving player with a bot instead of ending the match
+  if (state.players.length >= 4) {
+    replaceWithBot(gameId, forfeitingUserId, io);
+    return;
+  }
 
   const winnerTeam = forfeitingPlayer.team === 1 ? 2 : 1;
   const winner = state.players.find((p) => p.team === winnerTeam && !p.isBot) ?? state.players.find((p) => p.team === winnerTeam);

@@ -1706,9 +1706,10 @@ export function GameScreen({ navigation, route }: Props) {
     return () => clearInterval(interval);
   }, [isMyTurn, currentGame?.status, currentGame?.currentPlayerIndex]);
 
-  // Auto-pass when timer reaches 0, but only when there's literally nothing else to do.
-  // When the player has valid moves or can draw, let the backend timer handle the timeout
-  // (it auto-plays via getBotMove) — sending a premature pass would be rejected by the server.
+  // Auto-play when timer reaches 0. The client acts immediately instead of waiting
+  // for the server's setTimeout — clock drift can cause a visible freeze otherwise.
+  // The server validates every move, so if its own timer fires first the client's
+  // emit is simply ignored (not the player's turn anymore).
   const autoPassExecutedRef = useRef(false);
   useEffect(() => {
     if (turnTimer !== 0 || !isMyTurn || !currentGame) {
@@ -1716,12 +1717,23 @@ export function GameScreen({ navigation, route }: Props) {
       return;
     }
     if (autoPassExecutedRef.current) return;
-    if (hasValidMoves) return;            // server timer will auto-play
-    if (!is4Player && hasBoneyard) return; // must draw first, server handles timeout
     autoPassExecutedRef.current = true;
 
-    const timeout = setTimeout(() => {
-      handlePass();
+    const timeout = setTimeout(async () => {
+      try {
+        const socket = socketRef.current ?? await connectSocket();
+        if (hasValidMoves) {
+          // Pick the first valid move available
+          const [key, plays] = [...validMovesMap.entries()][0];
+          const [a, b] = key.split('-').map(Number) as [number, number];
+          const { side, flipped } = plays[0];
+          socket.emit('game:move', { gameId, tile: [a, b] as Tile, side, flipped });
+        } else if (!is4Player && hasBoneyard) {
+          socket.emit('game:draw', { gameId });
+        } else {
+          socket.emit('game:pass', { gameId });
+        }
+      } catch {}
     }, 100);
 
     return () => clearTimeout(timeout);
@@ -2048,6 +2060,17 @@ export function GameScreen({ navigation, route }: Props) {
             setOpponentDisconnects((prev) => ({ ...prev, [uid]: data.deadlineAt }));
           }
         };
+        const onBotSubstitution = (data: { replacedUserId: string }) => {
+          // Clear any disconnect banner for this player — a bot took their seat
+          const uid = String(data.replacedUserId);
+          setOpponentDisconnects((prev) => {
+            if (!(uid in prev)) return prev;
+            const next = { ...prev };
+            delete next[uid];
+            return next;
+          });
+          showError('Um jogador saiu e foi substituído por um Bot');
+        };
         const onPlayerReconnected = (data: { userId: string }) => {
           const uid = String(data.userId);
           if (uid === myUserId) {
@@ -2090,6 +2113,7 @@ export function GameScreen({ navigation, route }: Props) {
         socket.on('game:emoji', onEmoji);
         socket.on('game:player_disconnected', onPlayerDisconnected);
         socket.on('game:player_reconnected', onPlayerReconnected);
+        socket.on('game:bot_substitution', onBotSubstitution);
         socket.on('disconnect', onDisconnect);
         socket.on('connect', onConnect);
 
@@ -2110,6 +2134,7 @@ export function GameScreen({ navigation, route }: Props) {
           socket.off('game:emoji', onEmoji);
           socket.off('game:player_disconnected', onPlayerDisconnected);
           socket.off('game:player_reconnected', onPlayerReconnected);
+          socket.off('game:bot_substitution', onBotSubstitution);
           socket.off('disconnect', onDisconnect);
           socket.off('connect', onConnect);
         };
