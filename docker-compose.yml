@@ -41,7 +41,12 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - ./apps/backend/.env.production
+      # NOTE: this must be the real, filled-in env file (not the checked-in
+      # .env.production template, which only holds ${VAR} placeholders —
+      # docker compose does not expand those when reading an env_file, so
+      # using the template here makes every secret literally the placeholder
+      # string and fails the "weak secret" startup check).
+      - ./apps/backend/.env
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://dominoclub:${POSTGRES_PASSWORD:-dominoclub_dev}@postgres:5432/dominoclub
@@ -66,9 +71,11 @@ services:
     build:
       context: ./apps/admin
       dockerfile: Dockerfile
+      args:
+        # Must be reachable from the CLIENT'S BROWSER, not the Docker network —
+        # "http://backend:3001" only resolves inside this compose network.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://34.233.108.8:3001/api/v1}
     restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: http://backend:3001/api/v1
     ports:
       - '3000:3000'
     depends_on:

@@ -18,8 +18,12 @@ import { useAuthStore } from '../store/auth.store';
 import { toast } from '../store/toast.store';
 import { connectSocket } from '../services/socket';
 import { ConsentModal } from '../components/ConsentModal';
+import { AnnouncementModal } from '../components/AnnouncementModal';
 import { WalletBalanceButton } from '../components/Button';
-import { IconSettings, IconStar, IconLogOut, IconX, IconVolumeUp, IconMusic, IconChevronLeft, IconMenu } from '../components/Icons';
+import { IconSettings, IconStar, IconLogOut, IconX, IconVolumeUp, IconMusic, IconChevronLeft, IconMenu, IconBell, IconBellOff } from '../components/Icons';
+import { useSettingsStore } from '../store/settings.store';
+import { setAppNotificationsEnabled } from '../services/notifications';
+import { sfx } from '../services/sfx';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -136,7 +140,7 @@ export function GradientToggle({
   onValueChange: (next: boolean) => void;
   pressableTestID?: string;
   accessibilityLabel?: string;
-  kind?: 'sound' | 'music';
+  kind?: 'sound' | 'music' | 'notifications';
 }) {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
@@ -180,6 +184,12 @@ export function GradientToggle({
               <IconVolumeUp size={18} color={iconColor} accessibilityLabel="Som" />
             ) : kind === 'music' ? (
               <IconMusic size={18} color={iconColor} accessibilityLabel="Música" />
+            ) : kind === 'notifications' ? (
+              value ? (
+                <IconBell size={18} color={iconColor} accessibilityLabel="Notificações" />
+              ) : (
+                <IconBellOff size={18} color={iconColor} accessibilityLabel="Notificações" />
+              )
             ) : null}
           </View>
         </Animated.View>
@@ -245,7 +255,7 @@ export function GameTopBar({
   return (
     <View style={topBar.bar}>
       {/* Left: avatar + name + level (tappable → profile) */}
-      <TouchableOpacity style={topBar.left} onPress={onProfile} activeOpacity={0.75}>
+      <TouchableOpacity style={topBar.left} onPress={() => { sfx.buttonClick(); onProfile?.(); }} activeOpacity={0.75}>
         <View style={topBar.avatar}>
           {user?.avatar ? (
             <Image source={{ uri: user.avatar }} style={topBar.avatarImg} />
@@ -262,7 +272,7 @@ export function GameTopBar({
       {tbPortrait ? (
         /* Portrait: hamburger menu button + dropdown */
         <View>
-          <TouchableOpacity style={topBar.iconBtn} onPress={() => setMenuOpen(v => !v)} accessibilityLabel="Menu">
+          <TouchableOpacity style={topBar.iconBtn} onPress={() => { sfx.buttonClick(); setMenuOpen(v => !v); }} accessibilityLabel="Menu">
             <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={topBar.iconBtnGrad}>
               <IconMenu size={20} color="#0a1f0a" />
             </LinearGradient>
@@ -272,18 +282,18 @@ export function GameTopBar({
             <TouchableOpacity style={topBar.menuBackdrop} activeOpacity={1} onPress={() => setMenuOpen(false)}>
               <View style={topBar.menuDropdown} onStartShouldSetResponder={() => true}>
 
-                <TouchableOpacity style={topBar.menuItem} activeOpacity={0.8} onPress={() => { setMenuOpen(false); onWallet?.(); }}>
-                  <WalletBalanceButton balance={balance} onPress={() => { setMenuOpen(false); onWallet?.(); }} />
+                <TouchableOpacity style={topBar.menuItem} activeOpacity={0.8} onPress={() => { sfx.buttonClick(); setMenuOpen(false); onWallet?.(); }}>
+                  <WalletBalanceButton balance={balance} onPress={() => { sfx.buttonClick(); setMenuOpen(false); onWallet?.(); }} />
                 </TouchableOpacity>
 
                 <View style={topBar.menuDivider} />
 
-                <TouchableOpacity style={topBar.menuItem} activeOpacity={0.8} onPress={() => { setMenuOpen(false); onSettings?.(); }}>
+                <TouchableOpacity style={topBar.menuItem} activeOpacity={0.8} onPress={() => { sfx.buttonClick(); setMenuOpen(false); onSettings?.(); }}>
                   <IconSettings size={20} color="#fff" />
                   <Text style={topBar.menuItemText}>Configurações</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={topBar.menuItem} activeOpacity={0.8} onPress={() => { setMenuOpen(false); onExit?.(); }}>
+                <TouchableOpacity style={topBar.menuItem} activeOpacity={0.8} onPress={() => { sfx.buttonClick(); setMenuOpen(false); onExit?.(); }}>
                   {exitVariant === 'back' ? (
                     <IconChevronLeft size={20} color="#fff" />
                   ) : (
@@ -301,7 +311,7 @@ export function GameTopBar({
         <View style={topBar.right}>
           <WalletBalanceButton balance={balance} onPress={onWallet} height={isTablet ? 48 : 36} />
 
-          <TouchableOpacity style={topBar.iconBtn} onPress={onSettings} testID="topbar-settings" accessibilityLabel="Abrir configurações">
+          <TouchableOpacity style={topBar.iconBtn} onPress={() => { sfx.buttonClick(); onSettings?.(); }} testID="topbar-settings" accessibilityLabel="Abrir configurações">
             <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={topBar.iconBtnGrad}>
               <IconSettings size={isTablet ? 22 : 18} color="#0a1f0a" strokeWidth={2.5} accessibilityLabel="Configurações" />
             </LinearGradient>
@@ -309,7 +319,7 @@ export function GameTopBar({
 
           <TouchableOpacity
             style={topBar.iconBtn}
-            onPress={onExit}
+            onPress={() => { sfx.buttonClick(); onExit?.(); }}
             testID={exitVariant === 'back' ? 'topbar-back' : 'topbar-logout'}
             accessibilityLabel={exitVariant === 'back' ? 'Voltar' : 'Sair'}
           >
@@ -344,7 +354,7 @@ export function GameTopBarMinimal({
   return (
     <View style={topBar.bar}>
       {/* Left: avatar + name + level (tappable → profile) */}
-      <TouchableOpacity style={topBar.left} onPress={onProfile} activeOpacity={0.75}>
+      <TouchableOpacity style={topBar.left} onPress={() => { sfx.buttonClick(); onProfile?.(); }} activeOpacity={0.75}>
         <View style={topBar.avatar}>
           {user?.avatar ? (
             <Image source={{ uri: user.avatar }} style={topBar.avatarImg} />
@@ -360,7 +370,7 @@ export function GameTopBarMinimal({
 
       {/* Right: settings + exit (no balance) */}
       <View style={topBar.right}>
-        <TouchableOpacity style={topBar.iconBtn} onPress={onSettings} testID="topbar-settings" accessibilityLabel="Abrir configurações">
+        <TouchableOpacity style={topBar.iconBtn} onPress={() => { sfx.buttonClick(); onSettings?.(); }} testID="topbar-settings" accessibilityLabel="Abrir configurações">
           <LinearGradient colors={['#BEF311', '#1CBB3D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={topBar.iconBtnGrad}>
             <IconSettings size={20} color="#0a1f0a" accessibilityLabel="Configurações" />
           </LinearGradient>
@@ -368,7 +378,7 @@ export function GameTopBarMinimal({
 
         <TouchableOpacity
           style={topBar.iconBtn}
-          onPress={onExit}
+          onPress={() => { sfx.buttonClick(); onExit?.(); }}
           testID={exitVariant === 'back' ? 'topbar-back' : 'topbar-logout'}
           accessibilityLabel={exitVariant === 'back' ? 'Voltar' : 'Sair'}
         >
@@ -478,10 +488,13 @@ export function HomeScreen({ navigation, route }: Props) {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [profileVisible, setProfileVisible]   = useState(false);
   const [logoutVisible, setLogoutVisible]     = useState(false);
-  const [soundOn, setSoundOn]   = useState(true);
   const [musicOn, setMusicOn]   = useState(true);
   const [locationGranted, setLocationGranted]         = useState<boolean | null>(null);
   const [locationBlockerVisible, setLocationBlockerVisible] = useState(false);
+  const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
+  const soundOn = useSettingsStore((s) => s.soundOn);
+  const setSoundOn = useSettingsStore((s) => s.setSoundOn);
+  useEffect(() => { useSettingsStore.getState().loadFromStorage(); }, []);
   const [onlineCount, setOnlineCount] = useState(0);
   const [profileAvatarUri, setProfileAvatarUri] = useState<string | null>(null);
   const [profileRank, setProfileRank] = useState<string>('BRONZE');
@@ -725,6 +738,7 @@ export function HomeScreen({ navigation, route }: Props) {
     <ScreenBackground style={styles.root}>
       <SafeAreaView style={styles.safe} edges={[]}>
       <ConsentModal onAccepted={() => {}} />
+      <AnnouncementModal />
 
       {/* Top bar */}
       <GameTopBar
@@ -745,7 +759,7 @@ export function HomeScreen({ navigation, route }: Props) {
           <TouchableOpacity
             style={[styles.modeBtn, styles.modeBtnLivre]}
             activeOpacity={0.85}
-            onPress={() => handlePlayPress('LIVRE')}
+            onPress={() => { sfx.buttonClick(); handlePlayPress('LIVRE'); }}
           >
             <LinearGradient
               colors={['#22d3ee', '#0891b2']}
@@ -761,7 +775,7 @@ export function HomeScreen({ navigation, route }: Props) {
           <TouchableOpacity
             style={[styles.modeBtn, styles.modeBtnTorneio]}
             activeOpacity={0.85}
-            onPress={() => handlePlayPress('TORNEIO')}
+            onPress={() => { sfx.buttonClick(); handlePlayPress('TORNEIO'); }}
           >
             <LinearGradient
               colors={['#fbbf24', '#d97706']}
@@ -783,7 +797,7 @@ export function HomeScreen({ navigation, route }: Props) {
           testID="settings-overlay"
         >
           <Pressable
-            style={styles.settingsCard}
+            style={[styles.settingsCard, { maxHeight: Math.min(styles.settingsCard.maxHeight as number, Math.round(windowH * 0.85)) }]}
             onPress={() => {}}
             onStartShouldSetResponder={() => true}
             testID="settings-card"
@@ -799,62 +813,76 @@ export function HomeScreen({ navigation, route }: Props) {
             <View style={styles.modalHeader}>
               <View style={{ width: 26 }} />
               <Text style={styles.settingsTitle}>Configurações</Text>
-              <TouchableOpacity onPress={() => setSettingsVisible(false)} accessibilityLabel="Fechar configurações">
+              <TouchableOpacity onPress={() => { sfx.buttonClick(); setSettingsVisible(false); }} accessibilityLabel="Fechar configurações">
                 <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Som:</Text>
-              <GradientToggle
-                value={soundOn}
-                onValueChange={setSoundOn}
-                pressableTestID="settings-sound-toggle"
-                accessibilityLabel="Som"
-                kind="sound"
-              />
-            </View>
-
-            <View style={styles.settingItem}>
-              <Text style={styles.settingLabel}>Música:</Text>
-              <GradientToggle
-                value={musicOn}
-                onValueChange={setMusicOn}
-                pressableTestID="settings-music-toggle"
-                accessibilityLabel="Música"
-                kind="music"
-              />
-            </View>
-
-            {Platform.OS !== 'web' && (
+            <ScrollView style={{ flexGrow: 1, flexShrink: 1, minHeight: 0 }} contentContainerStyle={{ gap: SETTINGS_ITEM_GAP }} showsVerticalScrollIndicator={false}>
               <View style={styles.settingItem}>
-                <Text style={styles.settingLabel}>Localização:</Text>
-                <TouchableOpacity
-                  style={styles.locationBtn}
-                  onPress={async () => {
-                    try {
-                      const { status } = await Location.getForegroundPermissionsAsync();
-                      if (status === 'granted') {
-                        toast.info('Localização já está ativada');
-                        return;
-                      }
-                      const { status: ns } = await Location.requestForegroundPermissionsAsync();
-                      if (ns === 'granted') {
-                        setLocationGranted(true);
-                        toast.success('Localização ativada!');
-                      } else {
-                        Linking.openSettings();
-                      }
-                    } catch {}
-                  }}
-                  accessibilityLabel="Ativar localização"
-                >
-                  <Text style={[styles.locationBtnText, locationGranted ? styles.locationBtnGranted : null]}>
-                    {locationGranted ? '✓ Ativada' : 'Ativar'}
-                  </Text>
-                </TouchableOpacity>
+                <Text style={styles.settingLabel}>Som:</Text>
+                <GradientToggle
+                  value={soundOn}
+                  onValueChange={setSoundOn}
+                  pressableTestID="settings-sound-toggle"
+                  accessibilityLabel="Som"
+                  kind="sound"
+                />
               </View>
-            )}
+
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Música:</Text>
+                <GradientToggle
+                  value={musicOn}
+                  onValueChange={setMusicOn}
+                  pressableTestID="settings-music-toggle"
+                  accessibilityLabel="Música"
+                  kind="music"
+                />
+              </View>
+
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Notificações:</Text>
+                <GradientToggle
+                  value={notificationsEnabled}
+                  onValueChange={setAppNotificationsEnabled}
+                  pressableTestID="settings-notifications-toggle"
+                  accessibilityLabel="Notificações"
+                  kind="notifications"
+                />
+              </View>
+
+              {Platform.OS !== 'web' && (
+                <View style={styles.settingItem}>
+                  <Text style={styles.settingLabel}>Localização:</Text>
+                  <TouchableOpacity
+                    style={styles.locationBtn}
+                    onPress={async () => {
+                      sfx.buttonClick();
+                      try {
+                        const { status } = await Location.getForegroundPermissionsAsync();
+                        if (status === 'granted') {
+                          toast.info('Localização já está ativada');
+                          return;
+                        }
+                        const { status: ns } = await Location.requestForegroundPermissionsAsync();
+                        if (ns === 'granted') {
+                          setLocationGranted(true);
+                          toast.success('Localização ativada!');
+                        } else {
+                          Linking.openSettings();
+                        }
+                      } catch {}
+                    }}
+                    accessibilityLabel="Ativar localização"
+                  >
+                    <Text style={[styles.locationBtnText, locationGranted ? styles.locationBtnGranted : null]}>
+                      {locationGranted ? '✓ Ativada' : 'Ativar'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </BlurModal>
@@ -871,7 +899,7 @@ export function HomeScreen({ navigation, route }: Props) {
               <View style={styles.modalHeader}>
                 <View style={{ width: 26 }} />
                 <Text style={styles.settingsTitle}>Perfil</Text>
-                <TouchableOpacity onPress={() => setProfileVisible(false)} activeOpacity={0.7}>
+                <TouchableOpacity onPress={() => { sfx.buttonClick(); setProfileVisible(false); }} activeOpacity={0.7}>
                   <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
                 </TouchableOpacity>
               </View>
@@ -886,7 +914,7 @@ export function HomeScreen({ navigation, route }: Props) {
                 <View style={styles.profileBody}>
                   {/* Left: avatar + info */}
                   <View style={styles.profileLeft}>
-                    <TouchableOpacity style={styles.profileAvatar} activeOpacity={0.85} onPress={onPickProfileAvatar}>
+                    <TouchableOpacity style={styles.profileAvatar} activeOpacity={0.85} onPress={() => { sfx.buttonClick(); onPickProfileAvatar(); }}>
                       {profileAvatarUri ? (
                         <Image source={{ uri: profileAvatarUri }} style={styles.profileAvatarImg} />
                       ) : (
@@ -928,7 +956,7 @@ export function HomeScreen({ navigation, route }: Props) {
                 <View style={styles.profileActions}>
                   {[{colors: ['#BEF311','#1CBB3D'] as [string,string], label:'Histórico De Partidas', route:'History'},{colors: ['#BEF311','#1CBB3D'] as [string,string], label:'Conquistas', route:'Achievements'},{colors: ['#ffd700','#ca8a04'] as [string,string], label:'Liga & Ranking', route:'Leaderboard'}].map(({colors: gc, label, route}) => (
                     <LinearGradient key={route} colors={gc} start={{x:0,y:0}} end={{x:1,y:1}} style={[styles.profileActionGrad, dynShortScreen && { paddingVertical: 4 }]}>
-                      <TouchableOpacity activeOpacity={0.85} onPress={() => { setProfileVisible(false); navigation.navigate(route as any); }}>
+                      <TouchableOpacity activeOpacity={0.85} onPress={() => { sfx.buttonClick(); setProfileVisible(false); navigation.navigate(route as any); }}>
                         <Text style={[styles.profileActionTextDark, dynShortScreen && { fontSize: fonts.sizes.xs }]}>{label}</Text>
                       </TouchableOpacity>
                     </LinearGradient>
@@ -945,7 +973,7 @@ export function HomeScreen({ navigation, route }: Props) {
           <View style={[styles.logoutCard, styles.locationCard]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Localização necessária</Text>
-              <TouchableOpacity onPress={() => setLocationBlockerVisible(false)}>
+              <TouchableOpacity onPress={() => { sfx.buttonClick(); setLocationBlockerVisible(false); }}>
                 <IconX size={18} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
@@ -953,12 +981,12 @@ export function HomeScreen({ navigation, route }: Props) {
               Para jogar, precisamos acessar sua localização. Ative a permissão nas configurações do dispositivo.
             </Text>
             <View style={styles.logoutActions}>
-              <TouchableOpacity style={styles.logoutCancelBtn} onPress={() => setLocationBlockerVisible(false)} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.logoutCancelBtn} onPress={() => { sfx.buttonClick(); setLocationBlockerVisible(false); }} activeOpacity={0.85}>
                 <Text style={styles.logoutCancelText}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.logoutConfirmBtn}
-                onPress={() => { setLocationBlockerVisible(false); Linking.openSettings(); }}
+                onPress={() => { sfx.buttonClick(); setLocationBlockerVisible(false); Linking.openSettings(); }}
                 activeOpacity={0.85}
               >
                 <Text style={styles.logoutConfirmText}>Configurações</Text>
@@ -977,7 +1005,7 @@ export function HomeScreen({ navigation, route }: Props) {
           <View style={styles.logoutCard} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Sair</Text>
-              <TouchableOpacity onPress={() => setLogoutVisible(false)}>
+              <TouchableOpacity onPress={() => { sfx.buttonClick(); setLogoutVisible(false); }}>
                 <IconX size={18} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
@@ -985,10 +1013,10 @@ export function HomeScreen({ navigation, route }: Props) {
             <Text style={styles.logoutText}>Tem certeza que deseja sair da sua conta?</Text>
 
             <View style={styles.logoutActions}>
-              <TouchableOpacity style={styles.logoutCancelBtn} onPress={() => setLogoutVisible(false)} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.logoutCancelBtn} onPress={() => { sfx.buttonClick(); setLogoutVisible(false); }} activeOpacity={0.85}>
                 <Text style={styles.logoutCancelText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.logoutConfirmBtn} onPress={handleLogout} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.logoutConfirmBtn} onPress={() => { sfx.buttonClick(); handleLogout(); }} activeOpacity={0.85}>
                 <Text style={styles.logoutConfirmText}>Sair</Text>
               </TouchableOpacity>
             </View>
@@ -1107,6 +1135,7 @@ const styles = StyleSheet.create({
   settingsCard: {
     width: Platform.OS === 'web' ? (isTablet ? '78%' : 640) : (isTablet ? '78%' : Math.min(440, SCREEN_W * 0.92)),
     maxWidth: isTablet ? 860 : 480,
+    maxHeight: Platform.OS === 'web' ? (isTablet ? 700 : 600) : Math.round(SCREEN_H * 0.85),
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
     padding: isTablet ? 24 : SETTINGS_CARD_PAD,

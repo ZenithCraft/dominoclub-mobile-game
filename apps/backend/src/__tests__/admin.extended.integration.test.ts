@@ -360,10 +360,14 @@ describe('Admin announcements', () => {
     const res = await request
       .patch('/api/v1/admin/announcements/ann1')
       .set('Authorization', `Bearer ${token}`)
-      .send({ is_active: false });
+      .send({ isActive: false });
 
     expect(res.status).toBe(200);
     expect(res.body.is_active).toBe(false);
+    expect(prisma.announcement.update).toHaveBeenCalledWith({
+      where: { id: 'ann1' },
+      data: { is_active: false },
+    });
   });
 
   it('DELETE /admin/announcements/:id deletes the announcement', async () => {

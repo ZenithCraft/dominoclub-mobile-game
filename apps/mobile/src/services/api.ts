@@ -12,13 +12,16 @@ const isLocalhostWeb =
 const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
 
 let BASE_URL: string;
-if (isLocalhostWeb) {
-  // Rodando no browser em localhost → sempre usa o backend local.
-  // Isso evita erros de CORS quando o servidor remoto não aceita localhost
-  // e garante que DEV_AUTH_BYPASS funcione (desativado em produção).
-  BASE_URL = 'http://localhost:3001/api/v1';
-} else if (envBaseUrl) {
+if (envBaseUrl) {
+  // Explicit config always wins — e.g. .env pointing a local browser session
+  // at a staging/VPS backend for testing. The target server's CORS_ORIGINS
+  // must allow this page's origin (see apps/backend/.env's CORS_ORIGINS).
   BASE_URL = envBaseUrl;
+} else if (isLocalhostWeb) {
+  // No explicit URL and running in a browser on localhost → assume a
+  // local backend (with DEV_AUTH_BYPASS, disabled in production) is running
+  // alongside this dev server.
+  BASE_URL = 'http://localhost:3001/api/v1';
 } else if (typeof location !== 'undefined') {
   BASE_URL = `${location.origin}/api/v1`;
 } else {

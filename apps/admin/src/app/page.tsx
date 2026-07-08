@@ -38,9 +38,15 @@ const toLocalDT = (d: Date) =>
 
 function useAdminAuth() {
   const router = useRouter();
+  const [authorized, setAuthorized] = useState(false);
   useEffect(() => {
-    if (!localStorage.getItem('admin_token')) router.replace('/login');
+    if (!localStorage.getItem('admin_token')) {
+      router.replace('/login');
+    } else {
+      setAuthorized(true);
+    }
   }, [router]);
+  return authorized;
 }
 
 function handleLogout(router: ReturnType<typeof useRouter>) {
@@ -74,7 +80,7 @@ function useData<T>(url: string, deps: any[] = []) {
 const SIDEBAR_KEY = 'admin_sidebar_collapsed';
 
 export default function AdminDashboard() {
-  useAdminAuth();
+  const authorized = useAdminAuth();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('overview');
   // Initialise synchronously from the class the blocking script set on <html>
@@ -115,6 +121,11 @@ export default function AdminDashboard() {
     { id: 'announcements', label: 'Avisos',        Icon: Bell },
     { id: 'config',        label: 'Config.',       Icon: Settings2 },
   ];
+
+  // Don't render any dashboard content until the token check in useAdminAuth
+  // has confirmed access — otherwise the protected UI flashes on screen for
+  // a frame before the redirect to /login kicks in.
+  if (!authorized) return null;
 
   return (
     <div className="min-h-screen bg-background flex">

@@ -1432,7 +1432,7 @@ export async function getAnnouncementsAdminHandler(_req: Request, res: Response)
 
 export async function createAnnouncementAdminHandler(req: Request, res: Response) {
   try {
-    const { title, body, html, banner_url, countdown_end, max_shows, target_rank, is_active } = req.body;
+    const { title, body, html, bannerUrl, countdownEnd, maxShows, targetRank, isActive } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
     const validRanks = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'];
     const item = await prisma.announcement.create({
@@ -1440,11 +1440,11 @@ export async function createAnnouncementAdminHandler(req: Request, res: Response
         title,
         body: body || null,
         html: html || null,
-        banner_url: banner_url || null,
-        countdown_end: countdown_end ? new Date(countdown_end) : null,
-        max_shows: max_shows ? parseInt(String(max_shows), 10) : null,
-        target_rank: target_rank && validRanks.includes(target_rank) ? target_rank : null,
-        is_active: is_active !== false,
+        banner_url: bannerUrl || null,
+        countdown_end: countdownEnd ? new Date(countdownEnd) : null,
+        max_shows: maxShows ? parseInt(String(maxShows), 10) : null,
+        target_rank: targetRank && validRanks.includes(targetRank) ? targetRank : null,
+        is_active: isActive !== false,
       },
     });
     res.status(201).json(item);
@@ -1456,17 +1456,17 @@ export async function createAnnouncementAdminHandler(req: Request, res: Response
 export async function updateAnnouncementAdminHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const { title, body, html, banner_url, countdown_end, max_shows, target_rank, is_active } = req.body;
+    const { title, body, html, bannerUrl, countdownEnd, maxShows, targetRank, isActive } = req.body;
     const validRanks = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'];
     const data: any = {};
     if (title !== undefined) data.title = title;
     if (body !== undefined) data.body = body;
     if (html !== undefined) data.html = html;
-    if (banner_url !== undefined) data.banner_url = banner_url;
-    if (countdown_end !== undefined) data.countdown_end = countdown_end ? new Date(countdown_end) : null;
-    if (max_shows !== undefined) data.max_shows = max_shows ? parseInt(String(max_shows), 10) : null;
-    if (target_rank !== undefined) data.target_rank = target_rank && validRanks.includes(target_rank) ? target_rank : null;
-    if (is_active !== undefined) data.is_active = !!is_active;
+    if (bannerUrl !== undefined) data.banner_url = bannerUrl;
+    if (countdownEnd !== undefined) data.countdown_end = countdownEnd ? new Date(countdownEnd) : null;
+    if (maxShows !== undefined) data.max_shows = maxShows ? parseInt(String(maxShows), 10) : null;
+    if (targetRank !== undefined) data.target_rank = targetRank && validRanks.includes(targetRank) ? targetRank : null;
+    if (isActive !== undefined) data.is_active = !!isActive;
     const item = await prisma.announcement.update({ where: { id }, data });
     res.json(item);
   } catch (err: any) {
