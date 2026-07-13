@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt';
 import { isTokenBlacklisted } from '../services/token-blacklist.service';
 import { prisma } from '../services/prisma.service';
-import { config } from '../config';
 
 export interface AuthRequest extends Request {
   user?: { userId: string; phone: string };
@@ -23,22 +22,18 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: payload.userId },
-        select: { id: true, phone: true, is_banned: true },
-      });
+    // No fallback here on purpose: a DB error must never let a request
+    // through without confirming the user exists and isn't banned, in any
+    // environment.
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, phone: true, is_banned: true },
+    });
 
-      if (!user) return res.status(401).json({ error: 'User not found' });
-      if (user.is_banned) return res.status(403).json({ error: 'Account suspended' });
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    if (user.is_banned) return res.status(403).json({ error: 'Account suspended' });
 
-      req.user = { userId: user.id, phone: user.phone };
-    } catch {
-      if (config.env === 'production') {
-        return res.status(401).json({ error: 'Invalid or expired token' });
-      }
-      req.user = { userId: payload.userId, phone: payload.phone };
-    }
+    req.user = { userId: user.id, phone: user.phone };
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });

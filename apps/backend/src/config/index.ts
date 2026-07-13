@@ -31,6 +31,13 @@ export const config = {
     webhookSecret: process.env.WOOVI_WEBHOOK_SECRET || '',
   },
 
+  pix: {
+    // Dev-only: auto-confirms a deposit 3s after creation, crediting real_balance
+    // without any actual PIX payment. Must never be true in production — see
+    // the fatal startup check below.
+    mockAutoConfirm: process.env.PIX_MOCK_AUTO_CONFIRM === 'true',
+  },
+
   serpro: {
     apiKey: process.env.SERPRO_API_KEY || '',
     baseUrl: process.env.SERPRO_BASE_URL || 'https://gateway.apiserpro.serpro.gov.br',
@@ -163,6 +170,38 @@ if (_weakSecrets.length > 0) {
     console.warn(
       `[Config] WARNING: Weak or default secrets detected (${names}). ` +
       'These must be replaced before deploying to production.'
+    );
+  }
+}
+
+// ── Dev/mock bypass validation ───────────────────────────────────────────────
+// FATAL in production. These flags exist purely so local/staging environments
+// can run without real third-party providers — if any of them leak into a
+// production .env (e.g. the wrong file getting loaded, a copy-pasted staging
+// config), the app must refuse to start rather than silently run with fake
+// SMS/CPF/device-integrity checks and a live dev-login backdoor.
+if (process.env.NODE_ENV === 'production') {
+  const _bypassChecks: Array<[string, boolean]> = [
+    ['DEV_AUTH_BYPASS=true', config.devAuthBypass],
+    ['SERPRO_MOCK_MODE=true', config.serpro.mockMode],
+    ['INTEGRITY_MOCK_MODE=true', config.integrity.mockMode],
+    ['PIX_MOCK_AUTO_CONFIRM=true', config.pix.mockAutoConfirm],
+    ["SMS_PROVIDER is 'mock' (or unset)", config.sms.provider === 'mock'],
+  ];
+
+  if (config.sms.provider === 'zenvia' && !config.sms.apiKey) {
+    _bypassChecks.push(['SMS_API_KEY missing for SMS_PROVIDER=zenvia', true]);
+  }
+  if (config.sms.provider === 'twilio' &&
+      (!config.sms.twilioAccountSid || !config.sms.twilioAuthToken || !config.sms.twilioFromNumber)) {
+    _bypassChecks.push(['TWILIO_ACCOUNT_SID/AUTH_TOKEN/FROM_NUMBER incomplete for SMS_PROVIDER=twilio', true]);
+  }
+
+  const _activeBypasses = _bypassChecks.filter(([, active]) => active).map(([name]) => name);
+  if (_activeBypasses.length > 0) {
+    throw new Error(
+      `[Config] FATAL: Dev/mock bypass active in production: ${_activeBypasses.join(', ')}. ` +
+      'Fix the deployed .env before starting the server.'
     );
   }
 }

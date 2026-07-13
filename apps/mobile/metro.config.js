@@ -70,12 +70,25 @@ const NODE_EMPTY_SHIMS = new Set([
   'worker_threads',
 ]);
 
+// src/mocks/* (fake socket, response interceptors, demo tokens/data) is only
+// ever `require()`'d behind an EXPO_PUBLIC_MOCK_MODE runtime check, but Metro
+// bundles anything reachable via require() regardless of that check — so the
+// files (and their hardcoded demo tokens) would otherwise ship inside real
+// production builds, extractable via APK/IPA reverse engineering. Swap them
+// for an empty module in production builds; the guarded call sites never
+// execute in that build anyway.
+const isProductionBuild = process.env.EAS_BUILD_PROFILE === 'production' || process.env.NODE_ENV === 'production';
+
 // Always intercept: shim DevLoadingView (missing in RN 0.73, required by Expo SDK 55)
 // and (when in monorepo dev) force React/Zustand to the local copy.
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Expo SDK 55 / React Native 0.73 compatibility shim
   if (moduleName === 'react-native/Libraries/Utilities/DevLoadingView') {
     return { filePath: path.resolve(projectRoot, 'shims', 'DevLoadingView.js'), type: 'sourceFile' };
+  }
+
+  if (isProductionBuild && /(^|\/)mocks\//.test(moduleName)) {
+    return { filePath: path.resolve(projectRoot, 'shims', 'node-empty.js'), type: 'sourceFile' };
   }
 
   // Node built-in stubs (see comment on NODE_EMPTY_SHIMS above)

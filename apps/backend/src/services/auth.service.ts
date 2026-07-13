@@ -8,12 +8,13 @@ import { blacklistToken } from './token-blacklist.service';
 import { sendOtp, verifyOtp } from './otp.service';
 import { logger } from '../utils/logger';
 import { config } from '../config';
-import { getOrCreateDevUser, getDevRefreshToken, setDevRefreshToken } from './dev-user.store';
 
 const googleClient = new OAuth2Client(config.google.webClientId);
 
 async function ensureDevWalletBalance(userId: string, minBalance: number) {
-  if (process.env.NODE_ENV === 'production') return;
+  // Only ever runs against a local dev DB — staging/homolog/preview envs
+  // (anything not literally 'development') must never hand out free balance.
+  if (process.env.NODE_ENV !== 'development') return;
 
   const wallet = await prisma.wallet.upsert({
     where: { userId },
@@ -65,7 +66,7 @@ export async function requestOtp(phone: string) {
 }
 
 export async function loginWithOtp(phone: string, otp: string, deviceId?: string, ip?: string) {
-  const ok = verifyOtp(phone, otp);
+  const ok = await verifyOtp(phone, otp);
   if (!ok) throw new Error('Código inválido ou expirado');
 
   await prisma.user.update({
@@ -155,7 +156,7 @@ export async function loginWithGoogle(idToken: string, deviceId?: string, ip?: s
 export async function completeGoogleSignup(pendingToken: string, phone: string, otp: string, deviceId?: string, ip?: string) {
   const pending = verifyGooglePendingToken(pendingToken);
 
-  const ok = verifyOtp(phone, otp);
+  const ok = await verifyOtp(phone, otp);
   if (!ok) throw new Error('Código inválido ou expirado');
 
   const conflict = await prisma.user.findUnique({ where: { google_id: pending.googleId } });
@@ -193,96 +194,74 @@ export async function completeGoogleSignup(pendingToken: string, phone: string, 
 }
 
 export async function devLogin(phone: string, name: string, deviceId?: string, ip?: string) {
-  try {
-    let user = await prisma.user.findUnique({ where: { phone }, include: { wallet: true } });
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          phone,
-          name,
-          cpf_verified: true,
-          phone_verified: true,
-          wallet: { create: { real_balance: 1000 } },
-        },
-        include: { wallet: true },
-      });
-      logger.info('Dev login created user', { userId: user.id, phone });
-    }
-
-    if (user.is_banned) throw new Error('Account suspended');
-
-    user = await prisma.user.update({
-      where: { id: user.id },
+  let user = await prisma.user.findUnique({ where: { phone }, include: { wallet: true } });
+  if (!user) {
+    user = await prisma.user.create({
       data: {
-        name: user.name || name,
+        phone,
+        name,
         cpf_verified: true,
         phone_verified: true,
-        device_id: deviceId || undefined,
-        ip_address: ip || undefined,
-        wallet: {
-          connectOrCreate: {
-            where: { userId: user.id },
-            create: {},
-          },
-        },
+        wallet: { create: { real_balance: 1000 } },
       },
       include: { wallet: true },
     });
-
-    await ensureDevWalletBalance(user.id, 1000);
-    user = await prisma.user.findUnique({ where: { id: user.id }, include: { wallet: true } });
-    if (!user) throw new Error('User not found');
-
-    const payload = { userId: user.id, phone: user.phone };
-    const accessToken = signAccessToken(payload);
-    const refreshToken = signRefreshToken(payload);
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refresh_token: refreshToken },
-    });
-
-    return { accessToken, refreshToken, user: sanitizeUser(user) };
-  } catch {
-    const user = getOrCreateDevUser(phone, name);
-    if (user.is_banned) throw new Error('Account suspended');
-
-    const payload = { userId: user.id, phone: user.phone };
-    const accessToken = signAccessToken(payload);
-    const refreshToken = signRefreshToken(payload);
-    setDevRefreshToken(user.id, refreshToken);
-
-    return { accessToken, refreshToken, user: sanitizeUser(user) };
+    logger.info('Dev login created user', { userId: user.id, phone });
   }
+
+  if (user.is_banned) throw new Error('Account suspended');
+
+  user = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      name: user.name || name,
+      cpf_verified: true,
+      phone_verified: true,
+      device_id: deviceId || undefined,
+      ip_address: ip || undefined,
+      wallet: {
+        connectOrCreate: {
+          where: { userId: user.id },
+          create: {},
+        },
+      },
+    },
+    include: { wallet: true },
+  });
+
+  await ensureDevWalletBalance(user.id, 1000);
+  user = await prisma.user.findUnique({ where: { id: user.id }, include: { wallet: true } });
+  if (!user) throw new Error('User not found');
+
+  const payload = { userId: user.id, phone: user.phone };
+  const accessToken = signAccessToken(payload);
+  const refreshToken = signRefreshToken(payload);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { refresh_token: refreshToken },
+  });
+
+  return { accessToken, refreshToken, user: sanitizeUser(user) };
 }
 
 export async function refreshTokens(token: string) {
   const payload = verifyRefreshToken(token);
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { id: true, phone: true, refresh_token: true, is_banned: true },
-    });
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    select: { id: true, phone: true, refresh_token: true, is_banned: true },
+  });
 
-    if (!user || user.refresh_token !== token) throw new Error('Invalid refresh token');
-    if (user.is_banned) throw new Error('Account suspended');
+  if (!user || user.refresh_token !== token) throw new Error('Invalid refresh token');
+  if (user.is_banned) throw new Error('Account suspended');
 
-    const newPayload = { userId: user.id, phone: user.phone };
-    const accessToken = signAccessToken(newPayload);
-    const newRefreshToken = signRefreshToken(newPayload);
+  const newPayload = { userId: user.id, phone: user.phone };
+  const accessToken = signAccessToken(newPayload);
+  const newRefreshToken = signRefreshToken(newPayload);
 
-    await prisma.user.update({ where: { id: user.id }, data: { refresh_token: newRefreshToken } });
+  await prisma.user.update({ where: { id: user.id }, data: { refresh_token: newRefreshToken } });
 
-    return { accessToken, refreshToken: newRefreshToken };
-  } catch {
-    const stored = getDevRefreshToken(payload.userId);
-    if (!stored || stored !== token) throw new Error('Invalid refresh token');
-    const newPayload = { userId: payload.userId, phone: payload.phone };
-    const accessToken = signAccessToken(newPayload);
-    const newRefreshToken = signRefreshToken(newPayload);
-    setDevRefreshToken(payload.userId, newRefreshToken);
-    return { accessToken, refreshToken: newRefreshToken };
-  }
+  return { accessToken, refreshToken: newRefreshToken };
 }
 
 export async function logout(userId: string, accessToken?: string) {
@@ -300,11 +279,7 @@ export async function logout(userId: string, accessToken?: string) {
     }
   }
 
-  try {
-    await prisma.user.update({ where: { id: userId }, data: { refresh_token: null } });
-  } catch {
-    setDevRefreshToken(userId, null);
-  }
+  await prisma.user.update({ where: { id: userId }, data: { refresh_token: null } });
 }
 
 function sanitizeUser(user: any) {

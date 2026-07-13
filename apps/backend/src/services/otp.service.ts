@@ -2,23 +2,64 @@ import axios from 'axios';
 import { createHash, randomInt, timingSafeEqual } from 'crypto';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { getRedisClient, isRedisAvailable } from './redis.service';
 
 // ─── OTP Store ────────────────────────────────────────────────────────────────
-// In-memory for development. In production replace with Redis
-// (SET phone:otp:+5511... JSON EX 300) so it survives restarts.
-// OTP codes are stored as SHA-256 hashes — plaintext is never kept in memory.
+// Redis when available (required for multi-instance deployments — an OTP sent
+// by instance A must be verifiable on instance B behind a load balancer).
+// Falls back to an in-memory Map when REDIS_URL isn't set (single-server only,
+// and OTPs don't survive a restart in that mode).
+// OTP codes are stored as SHA-256 hashes — plaintext is never kept.
+
+const OTP_PREFIX = 'otp:';
 
 interface OtpEntry {
   codeHash: string;   // SHA-256 hex of the plaintext OTP
-  expiresAt: Date;
-  sentAt: Date;       // enforces resend cooldown
+  expiresAt: number;  // epoch ms
+  sentAt: number;     // epoch ms — enforces resend cooldown
   attempts: number;   // counts failed verifications
 }
 
-const otpStore = new Map<string, OtpEntry>();
+const inMemoryStore = new Map<string, OtpEntry>();
 
 function hashOtp(code: string): string {
   return createHash('sha256').update(code).digest('hex');
+}
+
+async function getEntry(phone: string): Promise<OtpEntry | null> {
+  if (isRedisAvailable()) {
+    try {
+      const raw = await getRedisClient().get(`${OTP_PREFIX}${phone}`);
+      return raw ? (JSON.parse(raw) as OtpEntry) : null;
+    } catch (err: any) {
+      logger.warn('[OTP] Redis get failed — falling back to in-memory', { message: err.message });
+    }
+  }
+  return inMemoryStore.get(phone) ?? null;
+}
+
+async function setEntry(phone: string, entry: OtpEntry): Promise<void> {
+  const ttlMs = Math.max(1000, entry.expiresAt - Date.now());
+  if (isRedisAvailable()) {
+    try {
+      await getRedisClient().set(`${OTP_PREFIX}${phone}`, JSON.stringify(entry), 'PX', ttlMs);
+      return;
+    } catch (err: any) {
+      logger.warn('[OTP] Redis set failed — falling back to in-memory', { message: err.message });
+    }
+  }
+  inMemoryStore.set(phone, entry);
+}
+
+async function deleteEntry(phone: string): Promise<void> {
+  if (isRedisAvailable()) {
+    try {
+      await getRedisClient().del(`${OTP_PREFIX}${phone}`);
+    } catch (err: any) {
+      logger.warn('[OTP] Redis del failed', { message: err.message });
+    }
+  }
+  inMemoryStore.delete(phone);
 }
 
 // ─── Generation ───────────────────────────────────────────────────────────────
@@ -33,9 +74,9 @@ export function generateOtp(): string {
 
 export async function sendOtp(phone: string): Promise<void> {
   // Resend cooldown — prevent SMS flooding
-  const existing = otpStore.get(phone);
+  const existing = await getEntry(phone);
   if (existing) {
-    const secondsSinceSent = (Date.now() - existing.sentAt.getTime()) / 1000;
+    const secondsSinceSent = (Date.now() - existing.sentAt) / 1000;
     if (secondsSinceSent < config.otp.resendCooldownSeconds) {
       const remaining = Math.ceil(config.otp.resendCooldownSeconds - secondsSinceSent);
       throw new Error(`Aguarde ${remaining}s antes de solicitar um novo código`);
@@ -43,27 +84,28 @@ export async function sendOtp(phone: string): Promise<void> {
   }
 
   const code = generateOtp();
-  const expiresAt = new Date(Date.now() + config.otp.expirySeconds * 1000);
+  const now = Date.now();
+  const expiresAt = now + config.otp.expirySeconds * 1000;
 
-  otpStore.set(phone, { codeHash: hashOtp(code), expiresAt, sentAt: new Date(), attempts: 0 });
+  await setEntry(phone, { codeHash: hashOtp(code), expiresAt, sentAt: now, attempts: 0 });
 
   await dispatchSms(phone, code);
 }
 
 // ─── Verify ───────────────────────────────────────────────────────────────────
 
-export function verifyOtp(phone: string, code: string): boolean {
-  const entry = otpStore.get(phone);
+export async function verifyOtp(phone: string, code: string): Promise<boolean> {
+  const entry = await getEntry(phone);
 
   if (!entry) return false;
 
-  if (new Date() > entry.expiresAt) {
-    otpStore.delete(phone);
+  if (Date.now() > entry.expiresAt) {
+    await deleteEntry(phone);
     return false;
   }
 
   if (entry.attempts >= config.otp.maxAttempts) {
-    otpStore.delete(phone);
+    await deleteEntry(phone);
     throw new Error('Código bloqueado por excesso de tentativas. Solicite um novo código.');
   }
 
@@ -75,13 +117,14 @@ export function verifyOtp(phone: string, code: string): boolean {
     entry.attempts++;
     const remaining = config.otp.maxAttempts - entry.attempts;
     if (remaining === 0) {
-      otpStore.delete(phone);
+      await deleteEntry(phone);
       throw new Error('Código inválido. Limite de tentativas atingido. Solicite um novo código.');
     }
+    await setEntry(phone, entry);
     throw new Error(`Código inválido. ${remaining} tentativa${remaining > 1 ? 's' : ''} restante${remaining > 1 ? 's' : ''}.`);
   }
 
-  otpStore.delete(phone);
+  await deleteEntry(phone);
   return true;
 }
 

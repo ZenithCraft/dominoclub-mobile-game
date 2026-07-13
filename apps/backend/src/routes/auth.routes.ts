@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { config } from '../config';
 import {
   sendOtpHandler,
   verifyOtpHandler,
@@ -22,7 +23,12 @@ const router = Router();
 
 router.post('/otp/send', sendOtpHandler);
 router.post('/otp/verify', verifyOtpHandler);
-router.post('/dev/login', devLoginHandler);
+// Never registered in production — the IP/DEV_AUTH_BYPASS check inside
+// devLoginHandler is not sufficient on its own (reverse-proxy IP spoofing,
+// misconfigured trust proxy), so the route itself must not exist in prod.
+if (config.env !== 'production') {
+  router.post('/dev/login', devLoginHandler);
+}
 router.post('/google', googleLoginHandler);
 router.post('/google/complete', googleCompleteHandler);
 router.post('/token/refresh', refreshHandler);

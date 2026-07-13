@@ -37,11 +37,11 @@ describe('sendOtp + verifyOtp', () => {
   it('sendOtp stores an entry and verifyOtp rejects a wrong code', async () => {
     await sendOtp(phone);
     // OTP was stored — an incorrect code should throw
-    expect(() => verifyOtp(phone, '000000')).toThrow();
+    await expect(verifyOtp(phone, '000000')).rejects.toThrow();
   });
 
-  it('verifyOtp returns false when no OTP has been sent', () => {
-    const result = verifyOtp('+5500000000000', '123456');
+  it('verifyOtp returns false when no OTP has been sent', async () => {
+    const result = await verifyOtp('+5500000000000', '123456');
     expect(result).toBe(false);
   });
 
@@ -51,10 +51,10 @@ describe('sendOtp + verifyOtp', () => {
 
     const max = config.otp.maxAttempts;
     for (let i = 0; i < max - 1; i++) {
-      try { verifyOtp(testPhone, 'wrong'); } catch {}
+      try { await verifyOtp(testPhone, 'wrong'); } catch {}
     }
     // Last attempt — should throw "limit reached"
-    expect(() => verifyOtp(testPhone, 'wrong')).toThrow();
+    await expect(verifyOtp(testPhone, 'wrong')).rejects.toThrow();
   });
 
   it('sendOtp enforces resend cooldown', async () => {
@@ -77,7 +77,7 @@ describe('sendOtp + verifyOtp', () => {
     jest.advanceTimersByTime(1000);
 
     (config as any).otp = { ...config.otp, expirySeconds: originalExpiry, resendCooldownSeconds: 60 };
-    const result = verifyOtp(testPhone, '000000');
+    const result = await verifyOtp(testPhone, '000000');
     expect(result).toBe(false);
 
     jest.useRealTimers();

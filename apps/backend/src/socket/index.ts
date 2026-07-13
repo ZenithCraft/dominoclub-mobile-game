@@ -6,7 +6,6 @@ import { isTokenBlacklisted } from '../services/token-blacklist.service';
 import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
 import { setupGameSocket, activeGames, initTournamentScheduler } from './gameSocket';
-import { getDevUserById } from '../services/dev-user.store';
 import {
   enqueue,
   dequeue,
@@ -68,25 +67,16 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       if (payload.jti && await isTokenBlacklisted(payload.jti)) {
         return next(new Error('Token revoked'));
       }
-      try {
-        const user = await prisma.user.findUnique({
-          where: { id: payload.userId },
-          select: { id: true, name: true, avatar: true, is_banned: true },
-        });
-        if (!user || user.is_banned) return next(new Error('Unauthorized'));
-        (socket as any).user = user;
-        next();
-      } catch {
-        if (!config.devAuthBypass && config.env === 'production') return next(new Error('Unauthorized'));
-        const dev = getDevUserById(payload.userId);
-        (socket as any).user = {
-          id: payload.userId,
-          name: dev?.name ?? 'Dev User',
-          avatar: dev?.avatar ?? null,
-          is_banned: false,
-        };
-        next();
-      }
+      // No fallback on a DB error here on purpose — a lookup failure must
+      // never let a socket connect as an unbanned "dev user" in any
+      // environment (that includes DEV_AUTH_BYPASS being left on by mistake).
+      const user = await prisma.user.findUnique({
+        where: { id: payload.userId },
+        select: { id: true, name: true, avatar: true, is_banned: true },
+      });
+      if (!user || user.is_banned) return next(new Error('Unauthorized'));
+      (socket as any).user = user;
+      next();
     } catch {
       next(new Error('Invalid token'));
     }

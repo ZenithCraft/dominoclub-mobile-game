@@ -22,8 +22,6 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "http://34.233.108.8:3001/api/v1",
         "EXPO_PUBLIC_SOCKET_URL": "http://34.233.108.8:3001",
-        "EXPO_PUBLIC_DEV_AUTH_BYPASS": "true",
-        "EXPO_PUBLIC_FORCE_DEV_LOGIN": "true",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "679633365643-nscdct6m9aaqi0h67hiq9f7i365uok9f.apps.googleusercontent.com",
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
       }
@@ -41,8 +39,6 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "http://34.233.108.8:3001/api/v1",
         "EXPO_PUBLIC_MOCK_MODE": "false",
-        "EXPO_PUBLIC_DEV_AUTH_BYPASS": "true",
-        "EXPO_PUBLIC_FORCE_DEV_LOGIN": "true",
         "EXPO_PUBLIC_SOCKET_URL": "http://34.233.108.8:3001",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "679633365643-nscdct6m9aaqi0h67hiq9f7i365uok9f.apps.googleusercontent.com",
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true"

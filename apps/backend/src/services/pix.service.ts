@@ -80,7 +80,10 @@ export async function createPixCharge(userId: string, amountBRL: number, couponC
     },
   });
 
-  if (process.env.PIX_MOCK_AUTO_CONFIRM === 'true') {
+  // Defense in depth: config/index.ts already refuses to boot in production
+  // with this flag on, but never auto-confirm a fake deposit in prod even if
+  // that guard were somehow bypassed.
+  if (config.pix.mockAutoConfirm && config.env !== 'production') {
     setTimeout(() => {
       confirmPixDeposit(correlationID).catch((err) =>
         logger.error('[PIX MOCK] Auto-confirm failed', { correlationID, err: err.message })
