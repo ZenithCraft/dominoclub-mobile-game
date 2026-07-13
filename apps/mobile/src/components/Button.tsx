@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, radius, spacing, fonts } from '../theme';
+import { sfx } from '../services/sfx';
 
 interface Props {
   title: string;
@@ -35,6 +36,11 @@ export function Button({
 }: Props) {
   const isDisabled = disabled || loading;
 
+  const handlePress = () => {
+    sfx.buttonClick();
+    onPress();
+  };
+
   const sizeStyles = {
     sm: { paddingVertical: 8, paddingHorizontal: 16, fontSize: fonts.sizes.sm },
     md: { paddingVertical: 14, paddingHorizontal: 24, fontSize: fonts.sizes.md },
@@ -44,7 +50,7 @@ export function Button({
   if (variant === 'primary') {
     return (
       <TouchableOpacity
-        onPress={onPress}
+        onPress={handlePress}
         disabled={isDisabled}
         style={[styles.touchable, isDisabled && styles.disabled, style]}
         activeOpacity={0.8}
@@ -83,7 +89,7 @@ export function Button({
 
   return (
     <TouchableOpacity
-      onPress={onPress}
+      onPress={handlePress}
       disabled={isDisabled}
       style={[
         styles.base,

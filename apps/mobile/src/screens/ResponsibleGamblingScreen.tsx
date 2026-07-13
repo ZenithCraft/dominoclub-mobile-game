@@ -9,6 +9,7 @@ import { IconPhone, IconBrain, IconMessage, IconGlobe, IconTarget, IconAlert, Ic
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { toast } from '../store/toast.store';
+import { sfx } from '../services/sfx';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -60,6 +61,7 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
   const [requesting, setRequesting] = useState(false);
 
   const handleSelfExclusion = (type: 'temporary' | 'permanent') => {
+    sfx.buttonClick();
     const label = type === 'temporary' ? '30 dias' : 'permanente';
     const message =
       type === 'temporary'
@@ -94,7 +96,7 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={() => { sfx.buttonClick(); navigation.goBack(); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <IconChevronLeft size={18} color={colors.textMuted} accessibilityLabel="Voltar" />
         </TouchableOpacity>
         <Text style={styles.title}>Jogo Responsável</Text>
@@ -177,7 +179,7 @@ export function ResponsibleGamblingScreen({ navigation }: Props) {
           {HELP_RESOURCES.map((r, i) => {
             const IconComponent = r.icon;
             return (
-              <TouchableOpacity key={i} style={styles.resourceCard} onPress={r.onPress} activeOpacity={0.7}>
+              <TouchableOpacity key={i} style={styles.resourceCard} onPress={() => { sfx.buttonClick(); r.onPress(); }} activeOpacity={0.7}>
                 <View style={styles.resourceIconContainer}>
                   <IconComponent size={24} color={colors.primary} accessibilityLabel={r.name} />
                 </View>

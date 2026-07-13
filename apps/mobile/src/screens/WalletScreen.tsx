@@ -19,6 +19,7 @@ import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { useNavigation } from '@react-navigation/native';
 import { GameTopBar } from './HomeScreen';
+import { sfx } from '../services/sfx';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -153,11 +154,11 @@ function CalendarPicker({
 
           {/* ── Header ── */}
           <View style={calStyles.header}>
-            <TouchableOpacity style={calStyles.navBtn} onPress={prevMonth} activeOpacity={0.7}>
+            <TouchableOpacity style={calStyles.navBtn} onPress={() => { sfx.buttonClick(); prevMonth(); }} activeOpacity={0.7}>
               <IconChevronLeft size={18} color="#fff" />
             </TouchableOpacity>
             <Text style={calStyles.monthTitle}>{MONTH_NAMES[viewMonth]} {viewYear}</Text>
-            <TouchableOpacity style={calStyles.navBtn} onPress={nextMonth} activeOpacity={0.7}>
+            <TouchableOpacity style={calStyles.navBtn} onPress={() => { sfx.buttonClick(); nextMonth(); }} activeOpacity={0.7}>
               <IconChevronRight size={18} color="#fff" />
             </TouchableOpacity>
           </View>
@@ -178,7 +179,7 @@ function CalendarPicker({
                 <TouchableOpacity
                   key={i}
                   style={calStyles.cell}
-                  onPress={() => cell.cur && cell.dateStr && onSelect(cell.dateStr)}
+                  onPress={() => { if (cell.cur && cell.dateStr) { sfx.buttonClick(); onSelect(cell.dateStr); } }}
                   activeOpacity={cell.cur ? 0.7 : 1}
                 >
                   {isSelected && (
@@ -204,10 +205,10 @@ function CalendarPicker({
 
           {/* ── Footer ── */}
           <View style={calStyles.footer}>
-            <TouchableOpacity onPress={() => { onSelect(null); onClose(); }} activeOpacity={0.8}>
+            <TouchableOpacity onPress={() => { sfx.buttonClick(); onSelect(null); onClose(); }} activeOpacity={0.8}>
               <Text style={calStyles.footerClear}>Limpar</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { onSelect(todayStr); onClose(); }} activeOpacity={0.8}>
+            <TouchableOpacity onPress={() => { sfx.buttonClick(); onSelect(todayStr); onClose(); }} activeOpacity={0.8}>
               <Text style={calStyles.footerToday}>Hoje</Text>
             </TouchableOpacity>
           </View>
@@ -583,7 +584,7 @@ export function WalletScreen() {
             </View>
 
             {rolloverRemaining > 0 && (
-              <TouchableOpacity style={styles.rolloverBanner} activeOpacity={0.8} onPress={() => setRolloverModal(true)}>
+              <TouchableOpacity style={styles.rolloverBanner} activeOpacity={0.8} onPress={() => { sfx.buttonClick(); setRolloverModal(true); }}>
                 <View style={styles.rolloverBannerRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rolloverText}>
@@ -607,6 +608,7 @@ export function WalletScreen() {
                   style={styles.withdrawBtn}
                   activeOpacity={0.85}
                   onPress={() => {
+                    sfx.buttonClick();
                     if (!canWithdraw) {
                       Alert.alert('Saque bloqueado',
                         rolloverRemaining > 0
@@ -622,7 +624,7 @@ export function WalletScreen() {
                   </LinearGradient>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.depositBtn} activeOpacity={0.85} onPress={() => setDepositModal(true)}>
+                <TouchableOpacity style={styles.depositBtn} activeOpacity={0.85} onPress={() => { sfx.buttonClick(); setDepositModal(true); }}>
                   <LinearGradient colors={['#06b6d4', '#0284c7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.btnGrad}>
                     <Text style={styles.depositBtnText}>+ Depositar</Text>
                   </LinearGradient>
@@ -640,7 +642,7 @@ export function WalletScreen() {
                     : 'Verifique sua identidade para liberar saques.'}
                 </Text>
                 {kycStatus !== 'PENDING' && (
-                  <TouchableOpacity style={styles.kycBannerBtn} onPress={() => navigation.navigate('KYC')}>
+                  <TouchableOpacity style={styles.kycBannerBtn} onPress={() => { sfx.buttonClick(); navigation.navigate('KYC'); }}>
                     <Text style={styles.kycBannerBtnText}>Verificar Conta</Text>
                   </TouchableOpacity>
                 )}
@@ -652,7 +654,7 @@ export function WalletScreen() {
           <View style={styles.rightPanel}>
             <View style={styles.tableTopRow}>
               <Text style={styles.tableTitle}>Histórico de transações</Text>
-              <TouchableOpacity style={styles.datePill} onPress={openDatePicker} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.datePill} onPress={() => { sfx.buttonClick(); openDatePicker(); }} activeOpacity={0.85}>
                 <Text style={styles.datePillText}>{formatDateBR(selectedDate ?? todayISO)} ▾</Text>
               </TouchableOpacity>
             </View>
@@ -666,7 +668,7 @@ export function WalletScreen() {
 
             <View style={{ flex: 1 }}>
               {loadError ? (
-                <TouchableOpacity style={styles.emptyState} onPress={() => loadWallet()}>
+                <TouchableOpacity style={styles.emptyState} onPress={() => { sfx.buttonClick(); loadWallet(); }}>
                   <Text style={{ color: colors.error, fontSize: fonts.sizes.sm, textAlign: 'center' }}>
                     Erro ao carregar. Toque para tentar novamente.
                   </Text>
@@ -697,7 +699,7 @@ export function WalletScreen() {
               <View style={styles.pagination}>
                 <TouchableOpacity
                   style={[styles.pageBtn, page === 0 && styles.pageBtnDisabled]}
-                  onPress={() => setPage(p => Math.max(0, p - 1))}
+                  onPress={() => { sfx.buttonClick(); setPage(p => Math.max(0, p - 1)); }}
                   disabled={page === 0}
                   activeOpacity={0.7}
                 >
@@ -710,7 +712,7 @@ export function WalletScreen() {
 
                 <TouchableOpacity
                   style={[styles.pageBtn, page >= totalPages - 1 && styles.pageBtnDisabled]}
-                  onPress={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  onPress={() => { sfx.buttonClick(); setPage(p => Math.min(totalPages - 1, p + 1)); }}
                   disabled={page >= totalPages - 1}
                   activeOpacity={0.7}
                 >
@@ -749,7 +751,7 @@ export function WalletScreen() {
                       <TouchableOpacity
                         key={amt}
                         style={[styles.presetBtn, !useCustom && depositAmount === amt && styles.presetBtnActive]}
-                        onPress={() => { setDepositAmount(amt); setUseCustom(false); }}
+                        onPress={() => { sfx.buttonClick(); setDepositAmount(amt); setUseCustom(false); }}
                       >
                         {!useCustom && depositAmount === amt ? (
                           <LinearGradient colors={['#BEF311','#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={StyleSheet.absoluteFillObject} />
@@ -791,7 +793,7 @@ export function WalletScreen() {
                     {couponCode.trim().length > 0 && couponState !== 'valid' && (
                       <TouchableOpacity
                         style={[styles.couponValidateBtn, couponValidating && { opacity: 0.6 }]}
-                        onPress={handleValidateCoupon}
+                        onPress={() => { sfx.buttonClick(); handleValidateCoupon(); }}
                         disabled={couponValidating}
                         activeOpacity={0.8}
                       >
@@ -823,7 +825,7 @@ export function WalletScreen() {
 
                   <TouchableOpacity
                     style={[styles.gradBtn, (depositLoading || effectiveAmount < 20 || (couponCode.trim().length > 0 && couponState !== 'valid')) && { opacity: 0.5 }]}
-                    onPress={handleDeposit}
+                    onPress={() => { sfx.buttonClick(); handleDeposit(); }}
                     disabled={depositLoading || effectiveAmount < 20 || (couponCode.trim().length > 0 && couponState !== 'valid')}
                   >
                     <LinearGradient colors={['#BEF311','#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.gradBtnInner}>
@@ -857,6 +859,7 @@ export function WalletScreen() {
                   <TouchableOpacity
                     style={[styles.gradBtn, { alignSelf: 'stretch' }]}
                     onPress={async () => {
+                      sfx.buttonClick();
                       await Clipboard.setStringAsync(qrCode);
                       Alert.alert('Copiado!', 'Cole no seu app de banco para pagar');
                     }}
@@ -866,7 +869,7 @@ export function WalletScreen() {
                       <Text style={styles.gradBtnText}>Copiar código PIX</Text>
                     </LinearGradient>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={closeDepositModal} style={[styles.gradBtn, styles.cancelBtn, { alignSelf: 'stretch' }]}>
+                  <TouchableOpacity onPress={() => { sfx.buttonClick(); closeDepositModal(); }} style={[styles.gradBtn, styles.cancelBtn, { alignSelf: 'stretch' }]}>
                     <View style={styles.cancelBtnInner}>
                       <Text style={styles.cancelBtnText}>Cancelar</Text>
                     </View>
@@ -882,7 +885,7 @@ export function WalletScreen() {
                   </View>
                   <Text style={styles.confirmedTitle}>Depósito confirmado!</Text>
                   <Text style={styles.confirmedAmount}>+ R$ {effectiveAmount.toFixed(2)}</Text>
-                  <TouchableOpacity style={[styles.gradBtn, { alignSelf: 'stretch' }]} onPress={closeDepositModal}>
+                  <TouchableOpacity style={[styles.gradBtn, { alignSelf: 'stretch' }]} onPress={() => { sfx.buttonClick(); closeDepositModal(); }}>
                     <LinearGradient colors={['#BEF311','#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.gradBtnInner}>
                       <Text style={styles.gradBtnText}>Fechar</Text>
                     </LinearGradient>
@@ -891,7 +894,7 @@ export function WalletScreen() {
               )}
 
               {depositStep !== 'confirmed' && (
-                <TouchableOpacity style={styles.closeX} onPress={closeDepositModal}>
+                <TouchableOpacity style={styles.closeX} onPress={() => { sfx.buttonClick(); closeDepositModal(); }}>
                   <IconX size={16} color="rgba(255,255,255,0.6)" />
                 </TouchableOpacity>
               )}
@@ -903,7 +906,7 @@ export function WalletScreen() {
         <BlurModal visible={rolloverModal} transparent animationType="fade">
           <View style={styles.overlay}>
             <View style={[styles.modalCard, { gap: 0, padding: 0 }]}>
-              <TouchableOpacity style={styles.closeX} onPress={() => setRolloverModal(false)}>
+              <TouchableOpacity style={styles.closeX} onPress={() => { sfx.buttonClick(); setRolloverModal(false); }}>
                 <IconX size={16} color="rgba(255,255,255,0.6)" />
               </TouchableOpacity>
 
@@ -953,7 +956,7 @@ export function WalletScreen() {
                   </View>
                 </View>
 
-                <TouchableOpacity style={styles.rolloverModalBtn} onPress={() => setRolloverModal(false)}>
+                <TouchableOpacity style={styles.rolloverModalBtn} onPress={() => { sfx.buttonClick(); setRolloverModal(false); }}>
                   <LinearGradient colors={['#fbbf24', '#f59e0b']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rolloverModalBtnGrad}>
                     <Text style={styles.rolloverModalBtnText}>Entendido</Text>
                   </LinearGradient>
@@ -981,7 +984,7 @@ export function WalletScreen() {
                     <Text style={styles.modalTitle}>Solicitar Saque</Text>
                     <TouchableOpacity
                       style={styles.withdrawInfoBtn}
-                      onPress={() => setWithdrawInfoVisible(v => !v)}
+                      onPress={() => { sfx.buttonClick(); setWithdrawInfoVisible(v => !v); }}
                       activeOpacity={0.75}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
@@ -1045,7 +1048,7 @@ export function WalletScreen() {
 
                   <TouchableOpacity
                     style={[styles.gradBtn, withdrawLoading && { opacity: 0.6 }]}
-                    onPress={handleWithdraw}
+                    onPress={() => { sfx.buttonClick(); handleWithdraw(); }}
                     disabled={withdrawLoading}
                   >
                     <LinearGradient colors={['#BEF311','#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.gradBtnInner}>
@@ -1072,7 +1075,7 @@ export function WalletScreen() {
                       O valor será transferido para sua chave Pix em instantes.
                     </Text>
                   </View>
-                  <TouchableOpacity style={[styles.gradBtn, { alignSelf: 'stretch' }]} onPress={closeWithdrawModal}>
+                  <TouchableOpacity style={[styles.gradBtn, { alignSelf: 'stretch' }]} onPress={() => { sfx.buttonClick(); closeWithdrawModal(); }}>
                     <LinearGradient colors={['#BEF311','#1CBB3D']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.gradBtnInner}>
                       <Text style={styles.gradBtnText}>Fechar</Text>
                     </LinearGradient>
@@ -1081,7 +1084,7 @@ export function WalletScreen() {
               )}
 
               {withdrawStep !== 'submitted' && (
-                <TouchableOpacity style={styles.closeX} onPress={closeWithdrawModal}>
+                <TouchableOpacity style={styles.closeX} onPress={() => { sfx.buttonClick(); closeWithdrawModal(); }}>
                   <IconX size={16} color="rgba(255,255,255,0.6)" />
                 </TouchableOpacity>
               )}

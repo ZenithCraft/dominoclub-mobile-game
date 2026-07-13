@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { setAuthFailureCallback } from '../services/api';
+import { sfx } from '../services/sfx';
 import { useAuthStore } from '../store/auth.store';
 import { useTournamentStore } from '../store/tournament.store';
 import { navigationRef } from './navigationRef';
@@ -19,6 +20,7 @@ import { SplashScreen } from '../screens/SplashScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
 import { OTPVerificationScreen } from '../screens/OTPVerificationScreen';
+import { GoogleLinkPhoneScreen } from '../screens/GoogleLinkPhoneScreen';
 import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
 import { SetNewPasswordScreen } from '../screens/SetNewPasswordScreen';
 import { HomeScreen } from '../screens/HomeScreen';
@@ -41,7 +43,8 @@ export type RootStackParamList = {
   Splash: undefined;
   Login: undefined;
   Register: { phone?: string } | undefined;
-  OTPVerification: { phone: string };
+  OTPVerification: { phone: string; googlePendingToken?: string };
+  GoogleLinkPhone: { pendingToken: string; profile?: { name?: string; email?: string; avatar?: string } };
   ForgotPassword: undefined;
   SetNewPassword: { token?: string } | undefined;
   Main: { openModal?: 'settings' | 'profile' } | undefined;
@@ -111,6 +114,7 @@ class ErrorBoundary extends React.Component<
             alignItems: 'center',
           }}
           onPress={() => {
+            sfx.buttonClick();
             if (typeof window !== 'undefined' && window.location?.reload) {
               window.location.reload();
             }
@@ -182,6 +186,7 @@ export function AppNavigator() {
             <Stack.Screen name="Login"                component={LoginScreen} />
             <Stack.Screen name="Register"             component={RegisterScreen} />
             <Stack.Screen name="OTPVerification"      component={OTPVerificationScreen} />
+            <Stack.Screen name="GoogleLinkPhone"      component={GoogleLinkPhoneScreen} />
             <Stack.Screen name="ForgotPassword"       component={ForgotPasswordScreen} />
             <Stack.Screen name="SetNewPassword"       component={SetNewPasswordScreen} />
             <Stack.Screen name="Main"                 component={HomeScreen} />

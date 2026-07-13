@@ -41,6 +41,16 @@ export const verifyOtpSchema = z.object({
   otp: z.string().length(6),
 });
 
+export const googleLoginSchema = z.object({
+  idToken: z.string().min(10),
+});
+
+export const googleCompleteSchema = z.object({
+  pendingToken: z.string().min(10),
+  phone: phoneSchema,
+  otp: z.string().length(6),
+});
+
 export const depositSchema = z.object({
   amount: z.number().min(20, 'Minimum deposit is R$20').max(10000),
   couponCode: z.preprocess(

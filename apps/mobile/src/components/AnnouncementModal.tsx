@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { BlurModal } from './BlurModal';
@@ -7,6 +8,7 @@ import { IconX, IconBell } from './Icons';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
 import { isTablet } from '../theme/responsive';
 import { api } from '../services/api';
+import { connectSocket } from '../services/socket';
 import { sfx } from '../services/sfx';
 
 interface Announcement {
@@ -16,6 +18,8 @@ interface Announcement {
   banner_url: string | null;
   countdown_end: string | null;
 }
+
+const SEEN_STORAGE_KEY = '@dominoclub_seen_announcements';
 
 function useCountdown(target: string | null) {
   const [label, setLabel] = useState<string | null>(null);
@@ -43,39 +47,83 @@ function useCountdown(target: string | null) {
 }
 
 // Shows active announcements/promos to the logged-in player, one at a time.
-// Each one is marked as seen (for the max_shows-per-user limit) the moment
-// it's displayed, and never shown again for the rest of this app session —
-// even though HomeScreen re-checks for new announcements every time it
-// regains focus, already-shown ones are skipped via shownIds.
+// Each is marked seen — both locally (AsyncStorage, so it never resurfaces on
+// this device even across app restarts) and server-side (for admin stats) —
+// the moment it's displayed. New announcements arrive two ways: a catch-up
+// fetch whenever this screen regains focus, and an instant push over the
+// existing game socket the moment an admin publishes one.
 export function AnnouncementModal() {
   const [queue, setQueue] = useState<Announcement[]>([]);
   const dismissing = useRef(false);
-  const shownIds = useRef<Set<string>>(new Set());
+  const seenIds = useRef<Set<string> | null>(null); // null until loaded from storage
 
-  // HomeScreen stays mounted in the navigator stack once visited, so a plain
-  // mount-only effect would only ever fetch once per app session and miss
-  // announcements created (or become eligible) after that. Re-check every
-  // time this screen regains focus instead.
+  const persistSeen = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify([...(seenIds.current ?? [])]));
+    } catch {}
+  }, []);
+
+  const enqueueUnseen = useCallback((items: Announcement[]) => {
+    if (!seenIds.current || !items.length) return;
+    const fresh = items.filter((a) => !seenIds.current!.has(a.id));
+    if (!fresh.length) return;
+    fresh.forEach((a) => {
+      seenIds.current!.add(a.id);
+      api.post(`/game/announcements/${a.id}/seen`).catch(() => {});
+    });
+    persistSeen();
+    setQueue((prev) => [...prev, ...fresh]);
+  }, [persistSeen]);
+
+  const checkForAnnouncements = useCallback(() => {
+    api.get('/game/announcements')
+      .then(({ data }) => enqueueUnseen(data?.announcements ?? []))
+      .catch(() => {});
+  }, [enqueueUnseen]);
+
+  // Load the persisted seen-set once, then do the initial check.
+  useEffect(() => {
+    let mounted = true;
+    AsyncStorage.getItem(SEEN_STORAGE_KEY)
+      .then((raw) => {
+        if (!mounted) return;
+        seenIds.current = new Set(raw ? JSON.parse(raw) : []);
+        checkForAnnouncements();
+      })
+      .catch(() => {
+        if (mounted) { seenIds.current = new Set(); checkForAnnouncements(); }
+      });
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // HomeScreen stays mounted in the navigator stack once visited, so this is
+  // the catch-up path for anything published while the screen wasn't focused.
   useFocusEffect(
     useCallback(() => {
-      let mounted = true;
-      api.get('/game/announcements')
-        .then(({ data }) => {
-          if (!mounted) return;
-          const fresh: Announcement[] = (data?.announcements ?? []).filter(
-            (a: Announcement) => !shownIds.current.has(a.id)
-          );
-          if (!fresh.length) return;
-          fresh.forEach((a) => {
-            shownIds.current.add(a.id);
-            api.post(`/game/announcements/${a.id}/seen`).catch(() => {});
-          });
-          setQueue((prev) => [...prev, ...fresh]);
-        })
-        .catch(() => {});
-      return () => { mounted = false; };
-    }, [])
+      if (seenIds.current) checkForAnnouncements();
+    }, [checkForAnnouncements])
   );
+
+  // Live push: an admin publishing an announcement broadcasts 'announcement:new'
+  // over the same socket the game already uses. Re-run the normal fetch rather
+  // than trusting the broadcast payload directly, since the list endpoint alone
+  // applies the target-league filter for the current user.
+  useEffect(() => {
+    let s: Awaited<ReturnType<typeof connectSocket>> | null = null;
+    let cancelled = false;
+    connectSocket()
+      .then((sock) => {
+        if (cancelled) return;
+        s = sock;
+        sock.on('announcement:new', checkForAnnouncements);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      s?.off('announcement:new', checkForAnnouncements);
+    };
+  }, [checkForAnnouncements]);
 
   const current = queue[0];
   const countdown = useCountdown(current?.countdown_end ?? null);
@@ -116,7 +164,7 @@ export function AnnouncementModal() {
                 end={{ x: 1, y: 1 }}
                 style={styles.iconCircle}
               >
-                <IconBell size={30} color="#0a1f0a" accessibilityLabel="Aviso" />
+                <IconBell size={24} color="#0a1f0a" accessibilityLabel="Aviso" />
               </LinearGradient>
             )}
 
@@ -162,9 +210,8 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: isTablet ? 580 : 460,
-    minHeight: 360,
-    maxHeight: '88%',
+    maxWidth: isTablet ? 560 : 420,
+    maxHeight: '62%',
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
     borderWidth: 3,
@@ -184,21 +231,21 @@ const styles = StyleSheet.create({
   } as any,
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xxl,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   closeX: {
     position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
+    top: spacing.sm,
+    right: spacing.sm,
     zIndex: 1,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -210,16 +257,16 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   iconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
   },
   title: {
     color: colors.textPrimary,
-    fontSize: fonts.sizes.xl,
+    fontSize: fonts.sizes.lg,
     fontWeight: '900',
     textAlign: 'center',
   },
@@ -227,7 +274,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: fonts.sizes.sm,
     textAlign: 'center',
-    lineHeight: 21,
+    lineHeight: 19,
     paddingHorizontal: spacing.sm,
   },
   countdownBox: {
@@ -236,21 +283,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(251,191,36,0.3)',
     borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.lg,
     marginTop: spacing.xs,
   },
   countdownLabel: { color: 'rgba(255,255,255,0.6)', fontSize: fonts.sizes.xs },
-  countdownValue: { color: colors.warning, fontWeight: '800', fontSize: fonts.sizes.xl, marginTop: 2 },
+  countdownValue: { color: colors.warning, fontWeight: '800', fontSize: fonts.sizes.lg, marginTop: 2 },
   okBtnWrap: {
     width: '100%',
-    marginTop: spacing.lg,
+    marginTop: spacing.sm,
     borderRadius: radius.md,
     overflow: 'hidden',
   },
   okBtn: {
     width: '100%',
-    paddingVertical: spacing.md + 2,
+    paddingVertical: spacing.sm + 2,
     alignItems: 'center',
   },
   okBtnText: { color: colors.textOnPrimary, fontWeight: '800', fontSize: fonts.sizes.md },

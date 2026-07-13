@@ -8,6 +8,7 @@ import { prisma } from '../services/prisma.service';
 import { logger } from '../utils/logger';
 import { AdminRequest } from '../middleware/admin.middleware';
 import { activeGames, adminForceEnd } from '../socket/gameSocket';
+import { getSocketServer } from '../socket/registry';
 import { cancelAndRefundTournament, createTournament, emergencyCancelTournament, startTournament } from '../services/tournament.service';
 import { getRuntimeConfig, invalidateRuntimeConfigCache } from '../services/runtime-config.service';
 import { approveKyc, rejectKyc } from '../services/kyc.service';
@@ -1420,11 +1421,11 @@ export async function getUserDetailsAdminHandler(req: Request, res: Response) {
 
 export async function getAnnouncementsAdminHandler(_req: Request, res: Response) {
   try {
-    const items = await prisma.announcement.findMany({
+    const announcements = await prisma.announcement.findMany({
       orderBy: { created_at: 'desc' },
       include: { _count: { select: { views: true } } },
     });
-    res.json(items);
+    res.json({ announcements });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1447,6 +1448,11 @@ export async function createAnnouncementAdminHandler(req: Request, res: Response
         is_active: isActive !== false,
       },
     });
+    // Push it to already-connected clients immediately instead of making them
+    // wait for their next screen-focus poll (or a full app restart) to see it.
+    if (item.is_active) {
+      getSocketServer()?.emit('announcement:new', item);
+    }
     res.status(201).json(item);
   } catch (err: any) {
     res.status(400).json({ error: err.message });

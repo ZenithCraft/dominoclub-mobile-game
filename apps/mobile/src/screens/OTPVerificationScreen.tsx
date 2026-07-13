@@ -14,6 +14,7 @@ import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { RootStackParamList } from '../navigation';
 import { LinearGradient } from 'expo-linear-gradient';
+import { sfx } from '../services/sfx';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OTPVerification'>;
 
@@ -26,7 +27,7 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
   const rightW = isWide ? Math.max(320, Math.min(500, winW * 0.42)) : '100%';
   const welcomeSize = winW < 480 ? 32 : winW < 768 ? 40 : 52;
 
-  const { phone } = route.params;
+  const { phone, googlePendingToken } = route.params;
   const [otp, setOtp]               = useState(['', '', '', '', '', '']);
   const [loading, setLoading]       = useState(false);
   const [resendTimer, setResendTimer] = useState(60);
@@ -56,7 +57,9 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
     if (code.length !== 6) { setError('Digite todos os 6 dígitos'); return; }
     setLoading(true); setError('');
     try {
-      const { data } = await api.post('/auth/otp/verify', { phone, otp: code });
+      const { data } = googlePendingToken
+        ? await api.post('/auth/google/complete', { pendingToken: googlePendingToken, phone, otp: code })
+        : await api.post('/auth/otp/verify', { phone, otp: code });
       setTokens(data.accessToken, data.refreshToken);
       setUser(data.user);
       if (data.user.isNewUser || !data.user.name) {
@@ -74,6 +77,7 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
   };
 
   const handleResend = async () => {
+    sfx.buttonClick();
     try {
       await api.post('/auth/otp/send', { phone });
       setResendTimer(60); setOtp(['', '', '', '', '', '']); setError('');
@@ -157,7 +161,7 @@ export function OTPVerificationScreen({ navigation, route }: Props) {
                     style={styles.btn}
                   />
 
-                  <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                  <TouchableOpacity onPress={() => { sfx.buttonClick(); navigation.navigate('Register'); }}>
                     <Text style={styles.linkText}>Criar uma conta</Text>
                   </TouchableOpacity>
 

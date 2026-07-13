@@ -12,6 +12,7 @@ import { ScreenBackground } from '../components/ScreenBackground';
 import { IconTrophy } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
+import { sfx } from '../services/sfx';
 import { GameTopBar } from './HomeScreen';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
@@ -248,7 +249,7 @@ export function LeaderboardScreen({ navigation }: Props) {
             <TouchableOpacity
               key={p}
               style={styles.toggleBtn}
-              onPress={() => setPeriod(p)}
+              onPress={() => { sfx.buttonClick(); setPeriod(p); }}
               activeOpacity={0.85}
             >
               <LinearGradient

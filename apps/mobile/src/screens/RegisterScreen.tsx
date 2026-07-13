@@ -14,6 +14,7 @@ import { ScreenBackground } from '../components/ScreenBackground';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { LinearGradient } from 'expo-linear-gradient';
+import { sfx } from '../services/sfx';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -69,6 +70,7 @@ export function RegisterScreen({ navigation, route }: Props) {
   };
 
   const handleVerifyCpf = async () => {
+    sfx.buttonClick();
     if (!cpfFormatValid) { setErrors((e) => ({ ...e, cpf: 'CPF inválido' })); return; }
     setCpfLoading(true);
     try {
@@ -208,7 +210,7 @@ export function RegisterScreen({ navigation, route }: Props) {
 
                   <View style={styles.loginRow}>
                     <Text style={styles.linkText}>Já tem conta? </Text>
-                    <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+                    <TouchableOpacity onPress={() => { sfx.buttonClick(); navigation.navigate('Login'); }}>
                       <Text style={styles.linkUnderline}>Fazer login</Text>
                     </TouchableOpacity>
                   </View>

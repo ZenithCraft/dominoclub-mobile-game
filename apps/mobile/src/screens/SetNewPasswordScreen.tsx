@@ -12,6 +12,7 @@ import { colors, spacing, fonts, radius } from '../theme';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { IconLock } from '../components/Icons';
 import { api } from '../services/api';
+import { sfx } from '../services/sfx';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -100,7 +101,7 @@ export function SetNewPasswordScreen({ navigation, route }: Props) {
                 style={styles.btn}
               />
 
-              <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+              <TouchableOpacity onPress={() => { sfx.buttonClick(); navigation.navigate('Login'); }}>
                 <Text style={styles.linkText}>Já tem conta? Faça o login</Text>
               </TouchableOpacity>
             </View>

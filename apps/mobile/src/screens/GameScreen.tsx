@@ -13,6 +13,7 @@ import Svg, { Rect } from 'react-native-svg';
 import {
   IconTrophy, IconSettings, IconAlert, IconX, IconFrown,
   IconVolumeUp, IconMusic, IconChevronLeft, IconChevronRight,
+  IconBell, IconBellOff,
 } from '../components/Icons';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
 import { tileScale as deviceTileScale, isTablet } from '../theme/responsive';
@@ -21,6 +22,9 @@ import { connectSocket, disconnectSocket } from '../services/socket';
 import { useGameStore, Tile, GameState, PlacedTile, WIN_TYPE_LABEL, WIN_TYPE_POINTS } from '../store/game.store';
 import { useAuthStore } from '../store/auth.store';
 import { useTournamentStore } from '../store/tournament.store';
+import { useSettingsStore } from '../store/settings.store';
+import { setAppNotificationsEnabled } from '../services/notifications';
+import { sfx } from '../services/sfx';
 import { RootStackParamList } from '../navigation';
 
 type PlaySide = 'left' | 'right' | 'top' | 'bottom';
@@ -151,7 +155,7 @@ function GradientToggle({
   onValueChange: (next: boolean) => void;
   pressableTestID?: string;
   accessibilityLabel?: string;
-  kind?: 'sound' | 'music';
+  kind?: 'sound' | 'music' | 'notifications';
 }) {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
@@ -195,6 +199,12 @@ function GradientToggle({
               <IconVolumeUp size={18} color={iconColor} accessibilityLabel="Som" />
             ) : kind === 'music' ? (
               <IconMusic size={18} color={iconColor} accessibilityLabel="Música" />
+            ) : kind === 'notifications' ? (
+              value ? (
+                <IconBell size={18} color={iconColor} accessibilityLabel="Notificações" />
+              ) : (
+                <IconBellOff size={18} color={iconColor} accessibilityLabel="Notificações" />
+              )
             ) : null}
           </View>
         </Animated.View>
@@ -1296,7 +1306,7 @@ function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji, team = 0
         </View>
 
         <View>
-          <TouchableOpacity onPress={() => setOpen(v => !v)} activeOpacity={0.75} accessibilityLabel="Abrir reações">
+          <TouchableOpacity onPress={() => { sfx.buttonClick(); setOpen(v => !v); }} activeOpacity={0.75} accessibilityLabel="Abrir reações">
             <View style={myCardStyles.avatar}>
               {avatarUri ? (
                 <Image source={{ uri: avatarUri }} style={myCardStyles.avatarImg} />
@@ -1313,7 +1323,7 @@ function MyPlayerCard({ name, hand, isMyTurn, avatarUri, onSelectEmoji, team = 0
                     <TouchableOpacity
                       key={e.id}
                       style={emojiStyles.btn}
-                      onPress={() => { onSelectEmoji?.(e.id); setOpen(false); }}
+                      onPress={() => { sfx.buttonClick(); onSelectEmoji?.(e.id); setOpen(false); }}
                       accessibilityLabel={`Reação ${e.id}`}
                       activeOpacity={0.65}
                     >
@@ -1405,13 +1415,13 @@ function ResultCard({
         ) : null}
         <TouchableOpacity
           style={[styles.resultBtn, playAgainLoading && styles.resultBtnDisabled]}
-          onPress={onPlayAgain}
+          onPress={() => { sfx.buttonClick(); onPlayAgain(); }}
           disabled={playAgainLoading}
         >
           <Text style={styles.resultBtnText} numberOfLines={1}>{playAgainLoading ? 'Procurando...' : 'Jogar novamente'}</Text>
         </TouchableOpacity>
         <Text style={styles.resultOrText}>ou</Text>
-        <TouchableOpacity style={styles.resultSecondaryBtn} onPress={onExit} disabled={playAgainLoading}>
+        <TouchableOpacity style={styles.resultSecondaryBtn} onPress={() => { sfx.buttonClick(); onExit(); }} disabled={playAgainLoading}>
           <Text style={styles.resultSecondaryText} numberOfLines={1}>Voltar ao menu</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -1544,8 +1554,11 @@ export function GameScreen({ navigation, route }: Props) {
   const [, setCountdownTick] = useState(0);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [leaveConfirmVisible, setLeaveConfirmVisible] = useState(false);
-  const [soundOn, setSoundOn] = useState(true);
   const [musicOn, setMusicOn] = useState(true);
+  const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
+  const soundOn = useSettingsStore((s) => s.soundOn);
+  const setSoundOn = useSettingsStore((s) => s.setSoundOn);
+  useEffect(() => { useSettingsStore.getState().loadFromStorage(); }, []);
   const [joinAttempt, setJoinAttempt] = useState(0);
   const [emojiByUser, setEmojiByUser] = useState<Record<string, { char: string; nonce: number }>>({});
   const [drawByUser, setDrawByUser] = useState<Record<string, { nonce: number }>>({});
@@ -1728,9 +1741,10 @@ export function GameScreen({ navigation, route }: Props) {
           const [a, b] = key.split('-').map(Number) as [number, number];
           const { side, flipped } = plays[0];
           socket.emit('game:move', { gameId, tile: [a, b] as Tile, side, flipped });
-        } else if (!is4Player && hasBoneyard) {
-          socket.emit('game:draw', { gameId });
         } else {
+          // Always pass on timeout — don't auto-draw.
+          // If the server rejects it (boneyard available in 1v1), its own timer
+          // fires getBotMove which handles draw/pass correctly.
           socket.emit('game:pass', { gameId });
         }
       } catch {}
@@ -1953,6 +1967,7 @@ export function GameScreen({ navigation, route }: Props) {
             if (newHand?.length > 7) {
               console.error(`[CRITICAL ERROR] Received ${newHand.length} tiles! Expected 6 or 7.`);
             }
+            if (newHand.length > 0) sfx.deal();
           }
 
           setGame(normalized);
@@ -1987,6 +2002,7 @@ export function GameScreen({ navigation, route }: Props) {
             const prevBoard = prev.board ?? [];
             const nextBoard = normalized.board ?? [];
             if (nextBoard.length === prevBoard.length + 1) {
+              sfx.tilePlace();
               const prevHandLen = new Map(prev.players.map((p) => [p.userId, p.hand?.length ?? 0]));
               const myUId = myEffectiveUserIdRef.current || String((useAuthStore.getState().user as any)?.id ?? (useAuthStore.getState().user as any)?.userId ?? '');
               const playedBy = normalized.players.find(
@@ -2030,6 +2046,7 @@ export function GameScreen({ navigation, route }: Props) {
           // during the 4-second inter-round pause and show the old hand to the player.
           const endedRound: number = typeof data?.roundNumber === 'number' ? data.roundNumber : 0;
           if (endedRound > 0) currentRoundRef.current = Math.max(currentRoundRef.current, endedRound);
+          if (typeof data?.points === 'number' && data.points > 0) sfx.score();
           setRoundBanner({
             roundNumber:     data.roundNumber,
             winnerTeam:      data.winnerTeam,
@@ -2207,6 +2224,7 @@ export function GameScreen({ navigation, route }: Props) {
     if (!isMyTurn) return;
     if ((validMovesMap.get(tileKey(tile)) ?? []).length === 0) { showError('Esta pedra não pode ser jogada agora'); return; }
     const isSame = selectedTile?.handIndex === handIndex;
+    if (!isSame) sfx.tileSelect();
     setSelectedTile(isSame ? null : { tile, handIndex });
   };
 
@@ -2214,6 +2232,7 @@ export function GameScreen({ navigation, route }: Props) {
     if (!selectedTile) return;
     const plays = validPlaysForSelected.filter((p) => p.side === side);
     if (!plays.length) return;
+    sfx.tilePlace();
     try {
       const socket = socketRef.current ?? await connectSocket();
       socket.emit('game:move', { gameId, tile: selectedTile.tile, side, flipped: plays[0].flipped });
@@ -2226,6 +2245,7 @@ export function GameScreen({ navigation, route }: Props) {
   const handlePlayImmediate = useCallback(async () => {
     if (!selectedTile || validPlaysForSelected.length !== 1) return;
     const { side, flipped } = validPlaysForSelected[0];
+    sfx.tilePlace();
     try {
       const socket = socketRef.current ?? await connectSocket();
       socket.emit('game:move', { gameId, tile: selectedTile.tile, side, flipped });
@@ -2236,6 +2256,7 @@ export function GameScreen({ navigation, route }: Props) {
   }, [selectedTile, validPlaysForSelected, gameId, showError]);
 
   const handlePass = useCallback(async () => {
+    sfx.buttonClick();
     try {
       const socket = socketRef.current ?? await connectSocket();
       socket.emit('game:pass', { gameId });
@@ -2245,6 +2266,7 @@ export function GameScreen({ navigation, route }: Props) {
   }, [gameId, showError]);
 
   const handleDraw = useCallback(async () => {
+    sfx.buttonClick();
     try {
       const socket = socketRef.current ?? await connectSocket();
       socket.emit('game:draw', { gameId });
@@ -2380,12 +2402,12 @@ export function GameScreen({ navigation, route }: Props) {
           {(disconnected || gameError) && (
             <View style={styles.loadingCard}>
               <Text style={styles.loadingHint}>{gameError || 'Sem conexão com o servidor.'}</Text>
-              <TouchableOpacity style={styles.retryBtn} onPress={handleRetryJoin} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.retryBtn} onPress={() => { sfx.buttonClick(); handleRetryJoin(); }} activeOpacity={0.85}>
                 <Text style={styles.retryBtnText}>Tentar novamente</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.backBtn}
-                onPress={() => { clearGame(); navigation.replace('Main'); }}
+                onPress={() => { sfx.buttonClick(); clearGame(); navigation.replace('Main'); }}
                 activeOpacity={0.85}
               >
                 <Text style={styles.backBtnText}>Voltar</Text>
@@ -2564,7 +2586,7 @@ export function GameScreen({ navigation, route }: Props) {
           <ScoreBox is4Player={is4Player} myScore={myMatchScore} oppScore={oppMatchScore} targetScore={targetScore} />
         </View>
         <View style={styles.topCenter} />
-        <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)}>
+        <TouchableOpacity style={styles.gearBtn} onPress={() => { sfx.buttonClick(); setSettingsVisible(true); }}>
           <IconSettings size={isTablet ? 40 : 24} color={colors.textPrimary} accessibilityLabel="Configurações" />
         </TouchableOpacity>
       </View>
@@ -3171,7 +3193,7 @@ export function GameScreen({ navigation, route }: Props) {
                                             <IconChevronRight size={20} color="#fff" />}
                       </TouchableOpacity>
                     ))}
-                    <TouchableOpacity style={styles.cancelBtn} onPress={() => setSelectedTile(null)}>
+                    <TouchableOpacity style={styles.cancelBtn} onPress={() => { sfx.buttonClick(); setSelectedTile(null); }}>
                       <IconX size={16} color="#fff" accessibilityLabel="Cancelar" />
                     </TouchableOpacity>
                   </View>
@@ -3244,7 +3266,7 @@ export function GameScreen({ navigation, route }: Props) {
             <View style={styles.modalHeader}>
               <View style={{ width: 26 }} />
               <Text style={styles.settingsTitle}>Configurações</Text>
-              <TouchableOpacity onPress={() => setSettingsVisible(false)} accessibilityLabel="Fechar configurações">
+              <TouchableOpacity onPress={() => { sfx.buttonClick(); setSettingsVisible(false); }} accessibilityLabel="Fechar configurações">
                 <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>
@@ -3270,8 +3292,19 @@ export function GameScreen({ navigation, route }: Props) {
                   kind="music"
                 />
               </View>
+
+              <View style={styles.settingItem}>
+                <Text style={styles.settingLabel}>Notificações:</Text>
+                <GradientToggle
+                  value={notificationsEnabled}
+                  onValueChange={setAppNotificationsEnabled}
+                  pressableTestID="settings-notifications-toggle"
+                  accessibilityLabel="Notificações"
+                  kind="notifications"
+                />
+              </View>
               {/* Leave */}
-              <TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveGame}>
+              <TouchableOpacity style={styles.leaveBtn} onPress={() => { sfx.buttonClick(); handleLeaveGame(); }}>
                 <Text style={styles.leaveBtnText}>Abandonar partida</Text>
               </TouchableOpacity>
             </ScrollView>
@@ -3301,10 +3334,10 @@ export function GameScreen({ navigation, route }: Props) {
                 <Text style={styles.confirmWarningText}>⚠️ Você perderá o valor da entrada!</Text>
               </View>
               <View style={[styles.confirmActions, { marginTop: isPhone ? 4 : spacing.lg }]}>
-                <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => setLeaveConfirmVisible(false)}>
+                <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => { sfx.buttonClick(); setLeaveConfirmVisible(false); }}>
                   <Text style={styles.confirmCancelText}>Cancelar</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.confirmLeaveBtn} onPress={doLeave}>
+                <TouchableOpacity style={styles.confirmLeaveBtn} onPress={() => { sfx.buttonClick(); doLeave(); }}>
                   <Text style={styles.confirmLeaveText}>Sair</Text>
                 </TouchableOpacity>
               </View>
@@ -3363,6 +3396,7 @@ export function GameScreen({ navigation, route }: Props) {
               </Text>
               <TouchableOpacity
                 onPress={() => {
+                  sfx.buttonClick();
                   const { activeTournament } = useTournamentStore.getState();
                   setTournamentMatchModal(null);
                   clearGame();

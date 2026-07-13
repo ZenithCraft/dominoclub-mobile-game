@@ -5,6 +5,7 @@ import { connectSocket } from '../services/socket';
 import { api } from '../services/api';
 import { useTournamentStore } from '../store/tournament.store';
 import { toast } from '../store/toast.store';
+import { sfx } from '../services/sfx';
 
 function formatCountdown(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -120,6 +121,7 @@ export function GlobalTournamentBar() {
   }, [activeTournament?.tournamentId, navigation]);
 
   const enableWebNotifications = async () => {
+    sfx.buttonClick();
     if (!activeTournament) return;
     const perm = await requestWebNotificationPermission();
     if (perm === 'unsupported') {
@@ -147,6 +149,7 @@ export function GlobalTournamentBar() {
   };
 
   const leaveTournament = async () => {
+    sfx.buttonClick();
     if (!activeTournament) return;
     try {
       await api.post(`/game/tournaments/${activeTournament.tournamentId}/leave`);
@@ -169,14 +172,15 @@ export function GlobalTournamentBar() {
         <TouchableOpacity
           style={{ flex: 1 }}
           activeOpacity={0.75}
-          onPress={() =>
+          onPress={() => {
+            sfx.buttonClick();
             navigation.navigate('TournamentWaiting', {
               tournamentId: activeTournament.tournamentId,
               tournamentName: activeTournament.tournamentName,
               startsAt: activeTournament.startsAt,
               entryFee: activeTournament.entryFee,
-            })
-          }
+            });
+          }}
         >
           <Text style={styles.title} numberOfLines={1}>{activeTournament.tournamentName}</Text>
           <Text style={styles.subtitle}>Toque para voltar · {formatCountdown(remainingMs)}</Text>

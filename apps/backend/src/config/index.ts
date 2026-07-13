@@ -19,6 +19,12 @@ export const config = {
     refreshExpires: process.env.JWT_REFRESH_EXPIRES || '7d',
   },
 
+  google: {
+    // OAuth "Web application" client — used as the audience when verifying
+    // Google ID tokens from the mobile app's native Google Sign-In SDK.
+    webClientId: process.env.GOOGLE_WEB_CLIENT_ID || '679633365643-nscdct6m9aaqi0h67hiq9f7i365uok9f.apps.googleusercontent.com',
+  },
+
   woovi: {
     appId: process.env.WOOVI_APP_ID || '',
     baseUrl: process.env.WOOVI_BASE_URL || 'https://api.openpix.com.br/api/v1',

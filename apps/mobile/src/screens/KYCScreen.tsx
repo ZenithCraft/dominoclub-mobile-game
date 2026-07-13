@@ -15,6 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../store/auth.store';
 import { IconX, IconUpload } from '../components/Icons';
 import { GameTopBar, prepareAvatarUpload } from './HomeScreen';
+import { sfx } from '../services/sfx';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -54,6 +55,7 @@ export function KYCScreen({ navigation }: Props) {
   const [choiceModal, setChoiceModal] = useState<{ visible: boolean; type: 'front' | 'back' | null }>({ visible: false, type: null });
 
   const pickImage = async (camera = false) => {
+    sfx.buttonClick();
     const { status } = camera
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -88,6 +90,7 @@ export function KYCScreen({ navigation }: Props) {
   };
 
   const handleSubmit = async () => {
+    sfx.buttonClick();
     if (!docType || !frontUri || !selfieUri) return;
     setLoading(true);
     setStep(3);
@@ -197,7 +200,7 @@ export function KYCScreen({ navigation }: Props) {
                       styles.docOption,
                       docType === type && styles.docOptionSelected
                     ]}
-                    onPress={() => setDocType(type)}
+                    onPress={() => { sfx.buttonClick(); setDocType(type); }}
                     activeOpacity={0.8}
                   >
                     <Text style={[
@@ -213,7 +216,7 @@ export function KYCScreen({ navigation }: Props) {
                     styles.nextButton,
                     !docType && styles.nextButtonDisabled
                   ]}
-                  onPress={() => { if (docType) setStep(1); }}
+                  onPress={() => { sfx.buttonClick(); if (docType) setStep(1); }}
                   disabled={!docType}
                   activeOpacity={0.8}
                 >
@@ -240,7 +243,7 @@ export function KYCScreen({ navigation }: Props) {
                         <Image source={{ uri: frontUri }} style={styles.photoPreviewImageNew} />
                         <TouchableOpacity
                           style={styles.removePhotoBtnNew}
-                          onPress={() => setFrontUri(null)}
+                          onPress={() => { sfx.buttonClick(); setFrontUri(null); }}
                           activeOpacity={0.8}
                         >
                           <IconX size={14} color="#fff" />
@@ -250,7 +253,7 @@ export function KYCScreen({ navigation }: Props) {
                   ) : (
                     <TouchableOpacity
                       style={styles.photoUploadArea}
-                      onPress={() => setChoiceModal({ visible: true, type: 'front' })}
+                      onPress={() => { sfx.buttonClick(); setChoiceModal({ visible: true, type: 'front' }); }}
                       activeOpacity={0.8}
                     >
                       <View style={styles.photoUploadPlaceholder} />
@@ -287,7 +290,7 @@ export function KYCScreen({ navigation }: Props) {
                         <Image source={{ uri: backUri }} style={styles.photoPreviewImageNew} />
                         <TouchableOpacity
                           style={styles.removePhotoBtnNew}
-                          onPress={() => setBackUri(null)}
+                          onPress={() => { sfx.buttonClick(); setBackUri(null); }}
                           activeOpacity={0.8}
                         >
                           <IconX size={14} color="#fff" />
@@ -297,7 +300,7 @@ export function KYCScreen({ navigation }: Props) {
                   ) : (
                     <TouchableOpacity
                       style={styles.photoUploadArea}
-                      onPress={() => setChoiceModal({ visible: true, type: 'back' })}
+                      onPress={() => { sfx.buttonClick(); setChoiceModal({ visible: true, type: 'back' }); }}
                       activeOpacity={0.8}
                     >
                       <View style={styles.photoUploadPlaceholder} />
@@ -324,7 +327,7 @@ export function KYCScreen({ navigation }: Props) {
                 <View style={styles.btnRow}>
                   <TouchableOpacity
                     style={styles.backButtonHalf}
-                    onPress={() => setStep(0)}
+                    onPress={() => { sfx.buttonClick(); setStep(0); }}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.backButtonText}>Voltar</Text>
@@ -334,7 +337,7 @@ export function KYCScreen({ navigation }: Props) {
                       styles.nextButtonHalf,
                       (!frontUri || !backUri) && styles.nextButtonDisabled
                     ]}
-                    onPress={() => { if (frontUri && backUri) setStep(2); }}
+                    onPress={() => { sfx.buttonClick(); if (frontUri && backUri) setStep(2); }}
                     disabled={!frontUri || !backUri}
                     activeOpacity={0.8}
                   >
@@ -361,7 +364,7 @@ export function KYCScreen({ navigation }: Props) {
                         <Image source={{ uri: selfieUri }} style={styles.selfiePreviewImageNew} />
                         <TouchableOpacity
                           style={styles.removePhotoBtnNew}
-                          onPress={() => setSelfieUri(null)}
+                          onPress={() => { sfx.buttonClick(); setSelfieUri(null); }}
                           activeOpacity={0.8}
                         >
                           <IconX size={14} color="#fff" />
@@ -388,7 +391,7 @@ export function KYCScreen({ navigation }: Props) {
                 <View style={styles.btnRow}>
                   <TouchableOpacity
                     style={styles.backButtonHalf}
-                    onPress={() => setStep(1)}
+                    onPress={() => { sfx.buttonClick(); setStep(1); }}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.backButtonText}>Voltar</Text>
@@ -434,7 +437,7 @@ export function KYCScreen({ navigation }: Props) {
         <View style={styles.modalOverlay}>
           <TouchableOpacity
             style={styles.modalCloseArea}
-            onPress={() => setPreviewUri(null)}
+            onPress={() => { sfx.buttonClick(); setPreviewUri(null); }}
             activeOpacity={1}
           >
             <View style={styles.modalImageContainer}>
@@ -447,7 +450,7 @@ export function KYCScreen({ navigation }: Props) {
               )}
               <TouchableOpacity
                 style={styles.modalCloseBtn}
-                onPress={() => setPreviewUri(null)}
+                onPress={() => { sfx.buttonClick(); setPreviewUri(null); }}
                 activeOpacity={0.8}
               >
                 <IconX size={24} color="#fff" />
@@ -497,7 +500,7 @@ export function KYCScreen({ navigation }: Props) {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.choiceModalBtn, styles.choiceModalBtnCancel]}
-              onPress={() => setChoiceModal({ visible: false, type: null })}
+              onPress={() => { sfx.buttonClick(); setChoiceModal({ visible: false, type: null }); }}
               activeOpacity={0.8}
             >
               <Text style={[styles.choiceModalBtnText, styles.choiceModalBtnTextCancel]}>Cancelar</Text>

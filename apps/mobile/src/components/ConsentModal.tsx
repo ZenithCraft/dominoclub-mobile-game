@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, radius } from '../theme';
 import { isTablet } from '../theme/responsive';
 import { IconShieldAlert } from './Icons';
+import { sfx } from '../services/sfx';
 
 const CONSENT_KEY = '@dominoclub_consent_v1';
 
@@ -71,6 +72,7 @@ export function ConsentModal({ onAccepted }: Props) {
   };
 
   const handleAgeConfirm = (confirmed: boolean) => {
+    sfx.buttonClick();
     if (!confirmed) return;
     setAgeConfirmed(true);
     setStep('terms');
@@ -78,6 +80,7 @@ export function ConsentModal({ onAccepted }: Props) {
   };
 
   const handleAccept = async () => {
+    sfx.buttonClick();
     const consent: ConsentData = {
       acceptedAt: new Date().toISOString(),
       ageConfirmed: true,
@@ -131,6 +134,7 @@ export function ConsentModal({ onAccepted }: Props) {
                   <TouchableOpacity
                     style={[styles.ageBtn, styles.ageBtnSecondary]}
                     onPress={() => {
+                      sfx.buttonClick();
                       Alert.alert(
                         'Acesso Restrito',
                         'O DominoClub é exclusivo para maiores de 18 anos. O uso por menores é proibido por lei.',

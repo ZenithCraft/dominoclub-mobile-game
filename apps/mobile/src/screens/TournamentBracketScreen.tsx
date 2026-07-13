@@ -13,6 +13,7 @@ import { IconTrophy, IconSettings, IconX } from '../components/Icons';
 import { GradientToggle } from './HomeScreen';
 import { api } from '../services/api';
 import { connectSocket } from '../services/socket';
+import { sfx } from '../services/sfx';
 
 type BracketGame = {
   id: string;
@@ -122,14 +123,14 @@ export function TournamentBracketScreen({ navigation, route }: Props) {
 
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.8}>
+            <TouchableOpacity onPress={() => { sfx.buttonClick(); navigation.goBack(); }} style={styles.backBtn} activeOpacity={0.8}>
               <Text style={styles.backBtnText}>← Voltar</Text>
             </TouchableOpacity>
             <View style={styles.headerCenter}>
               <IconTrophy size={20} color="#fbbf24" accessibilityLabel="Torneio" />
               <Text style={styles.headerTitle}>{tournament.name}</Text>
             </View>
-            <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)} accessibilityLabel="Configurações">
+            <TouchableOpacity style={styles.gearBtn} onPress={() => { sfx.buttonClick(); setSettingsVisible(true); }} accessibilityLabel="Configurações">
               <IconSettings size={22} color="#fff" accessibilityLabel="Configurações" />
             </TouchableOpacity>
           </View>
@@ -220,7 +221,7 @@ export function TournamentBracketScreen({ navigation, route }: Props) {
               <View style={settingsStyles.header}>
                 <View style={{ width: 26 }} />
                 <Text style={settingsStyles.title}>Configurações</Text>
-                <TouchableOpacity onPress={() => setSettingsVisible(false)} accessibilityLabel="Fechar configurações">
+                <TouchableOpacity onPress={() => { sfx.buttonClick(); setSettingsVisible(false); }} accessibilityLabel="Fechar configurações">
                   <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
                 </TouchableOpacity>
               </View>

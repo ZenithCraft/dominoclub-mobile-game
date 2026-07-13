@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToastStore, ToastType } from '../store/toast.store';
 import { colors, fonts, radius, spacing } from '../theme';
 import { IconAlert, IconCheck, IconInfo, IconX } from './Icons';
+import { sfx } from '../services/sfx';
 
 const TYPE_CONFIG: Record<ToastType, { bg: string; border: string; Icon: React.ComponentType<any> }> = {
   error:   { bg: '#2d0a0a', border: colors.error,   Icon: IconX },
@@ -38,6 +39,7 @@ function ToastItem({ id, message, type }: { id: string; message: string; type: T
   }, []);
 
   const handleDismiss = () => {
+    sfx.buttonClick();
     Animated.parallel([
       Animated.timing(opacity,    { toValue: 0, duration: 150, useNativeDriver: useNative }),
       Animated.timing(translateY, { toValue: -8, duration: 150, useNativeDriver: useNative }),

@@ -57,24 +57,25 @@ export async function deductBet(walletId: string, amount: number) {
 
     if (realBal < realDeduction) throw new Error('Insufficient balance');
 
-    const newRollover = Math.max(0, rolloverRem - rolloverDeduction);
-    const rolloverJustCleared = rolloverRem > 0 && newRollover === 0;
     const bonusAfterBet = bonusBal - bonusDeduction; // remaining bonus before any conversion
-    // If this bet exhausted the bonus (was > 0, now 0) but rollover didn't clear yet,
-    // drop the rollover requirement — there is no bonus left to protect.
-    const bonusExhausted = bonusBal > 0 && bonusAfterBet === 0 && !rolloverJustCleared;
-    const finalRollover = (rolloverJustCleared || bonusExhausted) ? 0 : newRollover;
-    // When rollover clears (either normally or via bonus exhaustion), convert leftover
-    // bonus into real balance so the player doesn't lose it.
-    const newBonusBal = (rolloverJustCleared || bonusExhausted) ? 0 : bonusAfterBet;
-    const newRealBal  = realBal - realDeduction + ((rolloverJustCleared || bonusExhausted) ? bonusAfterBet : 0);
+    const rolloverAfterDeduction = Math.max(0, rolloverRem - rolloverDeduction);
+    // Rollover exists only to protect bonus funds — the moment bonus_balance is 0,
+    // whether THIS bet spent the last of it or it was already 0 from an earlier one,
+    // there's nothing left to protect, so the requirement drops immediately instead
+    // of continuing to grind down via further real-money wagering.
+    const finalRollover = bonusAfterBet === 0 ? 0 : rolloverAfterDeduction;
+    const rolloverJustCleared = rolloverRem > 0 && finalRollover === 0;
+    // When rollover clears, convert any leftover bonus into real balance so the
+    // player doesn't lose it.
+    const newBonusBal = rolloverJustCleared ? 0 : bonusAfterBet;
+    const newRealBal  = realBal - realDeduction + (rolloverJustCleared ? bonusAfterBet : 0);
 
     await tx.wallet.update({
       where: { id: walletId },
       data: {
         real_balance:  newRealBal,
         bonus_balance: newBonusBal,
-        ...((rolloverDeduction > 0 || bonusExhausted) ? { rollover_remaining: finalRollover } : {}),
+        ...(rolloverRem !== finalRollover ? { rollover_remaining: finalRollover } : {}),
       },
     });
 

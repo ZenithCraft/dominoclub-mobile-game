@@ -94,7 +94,7 @@ enum DocumentType {
 }
 
 enum DocumentStatus {
-  PENDING    // uploaded, awaiting review
+  PENDING // uploaded, awaiting review
   APPROVED
   REJECTED
 }
@@ -113,10 +113,11 @@ enum LeagueRank {
 // ─── Models ──────────────────────────────────────────────────────
 
 model User {
-  id            String   @id @default(uuid())
-  phone         String   @unique
-  cpf           String?  @unique
-  email         String?  @unique
+  id            String    @id @default(uuid())
+  phone         String    @unique
+  cpf           String?   @unique
+  email         String?   @unique
+  google_id     String?   @unique
   name          String?
   avatar        String?
   date_of_birth DateTime?
@@ -128,17 +129,17 @@ model User {
   gps_updated_at DateTime?
   device_id      String?
   ip_address     String?
-  push_token     String?   // Expo push token for notifications
+  push_token     String? // Expo push token for notifications
 
   // Moderation
-  is_banned      Boolean  @default(false)
-  ban_reason     String?
-  bot_score      Float    @default(0)    // 0–1 probability of being a bot
-  trust_score    Float    @default(1.0)  // 1.0 = fully trusted; decrements on abuse signals
+  is_banned   Boolean @default(false)
+  ban_reason  String?
+  bot_score   Float   @default(0) // 0–1 probability of being a bot
+  trust_score Float   @default(1.0) // 1.0 = fully trusted; decrements on abuse signals
 
   // Verification
-  cpf_verified   Boolean  @default(false)
-  phone_verified Boolean  @default(false)
+  cpf_verified   Boolean   @default(false)
+  phone_verified Boolean   @default(false)
   otp_code       String?
   otp_expires_at DateTime?
   refresh_token  String?
@@ -151,24 +152,24 @@ model User {
   kyc_selfie_url         String?
   kyc_submitted_at       DateTime?
   kyc_reviewed_at        DateTime?
-  kyc_review_notes       String?    @db.Text
+  kyc_review_notes       String?         @db.Text
 
   // League / Ranking — resets monthly
-  league_points     Int         @default(0)
-  previous_rank     LeagueRank?             // rank earned in the previous month
-  previous_rank_month String?               // "YYYY-MM" of the month that rank was earned
+  league_points       Int         @default(0)
+  previous_rank       LeagueRank? // rank earned in the previous month
+  previous_rank_month String? // "YYYY-MM" of the month that rank was earned
 
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  wallet               Wallet?
-  gamePlayers          GamePlayer[]
-  tournamentPlayers    TournamentPlayer[]
-  fraudLogs            FraudLog[]
-  couponRedemptions    CouponRedemption[]
-  wonGames             Game[]             @relation("GameWinner")
-  deviceBinds          DeviceBind[]
-  announcementViews    UserAnnouncementView[]
+  wallet            Wallet?
+  gamePlayers       GamePlayer[]
+  tournamentPlayers TournamentPlayer[]
+  fraudLogs         FraudLog[]
+  couponRedemptions CouponRedemption[]
+  wonGames          Game[]                 @relation("GameWinner")
+  deviceBinds       DeviceBind[]
+  announcementViews UserAnnouncementView[]
 
   @@index([phone])
   @@index([cpf])
@@ -179,13 +180,13 @@ model User {
 }
 
 model Wallet {
-  id                  String   @id @default(uuid())
-  userId              String   @unique
-  real_balance        Decimal  @default(0) @db.Decimal(12, 2)
-  bonus_balance       Decimal  @default(0) @db.Decimal(12, 2)
-  rollover_remaining  Decimal  @default(0) @db.Decimal(12, 2)  // wagering requirement remaining
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  real_balance       Decimal  @default(0) @db.Decimal(12, 2)
+  bonus_balance      Decimal  @default(0) @db.Decimal(12, 2)
+  rollover_remaining Decimal  @default(0) @db.Decimal(12, 2) // wagering requirement remaining
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
@@ -198,13 +199,13 @@ model Transaction {
   walletId      String
   type          TransactionType
   amount        Decimal           @db.Decimal(12, 2)
-  balance_after Decimal?          @db.Decimal(12, 2)  // snapshot of balance after transaction
-  pix_id        String?           // Inter txid / e2eid
+  balance_after Decimal?          @db.Decimal(12, 2) // snapshot of balance after transaction
+  pix_id        String? // Inter txid / e2eid
   pix_qr_code   String?           @db.Text
-  pix_key       String?           // destination pix key for withdrawals
+  pix_key       String? // destination pix key for withdrawals
   description   String?
   status        TransactionStatus @default(PENDING)
-  metadata      Json?             // extra Inter API response data
+  metadata      Json? // extra Inter API response data
   created_at    DateTime          @default(now())
   updated_at    DateTime          @updatedAt
 
@@ -225,19 +226,19 @@ model Game {
   prize_pool       Decimal       @default(0) @db.Decimal(12, 2)
   house_fee        Decimal       @default(0) @db.Decimal(12, 2)
   winner_id        String?
-  winning_team     Int?          // 1 or 2 for 2v2
-  replay_data      Json?         // full game history for replay
-  room_code        String?       @unique  // short code for private games
-  tournamentId     String?       // null for non-tournament games
-  tournament_round Int?          // which round of the tournament (1-based)
+  winning_team     Int? // 1 or 2 for 2v2
+  replay_data      Json? // full game history for replay
+  room_code        String?       @unique // short code for private games
+  tournamentId     String? // null for non-tournament games
+  tournament_round Int? // which round of the tournament (1-based)
   created_at       DateTime      @default(now())
   updated_at       DateTime      @updatedAt
   started_at       DateTime?
   finished_at      DateTime?
 
   players    GamePlayer[]
-  winner     User?       @relation("GameWinner", fields: [winner_id], references: [id])
-  tournament Tournament? @relation(fields: [tournamentId], references: [id])
+  winner     User?        @relation("GameWinner", fields: [winner_id], references: [id])
+  tournament Tournament?  @relation(fields: [tournamentId], references: [id])
 
   @@index([status])
   @@index([mode])
@@ -249,9 +250,9 @@ model GamePlayer {
   id          String   @id @default(uuid())
   gameId      String
   userId      String
-  team        Int      // 1 or 2
-  seat        Int      // 0–3 (position at the table)
-  final_score Int?     // pip count remaining in hand at game end
+  team        Int // 1 or 2
+  seat        Int // 0–3 (position at the table)
+  final_score Int? // pip count remaining in hand at game end
   is_bot      Boolean  @default(false)
   connected   Boolean  @default(true)
   joined_at   DateTime @default(now())
@@ -276,17 +277,17 @@ model Tournament {
   initial_prize_pool Decimal          @default(0) @db.Decimal(12, 2) // admin-set prize for in-person events
   max_players        Int
   current_players    Int              @default(0)
-  current_round      Int              @default(0)  // 0 = not started
+  current_round      Int              @default(0) // 0 = not started
   starts_at          DateTime
   finished_at        DateTime?
   created_at         DateTime         @default(now())
   updated_at         DateTime         @updatedAt
 
   // In-person event fields
-  is_in_person    Boolean          @default(false)
-  address         String?
-  checkin_time    DateTime?
-  banner_url      String?
+  is_in_person Boolean   @default(false)
+  address      String?
+  checkin_time DateTime?
+  banner_url   String?
 
   players TournamentPlayer[]
   games   Game[]
@@ -300,7 +301,7 @@ model TournamentPlayer {
   id             String    @id @default(uuid())
   tournamentId   String
   userId         String
-  seed           Int?      // 1 = best; assigned at start based on league_points
+  seed           Int? // 1 = best; assigned at start based on league_points
   eliminated_at  DateTime?
   withdrawn_at   DateTime? // set alongside eliminated_at when player voluntarily leaves
   final_position Int?
@@ -324,7 +325,7 @@ model FraudLog {
   id          String    @id @default(uuid())
   userId      String
   type        FraudType
-  reason_code String?   // structured code: e.g. "BOT_PATTERN:ema_threshold"
+  reason_code String? // structured code: e.g. "BOT_PATTERN:ema_threshold"
   details     Json
   ip_address  String?
   device_id   String?
@@ -344,8 +345,8 @@ model DeviceBind {
   id            String   @id @default(uuid())
   userId        String
   device_id     String
-  platform      String?  // 'android' | 'ios'
-  attest_key_id String?  // App Attest keyId for iOS
+  platform      String? // 'android' | 'ios'
+  attest_key_id String? // App Attest keyId for iOS
   first_seen    DateTime @default(now())
   last_seen     DateTime @default(now())
   is_active     Boolean  @default(true)
@@ -386,8 +387,8 @@ model Coupon {
   min_deposit_amount Decimal     @default(0) @db.Decimal(12, 2)
   rollover_times     Int         @default(0)
   max_players        Int?
-  eligible_rank      LeagueRank?  // null = all ranks eligible
-  expires_at         DateTime?    // null = no expiry
+  eligible_rank      LeagueRank? // null = all ranks eligible
+  expires_at         DateTime? // null = no expiry
   is_active          Boolean     @default(true)
   created_at         DateTime    @default(now())
   updated_at         DateTime    @updatedAt
@@ -448,10 +449,10 @@ model Announcement {
   id            String      @id @default(uuid())
   title         String
   body          String?     @db.Text
-  html          String?     @db.Text  // optional rich HTML body
+  html          String?     @db.Text // optional rich HTML body
   banner_url    String?
   countdown_end DateTime?
-  max_shows     Int?        // null = always; N = show up to N times per user
+  max_shows     Int? // null = always; N = show up to N times per user
   target_rank   LeagueRank? // null = all users
   is_active     Boolean     @default(true)
   created_at    DateTime    @default(now())

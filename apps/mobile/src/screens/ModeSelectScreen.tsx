@@ -23,6 +23,7 @@ import { toast } from '../store/toast.store';
 import { GameTopBar, GradientToggle } from './HomeScreen';
 import { IconX, IconVolumeUp, IconMusic, IconChevronRight } from '../components/Icons';
 import { Pressable, Image } from 'react-native';
+import { sfx } from '../services/sfx';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -103,7 +104,7 @@ function RoomCard({ room, section, onJoin, width, queuedCount, modeTotal }: { ro
         !isFree && (section === '2v2' ? styles.roomCardPaidGreen : styles.roomCardPaidBlue),
       ]}
       activeOpacity={0.85}
-      onPress={onJoin}
+      onPress={() => { sfx.buttonClick(); onJoin(); }}
     >
       {isFree ? (
         <LinearGradient
@@ -183,7 +184,7 @@ function TournamentCard({ t, onJoin }: { t: Tournament; onJoin: () => void }) {
   const isExpiring = mins < 15;
 
   return (
-    <TouchableOpacity style={styles.tourCard} onPress={onJoin} activeOpacity={0.85}>
+    <TouchableOpacity style={styles.tourCard} onPress={() => { sfx.buttonClick(); onJoin(); }} activeOpacity={0.85}>
       <LinearGradient
         colors={['#041802', '#041802', '#0E7F00']}
         start={{ x: 0.5, y: 0 }}
@@ -230,7 +231,7 @@ function InPersonTournamentCard({ t, onPress }: { t: Tournament; onPress: () => 
   const dateStr = new Date(t.starts_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 
   return (
-    <TouchableOpacity style={styles.tourCard} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity style={styles.tourCard} onPress={() => { sfx.buttonClick(); onPress(); }} activeOpacity={0.85}>
       <LinearGradient
         colors={['#040001', '#040001', '#7F0000']}
         start={{ x: 0.5, y: 0 }}
@@ -541,14 +542,14 @@ export function ModeSelectScreen({ navigation, route }: Props) {
             <View style={styles.modeNavRow}>
               <TouchableOpacity
                 style={styles.modeNavChip}
-                onPress={() => outerScrollRef.current?.scrollTo({ y: 0, animated: true })}
+                onPress={() => { sfx.buttonClick(); outerScrollRef.current?.scrollTo({ y: 0, animated: true }); }}
                 activeOpacity={0.8}
               >
                 <Text style={styles.modeNavChipText}>Individual (1x1)</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modeNavChip}
-                onPress={() => outerScrollRef.current?.scrollTo({ y: section2v2Y, animated: true })}
+                onPress={() => { sfx.buttonClick(); outerScrollRef.current?.scrollTo({ y: section2v2Y, animated: true }); }}
                 activeOpacity={0.8}
               >
                 <Text style={styles.modeNavChipText}>Duplas (2x2)</Text>
@@ -560,7 +561,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                 <Text style={styles.sectionTitle}>Jogos individuais (1x1)</Text>
                 {!isPortrait && (
                   <TouchableOpacity
-                    onPress={() => scrollRef1v1.current?.scrollToEnd({ animated: true })}
+                    onPress={() => { sfx.buttonClick(); scrollRef1v1.current?.scrollToEnd({ animated: true }); }}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
                     activeOpacity={0.7}
                   >
@@ -602,7 +603,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                 <Text style={styles.sectionTitle}>Jogos em duplas (2x2) com parceiro aleatório</Text>
                 {!isPortrait && (
                   <TouchableOpacity
-                    onPress={() => scrollRef2v2.current?.scrollToEnd({ animated: true })}
+                    onPress={() => { sfx.buttonClick(); scrollRef2v2.current?.scrollToEnd({ animated: true }); }}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
                     activeOpacity={0.7}
                   >
@@ -666,7 +667,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                   </View>
                   <Text style={styles.tourEmptyTitle}>Nenhum torneio disponível agora</Text>
                   <Text style={styles.tourEmptyHint}>Volte em instantes — novos torneios aparecem aqui</Text>
-                  <TouchableOpacity style={styles.tourRefreshBtn} onPress={() => fetchTournaments(true)} activeOpacity={0.85}>
+                  <TouchableOpacity style={styles.tourRefreshBtn} onPress={() => { sfx.buttonClick(); fetchTournaments(true); }} activeOpacity={0.85}>
                     <Text style={styles.tourRefreshText}>Atualizar</Text>
                   </TouchableOpacity>
                 </View>
@@ -723,6 +724,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
               <TouchableOpacity
                 style={styles.cancelBtn}
                 onPress={async () => {
+                  sfx.buttonClick();
                   try {
                     const s = await connectSocket();
                     s.emit('queue:leave');
@@ -766,7 +768,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={[styles.modalBtnCancel, joining && styles.modalBtnDisabled]}
-                    onPress={() => setConfirmTour(null)}
+                    onPress={() => { sfx.buttonClick(); setConfirmTour(null); }}
                     disabled={joining}
                     activeOpacity={0.8}
                   >
@@ -774,7 +776,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalBtnConfirm, joining && styles.modalBtnDisabled]}
-                    onPress={handleJoinTournament}
+                    onPress={() => { sfx.buttonClick(); handleJoinTournament(); }}
                     disabled={joining}
                     activeOpacity={0.8}
                   >
@@ -821,7 +823,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={[styles.modalBtnCancel, searching && styles.modalBtnDisabled]}
-                    onPress={() => setConfirmRoom(null)}
+                    onPress={() => { sfx.buttonClick(); setConfirmRoom(null); }}
                     disabled={searching}
                     activeOpacity={0.8}
                   >
@@ -830,6 +832,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                   <TouchableOpacity
                     style={[styles.modalBtnConfirm, searching && styles.modalBtnDisabled]}
                     onPress={async () => {
+                      sfx.buttonClick();
                       const r = confirmRoom;
                       setConfirmRoom(null);
                       if (!r) return;
@@ -899,13 +902,13 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                       <View style={inPersonStyles.toggleRow}>
                         <TouchableOpacity
                           style={[inPersonStyles.toggleChip, useAccountName && inPersonStyles.toggleChipActive]}
-                          onPress={() => { setUseAccountName(true); setInPersonName(user.name ?? ''); }}
+                          onPress={() => { sfx.buttonClick(); setUseAccountName(true); setInPersonName(user.name ?? ''); }}
                         >
                           <Text style={[inPersonStyles.toggleChipText, useAccountName && inPersonStyles.toggleChipTextActive]}>Da conta</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[inPersonStyles.toggleChip, !useAccountName && inPersonStyles.toggleChipActive]}
-                          onPress={() => { setUseAccountName(false); setInPersonName(''); }}
+                          onPress={() => { sfx.buttonClick(); setUseAccountName(false); setInPersonName(''); }}
                         >
                           <Text style={[inPersonStyles.toggleChipText, !useAccountName && inPersonStyles.toggleChipTextActive]}>Manual</Text>
                         </TouchableOpacity>
@@ -936,7 +939,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                   <View style={styles.modalActions}>
                     <TouchableOpacity
                       style={[styles.modalBtnCancel, joining && styles.modalBtnDisabled]}
-                      onPress={() => setInPersonTour(null)}
+                      onPress={() => { sfx.buttonClick(); setInPersonTour(null); }}
                       disabled={joining}
                       activeOpacity={0.85}
                     >
@@ -944,7 +947,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[inPersonStyles.confirmBtn, joining && styles.modalBtnDisabled]}
-                      onPress={handleJoinInPersonTournament}
+                      onPress={() => { sfx.buttonClick(); handleJoinInPersonTournament(); }}
                       disabled={joining}
                       activeOpacity={0.85}
                     >
@@ -972,7 +975,7 @@ export function ModeSelectScreen({ navigation, route }: Props) {
             <View style={settingsStyles.header}>
               <View style={{ width: 26 }} />
               <Text style={settingsStyles.title}>Configurações</Text>
-              <TouchableOpacity onPress={() => setSettingsVisible(false)} accessibilityLabel="Fechar configurações">
+              <TouchableOpacity onPress={() => { sfx.buttonClick(); setSettingsVisible(false); }} accessibilityLabel="Fechar configurações">
                 <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
               </TouchableOpacity>
             </View>

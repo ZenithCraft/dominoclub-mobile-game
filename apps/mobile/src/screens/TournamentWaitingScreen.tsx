@@ -17,6 +17,7 @@ import { api } from '../services/api';
 import Constants from 'expo-constants';
 import { useTournamentStore } from '../store/tournament.store';
 import { toast } from '../store/toast.store';
+import { sfx } from '../services/sfx';
 
 const isExpoGo = Constants.appOwnership === 'expo';
 
@@ -158,6 +159,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
   }, []);
 
   const toggleNotifications = useCallback(async () => {
+    sfx.buttonClick();
     if (notifEnabled) {
       // Disable
       if (Notifications) {
@@ -198,6 +200,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
   }, [notifEnabled, startsAtDate, tournamentName]);
 
   const handleLeave = useCallback(async () => {
+    sfx.buttonClick();
     const inProgress = byeRound != null || startsAtDate <= new Date();
     const endpoint = inProgress
       ? `/game/tournaments/${tournamentId}/withdraw`
@@ -318,7 +321,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
     <ScreenBackground style={styles.bg}>
       <SafeAreaView style={styles.safe} edges={['bottom']}>
         {/* Gear button — absolutely positioned so it doesn't shift the centroid */}
-        <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)} accessibilityLabel="Configurações">
+        <TouchableOpacity style={styles.gearBtn} onPress={() => { sfx.buttonClick(); setSettingsVisible(true); }} accessibilityLabel="Configurações">
           <IconSettings size={22} color="#fff" accessibilityLabel="Configurações" />
         </TouchableOpacity>
         <View style={[styles.scroll, styles.centered]}>
@@ -392,7 +395,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
           {/* Back to lobby */}
           <TouchableOpacity
             style={[styles.backBtn, compact && styles.btnCompact]}
-            onPress={() => navigation.replace('ModeSelect', { mode: 'TORNEIO' })}
+            onPress={() => { sfx.buttonClick(); navigation.replace('ModeSelect', { mode: 'TORNEIO' }); }}
             activeOpacity={0.85}
           >
             <Text style={styles.backBtnText}>Voltar para a sala</Text>
@@ -401,7 +404,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
           {cancelledMessage && (
             <TouchableOpacity
               style={styles.goHomeBtn}
-              onPress={() => navigation.replace('Main')}
+              onPress={() => { sfx.buttonClick(); navigation.replace('Main'); }}
               activeOpacity={0.85}
             >
               <Text style={styles.goHomeBtnText}>Ir para o início</Text>
@@ -423,7 +426,7 @@ export function TournamentWaitingScreen({ navigation, route }: Props) {
               <View style={settingsStyles.header}>
                 <View style={{ width: 26 }} />
                 <Text style={settingsStyles.title}>Configurações</Text>
-                <TouchableOpacity onPress={() => setSettingsVisible(false)} accessibilityLabel="Fechar configurações">
+                <TouchableOpacity onPress={() => { sfx.buttonClick(); setSettingsVisible(false); }} accessibilityLabel="Fechar configurações">
                   <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
                 </TouchableOpacity>
               </View>

@@ -325,8 +325,8 @@ describe('Admin announcements', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].title).toBe('Promoção especial');
+    expect(res.body.announcements).toHaveLength(1);
+    expect(res.body.announcements[0].title).toBe('Promoção especial');
   });
 
   it('POST /admin/announcements returns 400 when title is missing', async () => {

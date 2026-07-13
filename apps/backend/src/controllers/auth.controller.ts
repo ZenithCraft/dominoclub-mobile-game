@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { requestOtp, loginWithOtp, refreshTokens, logout, devLogin } from '../services/auth.service';
+import { requestOtp, loginWithOtp, refreshTokens, logout, devLogin, loginWithGoogle, completeGoogleSignup } from '../services/auth.service';
 import { verifyAndSaveCpf } from '../services/cpf.service';
-import { loginSchema, verifyOtpSchema, cpfSchema } from '../utils/validators';
+import { loginSchema, verifyOtpSchema, cpfSchema, googleLoginSchema, googleCompleteSchema } from '../utils/validators';
 import { checkMultiAccount } from '../middleware/antifraud.middleware';
 import { prisma } from '../services/prisma.service';
 import { config } from '../config';
@@ -29,6 +29,40 @@ export async function verifyOtpHandler(req: Request, res: Response) {
     const result = await loginWithOtp(phone, otp, deviceId, ip);
 
     // Anti-fraud check async (don't block login)
+    checkMultiAccount(result.user.id, ip, deviceId).catch(() => {});
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function googleLoginHandler(req: Request, res: Response) {
+  try {
+    const { idToken } = googleLoginSchema.parse(req.body);
+    const ip = (req as any).clientIp;
+    const deviceId = (req as any).deviceId;
+
+    const result = await loginWithGoogle(idToken, deviceId, ip);
+
+    if ('user' in result) {
+      checkMultiAccount(result.user.id, ip, deviceId).catch(() => {});
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export async function googleCompleteHandler(req: Request, res: Response) {
+  try {
+    const { pendingToken, phone, otp } = googleCompleteSchema.parse(req.body);
+    const ip = (req as any).clientIp;
+    const deviceId = (req as any).deviceId;
+
+    const result = await completeGoogleSignup(pendingToken, phone, otp, deviceId, ip);
+
     checkMultiAccount(result.user.id, ip, deviceId).catch(() => {});
 
     res.json(result);

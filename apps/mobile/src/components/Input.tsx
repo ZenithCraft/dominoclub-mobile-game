@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, TextInput, Text, StyleSheet, ViewStyle, Pressable, Platform } from 'react-native';
 import { colors, radius, spacing, fonts } from '../theme';
 import { IconEye, IconEyeOff } from './Icons';
+import { sfx } from '../services/sfx';
 
 interface Props {
   label?: string;
@@ -65,7 +66,7 @@ export function Input({
         />
         {secureTextEntry && (
           <Pressable
-            onPress={() => setShowPassword(!showPassword)} 
+            onPress={() => { sfx.buttonClick(); setShowPassword(!showPassword); }}
             style={styles.eyeButton}
             accessibilityLabel={showPassword ? "Ocultar senha" : "Mostrar senha"}
             onHoverIn={() => setHovered(true)}

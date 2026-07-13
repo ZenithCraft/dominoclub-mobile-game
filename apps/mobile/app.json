@@ -35,7 +35,7 @@
         "backgroundColor": "#0a1f0a"
       },
       "package": "com.dominoclub.app",
-      "versionCode": 33,
+      "versionCode": 36,
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
@@ -62,7 +62,9 @@
     "plugins": [
       "expo-location",
       "expo-image-picker",
-      "expo-font"
+      "expo-font",
+      "@react-native-google-signin/google-signin",
+      "expo-audio"
     ],
     "owner": "o_jojoyoro",
     "extra": {
@@ -74,7 +76,7 @@
       }
     },
     "updates": {
-      "enabled": false,
+      "enabled": true,
       "url": "https://u.expo.dev/bec359a4-a533-4b76-8061-50bd79e0015e"
     }
   }

@@ -9,6 +9,7 @@ import { isTablet } from '../theme/responsive';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { IconTrophy, IconSettings, IconX } from '../components/Icons';
 import { GradientToggle } from './HomeScreen';
+import { sfx } from '../services/sfx';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -45,7 +46,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
       <SafeAreaView style={styles.safe} edges={[]}>
         <View style={styles.topBar}>
           <View style={{ flex: 1 }} />
-          <TouchableOpacity style={styles.gearBtn} onPress={() => setSettingsVisible(true)} accessibilityLabel="Configurações">
+          <TouchableOpacity style={styles.gearBtn} onPress={() => { sfx.buttonClick(); setSettingsVisible(true); }} accessibilityLabel="Configurações">
             <IconSettings size={22} color="#fff" accessibilityLabel="Configurações" />
           </TouchableOpacity>
         </View>
@@ -94,7 +95,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
           <View style={styles.actions}>
             <TouchableOpacity
               style={styles.bracketBtn}
-              onPress={() => navigation.replace('TournamentBracket', { tournamentId })}
+              onPress={() => { sfx.buttonClick(); navigation.replace('TournamentBracket', { tournamentId }); }}
               activeOpacity={0.85}
             >
               <Text style={styles.bracketBtnText}>Ver chaveamento</Text>
@@ -102,7 +103,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
 
             <TouchableOpacity
               style={styles.homeBtn}
-              onPress={() => navigation.replace('Main')}
+              onPress={() => { sfx.buttonClick(); navigation.replace('Main'); }}
               activeOpacity={0.85}
             >
               <LinearGradient
@@ -116,7 +117,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
 
             <TouchableOpacity
               style={styles.playAgainBtn}
-              onPress={() => navigation.replace('ModeSelect', { mode: 'TORNEIO' })}
+              onPress={() => { sfx.buttonClick(); navigation.replace('ModeSelect', { mode: 'TORNEIO' }); }}
               activeOpacity={0.85}
             >
               <Text style={styles.playAgainBtnText}>Entrar em outro torneio</Text>
@@ -139,7 +140,7 @@ export function TournamentResultScreen({ navigation, route }: Props) {
               <View style={settingsStyles.header}>
                 <View style={{ width: 26 }} />
                 <Text style={settingsStyles.title}>Configurações</Text>
-                <TouchableOpacity onPress={() => setSettingsVisible(false)} accessibilityLabel="Fechar configurações">
+                <TouchableOpacity onPress={() => { sfx.buttonClick(); setSettingsVisible(false); }} accessibilityLabel="Fechar configurações">
                   <IconX size={26} color="#fff" accessibilityLabel="Fechar" />
                 </TouchableOpacity>
               </View>

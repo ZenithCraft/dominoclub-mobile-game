@@ -13,6 +13,8 @@ import {
   confirmDeleteAccountHandler,
   requestDataExportHandler,
   selfExclusionHandler,
+  googleLoginHandler,
+  googleCompleteHandler,
 } from '../controllers/auth.controller';
 import { registerPushTokenHandler } from '../controllers/kyc.controller';
 
@@ -21,6 +23,8 @@ const router = Router();
 router.post('/otp/send', sendOtpHandler);
 router.post('/otp/verify', verifyOtpHandler);
 router.post('/dev/login', devLoginHandler);
+router.post('/google', googleLoginHandler);
+router.post('/google/complete', googleCompleteHandler);
 router.post('/token/refresh', refreshHandler);
 router.post('/logout', authMiddleware, logoutHandler);
 router.get('/me', authMiddleware, getMeHandler);

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Image, Platform, Pressable, Linking,
+  Image, Platform, Pressable, Linking, ScrollView, Dimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { BlurModal } from './BlurModal';
@@ -10,9 +10,13 @@ import { IconX } from './Icons';
 import { colors, spacing, fonts, radius, shadows } from '../theme';
 import { isTablet } from '../theme/responsive';
 import { toast } from '../store/toast.store';
+import { useSettingsStore } from '../store/settings.store';
+import { setAppNotificationsEnabled } from '../services/notifications';
+import { sfx } from '../services/sfx';
 
 const CARD_PAD = Platform.OS === 'web' ? 24 : 16;
 const ITEM_GAP = Platform.OS === 'web' ? 24 : 16;
+const { height: SCREEN_H } = Dimensions.get('window');
 
 interface Props {
   visible: boolean;
@@ -20,9 +24,12 @@ interface Props {
 }
 
 export function SettingsModal({ visible, onClose }: Props) {
-  const [soundOn, setSoundOn] = useState(true);
   const [musicOn, setMusicOn] = useState(true);
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
+  const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
+  const soundOn = useSettingsStore((s) => s.soundOn);
+  const setSoundOn = useSettingsStore((s) => s.setSoundOn);
+  useEffect(() => { useSettingsStore.getState().loadFromStorage(); }, []);
 
   return (
     <BlurModal visible={visible} transparent animationType="fade">
@@ -43,42 +50,55 @@ export function SettingsModal({ visible, onClose }: Props) {
           <View style={styles.header}>
             <View style={{ width: 26 }} />
             <Text style={styles.title}>Configurações</Text>
-            <TouchableOpacity onPress={onClose} accessibilityLabel="Fechar configurações">
+            <TouchableOpacity onPress={() => { sfx.buttonClick(); onClose(); }} accessibilityLabel="Fechar configurações">
               <IconX size={26} color="#fff" />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.item}>
-            <Text style={styles.label}>Som:</Text>
-            <GradientToggle value={soundOn} onValueChange={setSoundOn} kind="sound" accessibilityLabel="Som" />
-          </View>
-
-          <View style={styles.item}>
-            <Text style={styles.label}>Música:</Text>
-            <GradientToggle value={musicOn} onValueChange={setMusicOn} kind="music" accessibilityLabel="Música" />
-          </View>
-
-          {Platform.OS !== 'web' && (
+          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ gap: ITEM_GAP }} showsVerticalScrollIndicator={false}>
             <View style={styles.item}>
-              <Text style={styles.label}>Localização:</Text>
-              <TouchableOpacity
-                style={styles.locationBtn}
-                onPress={async () => {
-                  try {
-                    const { status } = await Location.getForegroundPermissionsAsync();
-                    if (status === 'granted') { toast.info('Localização já está ativada'); return; }
-                    const { status: ns } = await Location.requestForegroundPermissionsAsync();
-                    if (ns === 'granted') { setLocationGranted(true); toast.success('Localização ativada!'); }
-                    else Linking.openSettings();
-                  } catch {}
-                }}
-              >
-                <Text style={[styles.locationText, locationGranted && styles.locationGranted]}>
-                  {locationGranted ? '✓ Ativada' : 'Ativar'}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.label}>Som:</Text>
+              <GradientToggle value={soundOn} onValueChange={setSoundOn} kind="sound" accessibilityLabel="Som" />
             </View>
-          )}
+
+            <View style={styles.item}>
+              <Text style={styles.label}>Música:</Text>
+              <GradientToggle value={musicOn} onValueChange={setMusicOn} kind="music" accessibilityLabel="Música" />
+            </View>
+
+            <View style={styles.item}>
+              <Text style={styles.label}>Notificações:</Text>
+              <GradientToggle
+                value={notificationsEnabled}
+                onValueChange={setAppNotificationsEnabled}
+                kind="notifications"
+                accessibilityLabel="Notificações"
+              />
+            </View>
+
+            {Platform.OS !== 'web' && (
+              <View style={styles.item}>
+                <Text style={styles.label}>Localização:</Text>
+                <TouchableOpacity
+                  style={styles.locationBtn}
+                  onPress={async () => {
+                    sfx.buttonClick();
+                    try {
+                      const { status } = await Location.getForegroundPermissionsAsync();
+                      if (status === 'granted') { toast.info('Localização já está ativada'); return; }
+                      const { status: ns } = await Location.requestForegroundPermissionsAsync();
+                      if (ns === 'granted') { setLocationGranted(true); toast.success('Localização ativada!'); }
+                      else Linking.openSettings();
+                    } catch {}
+                  }}
+                >
+                  <Text style={[styles.locationText, locationGranted && styles.locationGranted]}>
+                    {locationGranted ? '✓ Ativada' : 'Ativar'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
         </Pressable>
       </Pressable>
     </BlurModal>
@@ -93,6 +113,7 @@ const styles = StyleSheet.create({
   card: {
     width: Platform.OS === 'web' ? 640 : isTablet ? 780 : 440,
     maxWidth: '92%',
+    maxHeight: Platform.OS === 'web' ? 600 : Math.round(SCREEN_H * 0.85),
     backgroundColor: colors.bgCard,
     borderRadius: radius.xl,
     padding: CARD_PAD,

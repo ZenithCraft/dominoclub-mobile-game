@@ -40,6 +40,8 @@ import {
   Info,
   QrCode,
   Menu,
+  Bell,
+  BellOff,
 } from 'lucide-react-native';
 import { Icon, IconProps } from './Icon';
 import Svg, { Path, G } from 'react-native-svg';
@@ -97,6 +99,8 @@ export const IconShieldAlert = (props: Omit<IconProps, 'icon'>) => <Icon icon={S
 // Media Icons
 export const IconVolumeUp = (props: Omit<IconProps, 'icon'>) => <Icon icon={Volume2} {...props} />;
 export const IconMusic = (props: Omit<IconProps, 'icon'>) => <Icon icon={Music} {...props} />;
+export const IconBell = (props: Omit<IconProps, 'icon'>) => <Icon icon={Bell} {...props} />;
+export const IconBellOff = (props: Omit<IconProps, 'icon'>) => <Icon icon={BellOff} {...props} />;
 
 export function IconGoogle({ size = 24, style, accessibilityLabel }: { size?: number; style?: any; accessibilityLabel?: string }) {
   const s = size;

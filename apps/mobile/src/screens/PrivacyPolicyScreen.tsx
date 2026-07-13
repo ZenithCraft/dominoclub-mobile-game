@@ -9,6 +9,7 @@ import { IconUpload, IconTrash, IconChevronLeft } from '../components/Icons';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { toast } from '../store/toast.store';
+import { sfx } from '../services/sfx';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -22,6 +23,7 @@ export function PrivacyPolicyScreen({ navigation }: Props) {
   const scrollRef = useRef<ScrollView>(null);
 
   const handleDeleteAccount = () => {
+    sfx.buttonClick();
     Alert.alert(
       'Excluir Conta',
       'Tem certeza? Esta ação é irreversível. Seus dados serão removidos permanentemente e seu saldo restante será perdido.',
@@ -49,6 +51,7 @@ export function PrivacyPolicyScreen({ navigation }: Props) {
   };
 
   const handleDataExport = async () => {
+    sfx.buttonClick();
     try {
       await api.post('/auth/data-export');
       toast.success('Seus dados serão enviados para o e-mail cadastrado em até 48h.');
@@ -60,7 +63,7 @@ export function PrivacyPolicyScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={() => { sfx.buttonClick(); navigation.goBack(); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <IconChevronLeft size={18} color={colors.textMuted} accessibilityLabel="Voltar" />
         </TouchableOpacity>
         <Text style={styles.title}>Política de Privacidade</Text>

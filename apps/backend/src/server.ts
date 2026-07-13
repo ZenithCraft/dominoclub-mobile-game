@@ -1,6 +1,7 @@
 import http from 'http';
 import app from './app';
 import { createSocketServer } from './socket';
+import { setSocketServer } from './socket/registry';
 import { prisma } from './services/prisma.service';
 import { connectRedis, disconnectRedis } from './services/redis.service';
 import { cleanupExpiredNonces } from './services/nonce.service';
@@ -39,6 +40,7 @@ async function main() {
 
   // Socket server must be created AFTER Redis connects so the adapter is applied
   const io = createSocketServer(server);
+  setSocketServer(io);
 
   // Try DB connection but don't block server startup
   void connectPrismaWithRetry();

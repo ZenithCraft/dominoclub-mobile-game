@@ -13,6 +13,7 @@ import { colors, spacing, fonts, radius } from '../theme';
 import { ScreenBackground } from '../components/ScreenBackground';
 import { IconLock } from '../components/Icons';
 import { api } from '../services/api';
+import { sfx } from '../services/sfx';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -104,11 +105,11 @@ export function ForgotPasswordScreen({ navigation }: Props) {
                   )}
 
                   <View style={styles.linksRow}>
-                    <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+                    <TouchableOpacity onPress={() => { sfx.buttonClick(); navigation.navigate('Login'); }}>
                       <Text style={styles.linkMuted}>Fazer login</Text>
                     </TouchableOpacity>
                     <Text style={styles.linkSep}>·</Text>
-                    <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                    <TouchableOpacity onPress={() => { sfx.buttonClick(); navigation.navigate('Register'); }}>
                       <Text style={styles.linkMuted}>Criar uma conta</Text>
                     </TouchableOpacity>
                   </View>

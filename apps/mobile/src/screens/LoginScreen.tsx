@@ -14,6 +14,8 @@ import { api } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
 import { LinearGradient } from 'expo-linear-gradient';
 import { IconUser, IconGoogle, IconAppleLogo } from '../components/Icons';
+import { useGoogleSignIn } from '../hooks/useGoogleSignIn';
+import { sfx } from '../services/sfx';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
@@ -29,6 +31,7 @@ export function LoginScreen({ navigation }: Props) {
   const [hoverApple, setHoverApple] = useState(false);
   const [hoverGoogle, setHoverGoogle] = useState(false);
   const { setTokens, setUser } = useAuthStore();
+  const { handleGoogleSignIn, loading: googleLoading, error: googleError } = useGoogleSignIn(navigation);
 
   const isEmail = /[a-zA-Z@]/.test(identifier);
   const DEV_AUTH_BYPASS = process.env.EXPO_PUBLIC_DEV_AUTH_BYPASS === 'true';
@@ -131,7 +134,7 @@ export function LoginScreen({ navigation }: Props) {
                 <View style={styles.actionRow}>
                   <TouchableOpacity
                     style={styles.forgotBtn}
-                    onPress={() => navigation.navigate('ForgotPassword')}
+                    onPress={() => { sfx.buttonClick(); navigation.navigate('ForgotPassword'); }}
                   >
                     <Text style={styles.forgotText}>Esqueceu a senha?</Text>
                   </TouchableOpacity>
@@ -144,7 +147,7 @@ export function LoginScreen({ navigation }: Props) {
                   />
                 </View>
 
-                <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                <TouchableOpacity onPress={() => { sfx.buttonClick(); navigation.navigate('Register'); }}>
                   <Text style={styles.linkMuted}>Criar uma conta</Text>
                 </TouchableOpacity>
 
@@ -160,12 +163,15 @@ export function LoginScreen({ navigation }: Props) {
                   <Pressable
                     onHoverIn={() => setHoverGoogle(true)}
                     onHoverOut={() => setHoverGoogle(false)}
-                    style={[styles.socialBtn, hoverGoogle && styles.socialBtnHover]}
+                    onPress={() => { sfx.buttonClick(); handleGoogleSignIn(); }}
+                    disabled={googleLoading}
+                    style={[styles.socialBtn, hoverGoogle && styles.socialBtnHover, googleLoading && styles.socialBtnDisabled]}
                     accessibilityLabel="Google"
                   >
                     <IconGoogle size={18} accessibilityLabel="Google" />
                   </Pressable>
                 </View>
+                {googleError ? <Text style={styles.googleErrorText}>{googleError}</Text> : null}
               </View>
 
             </View>
@@ -290,4 +296,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(28,187,61,0.15)',
     borderColor: 'rgba(28,187,61,0.6)',
   },
+  socialBtnDisabled: { opacity: 0.5 },
+  googleErrorText: { color: colors.error, fontSize: fonts.sizes.xs, textAlign: 'center' },
 });

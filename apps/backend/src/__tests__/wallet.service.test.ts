@@ -174,9 +174,11 @@ describe('rollover mechanics', () => {
     );
   });
 
-  it('decrements rollover_remaining when bet uses real funds (no bonus left)', async () => {
-    // Critical regression: player exhausted bonus but rollover still pending.
-    // Without the fix, rolloverDeduction would be 0 here and rollover never clears.
+  it('clears rollover immediately when bonus is already 0 going into the bet', async () => {
+    // Regression: bonus ran out on an earlier bet (e.g. stale data from before
+    // this invariant existed) but rollover_remaining was left stuck > 0. Since
+    // rollover only exists to protect bonus funds, the very next bet must drop
+    // it to 0 outright rather than grinding it down proportionally to wagers.
     (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({
       ...mockWallet,
       real_balance: 100,
@@ -191,9 +193,9 @@ describe('rollover mechanics', () => {
     expect(prisma.wallet.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          real_balance: 75,         // 100 - 25
+          real_balance: 75,        // 100 - 25
           bonus_balance: 0,
-          rollover_remaining: 35,   // 60 - 25
+          rollover_remaining: 0,   // forced to 0 — bonus was already gone
         }),
       })
     );
