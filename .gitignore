@@ -9,6 +9,10 @@ node_modules/
 .env.local
 .env.*.local
 
+# Secrets — never commit these (SSH keys, deployment reports with plaintext creds)
+*.pem
+DEPLOYMENT_REPORT.md
+
 # Build output
 dist/
 build/
